@@ -562,7 +562,7 @@ public class ResourceManager {
 
     public void loadHighQualityFileUnderFolder(File folder) {
         File[] files = FileUtils.listFiles(folder, new String[]{
-            ".png", ".jpg", ".bmp"});
+                ".png", ".jpg", ".bmp"});
         for (File file : files) {
             if (file.isDirectory()) {
                 loadHighQualityFileUnderFolder(file);
@@ -573,7 +573,31 @@ public class ResourceManager {
         }
     }
 
-    public TextureRegion getTexture(final String resname) {
+    public String handleNewServerMarks(String resname) {
+        String str;
+
+        if (resname.contains("XSS")) {
+            str = "XH";
+        }
+        else if (resname.contains("SS")) {
+            str = "X";
+        }
+        else if (resname.contains("XS")) {
+            str = "SH";
+        } else {
+            return resname;
+        }
+
+        return "ranking-" + str + (resname.endsWith("-small") ? "-small" : "");
+    }
+
+    public TextureRegion getTexture(String resname) {
+        Log.i("RM", "Getting texture: " + resname);
+
+        if (resname.startsWith("ranking-")) {
+            resname = handleNewServerMarks(resname);
+        }
+
         if (SkinManager.isSkinEnabled() && customTextures.containsKey(resname)) {
             return customTextures.get(resname);
         }

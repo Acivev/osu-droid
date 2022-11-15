@@ -1,6 +1,7 @@
 package ru.nsu.ccfit.zuev.osu.online;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.os.Bundle;
 import android.util.Log;
@@ -26,8 +27,11 @@ import ru.nsu.ccfit.zuev.osu.helper.MD5Calcuator;
 import ru.nsu.ccfit.zuev.osu.online.PostBuilder.RequestException;
 
 public class OnlineManager {
-    public static final String hostname = "osudroid.moe";
+    public static final String hostname = "home.cyberpit.de";
     public static final String endpoint = "https://" + hostname + "/api/";
+
+    public static final String AVATAR_ENDPOINT = "https://" + hostname + "/user/avatar/100/";
+
     private static final String onlineVersion = "29";
 
     public static final OkHttpClient client = new OkHttpClient();
@@ -147,7 +151,7 @@ public class OnlineManager {
         accuracy = Integer.parseInt(params[4]) / 100000f;
         this.username = params[5];
         if (params.length >= 7) {
-            avatarURL = params[6];
+            avatarURL = AVATAR_ENDPOINT + userId;
         } else {
             avatarURL = "";
         }
@@ -155,7 +159,7 @@ public class OnlineManager {
         Bundle bParams = new Bundle();
         bParams.putString(FirebaseAnalytics.Param.METHOD, "ingame");
         GlobalManager.getInstance().getMainActivity().getAnalytics().logEvent(FirebaseAnalytics.Event.LOGIN,
-            bParams);
+                bParams);
 
         return true;
     }
@@ -181,7 +185,7 @@ public class OnlineManager {
         Bundle params = new Bundle();
         params.putString(FirebaseAnalytics.Param.METHOD, "ingame");
         GlobalManager.getInstance().getMainActivity().getAnalytics().logEvent(FirebaseAnalytics.Event.SIGN_UP,
-            params);
+                params);
 
         return (response != null);
     }
@@ -310,41 +314,51 @@ public class OnlineManager {
     }
 
     public boolean loadAvatarToTextureManager(String avatarURL, String userName) {
-        if (avatarURL == null || avatarURL.length() == 0) return false;
+        if (avatarURL == null || avatarURL.length() == 0) {
+            return false;
+        }
 
         String filename = MD5Calcuator.getStringMD5(avatarURL + userName);
-        Debug.i("Loading avatar from " + avatarURL);
-        Debug.i("filename = " + filename);
-        File picfile = new File(Config.getCachePath(), filename);
 
-        if(!picfile.exists()) {
-            OnlineFileOperator.downloadFile(avatarURL, picfile.getAbsolutePath());
-        }else if(picfile.exists() && picfile.length() < 1) {
-            picfile.delete();
-            OnlineFileOperator.downloadFile(avatarURL, picfile.getAbsolutePath());
-        }
-        int imageWidth = 0, imageHeight = 0;
-        boolean fileAvailable = true;
+        /*Log.i("OnlineManager", "Loading avatar from: " + avatarURL);
+        Log.i("OnlineManager", "MD5: " + filename);*/
 
-        try {
-            BitmapFactory.Options options = new BitmapFactory.Options();
-            options.inJustDecodeBounds = true;
-            imageWidth = BitmapFactory.decodeFile(picfile.getPath()).getWidth();
-            imageHeight = BitmapFactory.decodeFile(picfile.getPath()).getHeight();
-            options.inJustDecodeBounds = false;
-            options = null;
-        } catch (NullPointerException e) {
-            fileAvailable = false;
+        File file = new File(Config.getCachePath(), filename);
+
+        if (file.exists() && file.length() < 1) {
+            file.delete();
         }
-        if (fileAvailable && (imageWidth * imageHeight) > 0) {
-            //头像已经缓存好在本地
-            ResourceManager.getInstance().loadHighQualityFile(userName, picfile);
+
+        if (!OnlineFileOperator.downloadFile(avatarURL, file.getAbsolutePath())) {
+            Log.e("OnlineManager", "Avatar URL is invalid");
+            return false;
+        }
+
+        int imageWidth;
+        int imageHeight;
+
+        BitmapFactory.Options options = new BitmapFactory.Options();
+        options.inJustDecodeBounds = true;
+
+        Bitmap bitmap = BitmapFactory.decodeFile(file.getPath());
+
+        if (bitmap == null) {
+            Log.e("OnlineManager", "Cannot decode avatar into a Bitmap!");
+            return false;
+        }
+
+        imageWidth = bitmap.getWidth();
+        imageHeight = bitmap.getHeight();
+        options.inJustDecodeBounds = false;
+
+        if ((imageWidth * imageHeight) > 0) {
+            ResourceManager.getInstance().loadHighQualityFile(userName, file);
             if (ResourceManager.getInstance().getTextureIfLoaded(userName) != null) {
                 return true;
             }
         }
 
-        Debug.i("Success!");
+        Log.i("OnlineManager", "Success loading avatar!");
         return false;
     }
 

@@ -191,7 +191,7 @@ public class ScoreBoard implements ScrollDetector.IScrollDetectorListener {
         return scoreBuilder.toString();
     }
 
-    private void initSprite(int i, String title, String acc, String markStr, final boolean showOnline, final int scoreID, String avaUrl, final String userName) {
+    private void initSprite(int i, String title, String acc, String markStr, final boolean showOnline, final int scoreID, String userId, final String userName) {
         final TextureRegion tex = ResourceManager.getInstance().getTexture(
                 "menu-button-background").deepCopy();
         tex.setHeight(107);
@@ -243,7 +243,7 @@ public class ScoreBoard implements ScrollDetector.IScrollDetectorListener {
         int pos = 0;
         if (showOnlineScores) {
             pos = 90;
-            avatars[i] = new Avatar(userName, avaUrl);
+            avatars[i] = new Avatar(userName, userId);
         }
         final Text text = new Text(Utils.toRes(pos + 160), Utils.toRes(20),
                 ResourceManager.getInstance().getFont("font"), title);
@@ -315,7 +315,7 @@ public class ScoreBoard implements ScrollDetector.IScrollDetectorListener {
                                 + String.format(Locale.ENGLISH, "%.2f", GameHelper.Round(Integer.parseInt(data[6]) / 1000f, 2)) + "%" + "\n"
                                 + (lastTotalScore == 0 ? "-" : ((diffTotalScore != 0 ? "+" : "") + diffTotalScore));
                         lastTotalScore = currTotalScore;
-                        initSprite(i, titleStr, accStr, data[4], true, scoreID, data[7], data[1]);
+                        initSprite(i, titleStr, accStr, data[4], true, scoreID, data[0], data[1]);
                         ScoreBoardItems item = new ScoreBoardItems();
                         item.set(data[1], Integer.parseInt(data[3]), Integer.parseInt(data[2]), scoreID);
                         scoreBoardItems.add(item);
@@ -339,7 +339,7 @@ public class ScoreBoard implements ScrollDetector.IScrollDetectorListener {
                             String accStr = ConvertModString(data[5]) + "\n"
                                     + String.format(Locale.ENGLISH, "%.2f", GameHelper.Round(Integer.parseInt(data[6]) / 1000f, 2)) + "%" + "\n"
                                     + "-";
-                            initSprite(scores.size(), titleStr, accStr, data[4], true, scoreID, data[9], data[1]);
+                            initSprite(scores.size(), titleStr, accStr, data[4], true, scoreID, data[0], data[1]);
                         } else {
                             sprites[scores.size()] = null;
                         }
@@ -541,7 +541,7 @@ public class ScoreBoard implements ScrollDetector.IScrollDetectorListener {
                     public void run() {
 
                         Avatar ava = avatars[finalI];
-                        boolean bool = OnlineManager.getInstance().loadAvatarToTextureManager(ava.getAvaUrl(), "ava@" + ava.getUserName());
+                        boolean bool = OnlineManager.getInstance().loadAvatarToTextureManager(ava.getUrl(), "ava@" + ava.getUserName());
                         if (bool) {
                             avatarTexRegion[finalI] = ResourceManager.getInstance().getTextureIfLoaded("ava@" + ava.getUserName());
                         } else {
@@ -670,29 +670,22 @@ public class ScoreBoard implements ScrollDetector.IScrollDetectorListener {
         }
     }
 
-    static class Avatar {
-        private String userName;
-        private String avaUrl;
+    public static class Avatar {
 
-        public Avatar(String userName, String avaUrl) {
-            this.userName = userName;
-            this.avaUrl = "https://" + OnlineManager.hostname + "/user/avatar/?s=100&id=" + avaUrl;
+        private final String username;
+        private final String url;
+
+        public Avatar(String username, String userId) {
+            this.username = username;
+            url = OnlineManager.AVATAR_ENDPOINT + userId;
         }
 
         public String getUserName() {
-            return userName;
+            return username;
         }
 
-        public void setUserName(String userName) {
-            this.userName = userName;
-        }
-
-        public String getAvaUrl() {
-            return avaUrl;
-        }
-
-        public void setAvaUrl(String avaUrl) {
-            this.avaUrl = avaUrl;
+        public String getUrl() {
+            return url;
         }
     }
 }
