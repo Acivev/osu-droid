@@ -2,9 +2,9 @@ name: Create Debug Release
 
 on:
   push:
-    branches: [ avg ]
+    branches: [ Avg ]
   pull_request:
-    branches: [ avg ]
+    branches: [ Avg ]
 
 jobs:
   build:
