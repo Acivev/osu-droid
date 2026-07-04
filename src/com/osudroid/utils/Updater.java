@@ -1,4 +1,4 @@
-package com.edlplan.framework.support.util;
+package com.osudroid.utils;
 
 public abstract class Updater {
 
@@ -34,14 +34,14 @@ public abstract class Updater {
             runnable.run();
             synchronized (lock) {
                 if (this.updateId > Updater.this.updateId) {
-                    //表示之后又发生了更新，应该再次更新
+                    // Another update happened in the meantime, so run again.
                     Event event = new Event();
                     event.updateId = Updater.this.updateId;
                     event.runnable = createEventRunnable();
                     runningEvent = event;
                     postEvent(event);
                 } else {
-                    //表示没有新的更新了
+                    // No further updates are pending.
                     runningEvent = null;
                 }
             }
