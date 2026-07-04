@@ -22,8 +22,7 @@ import com.acivev.VibratorManager;
 import com.edlplan.framework.easing.Easing;
 import com.edlplan.framework.math.FMath;
 import com.edlplan.osu.support.slider.SliderBody;
-import com.edlplan.framework.support.ProxySprite;
-import com.edlplan.framework.support.osb.StoryboardSprite;
+import com.osudroid.storyboard.renderer.StoryboardComponent;
 import com.edlplan.framework.utils.functionality.SmartIterator;
 import com.osudroid.beatmaps.BeatmapCache;
 import com.osudroid.game.Cursor;
@@ -212,8 +211,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
     @Nullable
     private Job storyboardLoadingJob;
-    private StoryboardSprite storyboardSprite;
-    private ProxySprite storyboardOverlayProxy;
+    private StoryboardComponent storyboardComponent;
 
     public HitWindow hitWindow;
     private ModHashMap lastMods;
@@ -407,7 +405,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             return;
         }
 
-        if (storyboardSprite != null) {
+        if (storyboardComponent != null) {
             return;
         }
 
@@ -416,32 +414,22 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         }
 
         storyboardLoadingJob = Execution.async(scope -> {
-            StoryboardSprite storyboardSprite = this.storyboardSprite;
-            this.storyboardSprite = null;
+            StoryboardComponent storyboardComponent = this.storyboardComponent;
+            this.storyboardComponent = null;
 
-            if (storyboardSprite != null) {
-                storyboardSprite.detachSelf();
+            if (storyboardComponent != null) {
+                storyboardComponent.detachSelf();
+                storyboardComponent.overlayComponent.detachSelf();
             } else {
-                storyboardSprite = new StoryboardSprite(Config.getRES_WIDTH(), Config.getRES_HEIGHT());
+                storyboardComponent = new StoryboardComponent();
                 ensureActive(scope.getCoroutineContext());
             }
 
-            ProxySprite storyboardOverlayProxy = this.storyboardOverlayProxy;
-            this.storyboardOverlayProxy = null;
-
-            if (storyboardOverlayProxy != null) {
-                storyboardOverlayProxy.detachSelf();
-            } else {
-                storyboardSprite.setOverlayDrawProxy(storyboardOverlayProxy = new ProxySprite(Config.getRES_WIDTH(), Config.getRES_HEIGHT()));
-                ensureActive(scope.getCoroutineContext());
-            }
-
-            storyboardSprite.setTransparentBackground(videoEnabled && video != null);
-            storyboardSprite.loadStoryboard(beatmapInfo.getPath());
+            storyboardComponent.transparentBackground = videoEnabled && video != null;
+            storyboardComponent.load(beatmapInfo.getPath(), scope);
             ensureActive(scope.getCoroutineContext());
 
-            this.storyboardSprite = storyboardSprite;
-            this.storyboardOverlayProxy = storyboardOverlayProxy;
+            this.storyboardComponent = storyboardComponent;
 
             // The storyboard may only load after gameplay is started, in which case we must apply it immediately.
             Execution.updateThread(this::applyBackground);
@@ -458,13 +446,11 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     }
 
     private void releaseStoryboard() {
-        if (storyboardSprite != null) {
-            storyboardSprite.detachSelf();
-            storyboardOverlayProxy.detachSelf();
-            storyboardSprite.releaseStoryboard();
-            storyboardOverlayProxy.setDrawProxy(null);
-            storyboardSprite = null;
-            storyboardOverlayProxy = null;
+        if (storyboardComponent != null) {
+            storyboardComponent.detachSelf();
+            storyboardComponent.overlayComponent.detachSelf();
+            storyboardComponent.release();
+            storyboardComponent = null;
         }
     }
 
@@ -553,8 +539,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         boolean isStoryboardEnabled = brightness > 0.02f && Config.getBoolean("enableStoryboard", false);
         float playfieldSize = Config.getPlayfieldSize();
 
-        var storyboardSprite = this.storyboardSprite;
-        var storyboardOverlayProxy = this.storyboardOverlayProxy;
+        var storyboardComponent = this.storyboardComponent;
         var video = this.video;
         var sceneBorder = this.sceneBorder;
 
@@ -602,26 +587,21 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         background.setPosition((Config.getRES_WIDTH() - backgroundW) / 2f, (Config.getRES_HEIGHT() - backgroundH) / 2f);
         scene.setBackground(new EntityBackground(background));
 
-        if (storyboardSprite != null) {
+        if (storyboardComponent != null) {
             if (isStoryboardEnabled) {
-                storyboardSprite.setTransparentBackground(videoEnabled && video != null);
-                storyboardSprite.setBrightness(brightness);
+                storyboardComponent.transparentBackground = videoEnabled && video != null;
+                storyboardComponent.brightness = brightness;
 
-                if (!storyboardSprite.hasParent()) {
-                    scene.attachChild(storyboardSprite, 0);
+                if (!storyboardComponent.hasParent()) {
+                    scene.attachChild(storyboardComponent, 0);
+                }
+
+                if (!storyboardComponent.overlayComponent.hasParent()) {
+                    scene.attachChild(storyboardComponent.overlayComponent, scene.getChildCount() - 1);
                 }
             } else {
-                storyboardSprite.detachSelf();
-            }
-        }
-
-        if (storyboardOverlayProxy != null) {
-            if (isStoryboardEnabled) {
-                if (!storyboardOverlayProxy.hasParent()) {
-                    scene.attachChild(storyboardOverlayProxy, scene.getChildCount() - 1);
-                }
-            } else {
-                storyboardOverlayProxy.detachSelf();
+                storyboardComponent.detachSelf();
+                storyboardComponent.overlayComponent.detachSelf();
             }
         }
     }
@@ -1561,8 +1541,11 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             );
         }
 
-        if (storyboardSprite != null && storyboardSprite.hasParent()) {
-            storyboardSprite.updateTime(mSecPassed);
+        if (storyboardComponent != null && storyboardComponent.hasParent()) {
+            storyboardComponent.updateTime(mSecPassed);
+
+            // osu!stable considers the player passing while HP is at least half full.
+            storyboardComponent.setPassingState(stat == null || stat.getHp() >= 0.5f);
         }
 
         if (replaying) {
@@ -2604,6 +2587,10 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
     @Override
     public void playHitSamples(List<GameplayHitSampleInfo> samples) {
+        if (storyboardComponent != null && storyboardComponent.hasParent()) {
+            storyboardComponent.onHitSamplesPlayed(samples);
+        }
+
         float volume = 1;
         var muted = GameHelper.getMuted();
 
