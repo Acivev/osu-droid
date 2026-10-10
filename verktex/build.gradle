@@ -1,0 +1,47 @@
+apply plugin: 'com.android.library'
+apply plugin: 'kotlin-android'
+
+android {
+    namespace = 'com.reco1l.verktex'
+    compileSdk = 34
+
+    defaultConfig {
+        minSdkVersion 24
+        targetSdkVersion 34
+        consumerProguardFiles 'consumer-rules.keep'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = '17'
+        freeCompilerArgs += ['-Xexplicit-backing-fields']
+    }
+}
+
+dependencies {
+    implementation 'org.jetbrains.kotlinx:kotlinx-io-core:0.9.1'
+
+    implementation 'androidx.appcompat:appcompat:1.6.1'
+    implementation 'androidx.core:core-ktx:1.12.0'
+
+    implementation project(':LibBASS')
+}
+
+// Work-in-progress components from Reco1l's reci-client branch that still depend on AndEngine or
+// app classes. Excluded from compilation until they are ported to the Verktex API.
+tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
+    exclude(
+        '**/com/reco1l/verktex/ui/UIAnimatedSprite.kt',
+        '**/com/reco1l/verktex/ui/UIModal.kt',
+        '**/com/reco1l/verktex/ui/container/UIConstraintContainer.kt',
+        '**/com/reco1l/verktex/ui/control/UISlider.kt',
+        '**/com/reco1l/verktex/ui/control/UITextInput.kt',
+        '**/com/reco1l/verktex/ui/dialog/**',
+        '**/com/reco1l/verktex/ui/form/**',
+        '**/com/reco1l/verktex/ui/text/UITextureText.kt'
+    )
+}
