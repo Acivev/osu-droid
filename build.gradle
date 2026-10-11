@@ -154,6 +154,12 @@ android {
         }
         test.setRoot("$projectDir/tests/test")
 
+        // Debug-only code, such as the Verktex test activity.
+        debug {
+            manifest.srcFile 'debug/AndroidManifest.xml'
+            java.srcDirs += ['debug/src']
+        }
+
         // We need to add the Room schemas not as a *test* resource, but as a build asset.
         // See https://github.com/robolectric/robolectric/issues/3928#issuecomment-395309991 for more details.
         debug.assets.srcDirs += files("$projectDir/schemas".toString())
