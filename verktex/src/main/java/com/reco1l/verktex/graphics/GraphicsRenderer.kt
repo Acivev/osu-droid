@@ -57,7 +57,7 @@ abstract class GraphicsRenderer {
     private var activeBuffer: GraphicsBuffer? = null
     private var activeTexture: GraphicsTexture? = null
     private var activeScissor: Vec4? = null
-    private var activeBlendMode: BlendMode = BlendMode.Additive
+    private var activeBlendMode: BlendMode = BlendMode.Alpha
     private var activeDepthState: DepthState = DepthState.Default
     private var activeUniformSet: GraphicsShader.UniformSet = GraphicsShader.UniformSet()
 
@@ -89,7 +89,7 @@ abstract class GraphicsRenderer {
     fun setState(
         shader: GraphicsShader? = activeShader,
         texture: GraphicsTexture? = activeTexture,
-        scissor: Vec4? = activeScissor,
+        scissor: Vec4? = scissorStack.lastOrNull(),
         blendMode: BlendMode = activeBlendMode,
         depthState: DepthState = activeDepthState,
         uniformSet: GraphicsShader.UniformSet = activeUniformSet
@@ -106,7 +106,8 @@ abstract class GraphicsRenderer {
             )
         ) return
 
-        val vertexBuffer = createVertexBuffer()
+        // Per-frame buffers are disposed right after being drawn, see end().
+        val vertexBuffer = device.createBuffer()
 
         activeTexture = texture
         activeShader = shader
@@ -164,8 +165,13 @@ abstract class GraphicsRenderer {
 
         val currentMatrix = matrixStack.lastOrNull() ?: Mat2.Identity
 
-        val (x, y) = currentMatrix.transform(x, y)
-        val (width, height) = currentMatrix.transform(width, height)
+        val (x0, y0) = currentMatrix.transform(x, y)
+        val (x1, y1) = currentMatrix.transform(x + width, y + height)
+
+        val x = min(x0, x1)
+        val y = min(y0, y1)
+        val width = abs(x1 - x0)
+        val height = abs(y1 - y0)
 
         val intersectedX: Float
         val intersectedY: Float
@@ -272,7 +278,7 @@ abstract class GraphicsRenderer {
     //region Shape
 
     fun GraphicsBuffer.addVertex(x: Float, y: Float, u: Float, v: Float, color: Color4) {
-        requireCapacity(position + VERTEX_2D_STRIDE)
+        requireCapacity(VERTEX_2D_STRIDE)
         putFloat(x)
         putFloat(y)
         putFloat(u)
@@ -315,6 +321,7 @@ abstract class GraphicsRenderer {
                 set("uRadius", radius)
                 set("uBorderWidth", borderWidth)
                 set("uBorderColor", borderColor)
+                set("uSize", Vec2(width, height))
             },
         )
 
@@ -322,18 +329,20 @@ abstract class GraphicsRenderer {
 
             val color = transformColor(color)
 
-            val (x, y) = transform.transform(x, y)
-            val (w, h) = transform.transform(width, height)
+            val (x0, y0) = transform.transform(x, y)
+            val (x1, y1) = transform.transform(x + width, y)
+            val (x2, y2) = transform.transform(x + width, y + height)
+            val (x3, y3) = transform.transform(x, y + height)
 
             // Triangle 1
-            addVertex(x, y, 0f, 0f, color)
-            addVertex(x + w, y, 1f, 0f, color)
-            addVertex(x + w, y + h, 1f, 1f, color)
+            addVertex(x0, y0, 0f, 0f, color)
+            addVertex(x1, y1, 1f, 0f, color)
+            addVertex(x2, y2, 1f, 1f, color)
 
             // Triangle 2
-            addVertex(x, y, 0f, 0f, color)
-            addVertex(x + w, y + h, 1f, 1f, color)
-            addVertex(x, y + h, 0f, 1f, color)
+            addVertex(x0, y0, 0f, 0f, color)
+            addVertex(x2, y2, 1f, 1f, color)
+            addVertex(x3, y3, 0f, 1f, color)
         }
     }
 
@@ -356,12 +365,13 @@ abstract class GraphicsRenderer {
         drawGeometry { transform, baseColor ->
             val color = transformColor(color)
 
-            val (x, y) = transform.transform(x, y)
-            val (w, h) = transform.transform(width, height)
+            val (x0, y0) = transform.transform(x, y)
+            val (x1, y1) = transform.transform(x + width, y)
+            val (x2, y2) = transform.transform(x + width * middle, y + height)
 
-            addVertex(x, y, 0f, 0f, color)
-            addVertex(x + w, y, 1f, 0f, color)
-            addVertex(x + w * middle, y + h, 0.5f, 1f, color)
+            addVertex(x0, y0, 0f, 0f, color)
+            addVertex(x1, y1, 1f, 0f, color)
+            addVertex(x2, y2, 0.5f, 1f, color)
         }
     }
 
@@ -394,8 +404,11 @@ abstract class GraphicsRenderer {
         drawGeometry { transform, baseColor ->
             val color = transformColor(color)
 
-            val (cx, cy) = transform.transform(x + width / 2f, y + height / 2f)
-            val (w, h) = transform.transform(width / 2f, height / 2f)
+            val cx = x + width / 2f
+            val cy = y + height / 2f
+            val w = width / 2f
+            val h = height / 2f
+            val (centerX, centerY) = transform.transform(cx, cy)
 
             if (segments <= 0) {
                 Logger.w(
@@ -420,9 +433,12 @@ abstract class GraphicsRenderer {
                 val y = cy + h * sin(angle)
 
                 if (j > 0) {
-                    addVertex(previousX, previousY, 0f, 0f, color)
-                    addVertex(x, y, 1f, 1f, color)
-                    addVertex(cx, cy, 0.5f, 0.5f, color)
+                    val (px, py) = transform.transform(previousX, previousY)
+                    val (nx, ny) = transform.transform(x, y)
+
+                    addVertex(px, py, 0f, 0f, color)
+                    addVertex(nx, ny, 1f, 1f, color)
+                    addVertex(centerX, centerY, 0.5f, 0.5f, color)
                 }
 
                 previousX = x
@@ -460,18 +476,20 @@ abstract class GraphicsRenderer {
         drawGeometry { transform, baseColor ->
             val color = transformColor(color)
 
-            val (x, y) = transform.transform(x, y)
-            val (w, h) = transform.transform(width, height)
+            val (x0, y0) = transform.transform(x, y)
+            val (x1, y1) = transform.transform(x + width, y)
+            val (x2, y2) = transform.transform(x + width, y + height)
+            val (x3, y3) = transform.transform(x, y + height)
 
             // Triangle 1
-            addVertex(x, y, region.u0, region.v0, color)
-            addVertex(x + w, y, region.u1, region.v0, color)
-            addVertex(x + w, y + h, region.u1, region.v1, color)
+            addVertex(x0, y0, region.u0, region.v0, color)
+            addVertex(x1, y1, region.u1, region.v0, color)
+            addVertex(x2, y2, region.u1, region.v1, color)
 
             // Triangle 2
-            addVertex(x, y, region.u0, region.v0, color)
-            addVertex(x + w, y + h, region.u1, region.v1, color)
-            addVertex(x, y + h, region.u0, region.v1, color)
+            addVertex(x0, y0, region.u0, region.v0, color)
+            addVertex(x2, y2, region.u1, region.v1, color)
+            addVertex(x3, y3, region.u0, region.v1, color)
         }
     }
 
@@ -547,12 +565,19 @@ abstract class GraphicsRenderer {
 
     //region Rendering Lifecycle
 
+    /**
+     * Prepares the renderer for a new frame, e.g. by making the graphics context current.
+     *
+     * @return `false` if the frame cannot be rendered right now and should be skipped.
+     */
+    open fun prepareFrame(): Boolean = true
+
     open fun begin() {
         activeBuffer = null
         activeShader = null
         activeTexture = null
         activeScissor = null
-        activeBlendMode = BlendMode.Additive
+        activeBlendMode = BlendMode.Alpha
         activeDepthState = DepthState.Default
         activeUniformSet = GraphicsShader.UniformSet()
 
@@ -566,6 +591,7 @@ abstract class GraphicsRenderer {
         while (commandBatch.isNotEmpty()) {
             val command = commandBatch.removeFirst()
             drawCommand(command)
+            command.buffer?.dispose()
         }
     }
 

@@ -466,19 +466,21 @@ abstract class UIComponent {
     /**
      * Whether the component's layout is invalid and needs to be processed next frame.
      */
-    var layoutInvalid = false
+    // Components start invalid so they get measured and laid out on their first frame.
+    // TODO: Reset these flags once every property setter reliably invalidates the component.
+    var layoutInvalid = true
         private set
 
     /**
      * Whether the component's measurement is invalid and needs to be processed next frame.
      */
-    var measureInvalid = false
+    var measureInvalid = true
         private set
 
     /**
      * Whether the component's transformations are invalid and needs to be processed next frame.
      */
-    var transformationsInvalid = false
+    var transformationsInvalid = true
         private set
 
 
@@ -651,6 +653,14 @@ abstract class UIComponent {
         return false
     }
 
+    /**
+     * Whether the given point in scene (window) space is inside this component's bounds.
+     */
+    fun containsScenePoint(x: Float, y: Float): Boolean {
+        val local = toLocalSpaceFromScene(x, y)
+        return local.x >= 0f && local.y >= 0f && local.x <= bounds.width && local.y <= bounds.height
+    }
+
     //endregion
 
     //region Layout
@@ -736,12 +746,11 @@ abstract class UIComponent {
             return measuredSize
         }
 
-        val contentConstraints = parentContraints
-            .resolve(width, height)
-            .shrink(padding)
+        val ownConstraints = parentContraints.resolve(width, height)
+        val contentConstraints = ownConstraints.shrink(padding)
 
         val oldMeasuredSize = measuredSize
-        measuredSize = onMeasure(parentContraints, contentConstraints)
+        measuredSize = ownConstraints.constrain(onMeasure(parentContraints, contentConstraints))
 
         if (oldMeasuredSize != measuredSize) {
             invalidateLayout()
@@ -780,8 +789,8 @@ abstract class UIComponent {
         bounds = Vec4(
             x = assignedBounds.x + anchorOffset.x + positionOffset.x - originOffset.x,
             y = assignedBounds.y + anchorOffset.y + positionOffset.y - originOffset.y,
-            z = measuredSize.x,
-            w = measuredSize.y
+            z = assignedBounds.x + anchorOffset.x + positionOffset.x - originOffset.x + measuredSize.x,
+            w = assignedBounds.y + anchorOffset.y + positionOffset.y - originOffset.y + measuredSize.y
         )
 
         onLayout(bounds)

@@ -160,6 +160,10 @@ object Verktex {
 
     @RunOnDrawWorker
     private fun draw() {
+        if (!graphics.prepareFrame()) {
+            return
+        }
+
         graphics.begin()
         scene.draw(graphics)
         overlayContainer.draw(graphics)
@@ -168,7 +172,7 @@ object Verktex {
 
     @RunOnUpdateWorker
     private fun update() {
-        drawWorker.check()
+        updateWorker.check()
         clock.tick()
         scene.update(clock)
     }
