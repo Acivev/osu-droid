@@ -41,6 +41,9 @@ open class UIClickableContainer : UIContainer() {
 
     private var pressStartTime = 0L
 
+    // The finger pressing this container, others must not release or cancel it.
+    private var pressPointerId = -1
+
 
     override fun onInputEvent(event: InputEvent): Boolean {
 
@@ -53,19 +56,23 @@ open class UIClickableContainer : UIContainer() {
             return false
         }
 
+        if (event.action != PointerEvent.Action.Down && (!isPressed || event.pointerId != pressPointerId)) {
+            return false
+        }
+
         return when (event.action) {
             PointerEvent.Action.Down -> {
+                // Already held by another finger.
+                if (isPressed) return true
+
                 isPressed = true
+                pressPointerId = event.pointerId
                 onActionDown?.invoke()
                 pressStartTime = System.currentTimeMillis()
                 true
             }
 
             PointerEvent.Action.Up -> {
-                if (!isPressed) {
-                    return false
-                }
-
                 if (containsScenePoint(event.x, event.y)) {
                     onActionUp?.invoke()
                 } else {
@@ -75,14 +82,12 @@ open class UIClickableContainer : UIContainer() {
                 true
             }
 
-            PointerEvent.Action.Move -> isPressed
+            PointerEvent.Action.Move -> true
 
             // Cancel events are dispatched to every component, so they must not be consumed.
             PointerEvent.Action.Unknown -> {
-                if (isPressed) {
-                    onActionCancel?.invoke()
-                    isPressed = false
-                }
+                onActionCancel?.invoke()
+                isPressed = false
                 false
             }
         }

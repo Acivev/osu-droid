@@ -165,22 +165,30 @@ abstract class AndroidGameHost : AppCompatActivity(), GameHost {
                 deltaY = event.getAxisValue(MotionEvent.AXIS_VSCROLL)
             )
         } else {
-            consumed = Input.dispatchPointerEvent(
-                action = when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> PointerEvent.Action.Down
-                    MotionEvent.ACTION_UP -> PointerEvent.Action.Up
-                    MotionEvent.ACTION_MOVE -> PointerEvent.Action.Move
-                    else -> PointerEvent.Action.Unknown
-                },
-                pointerId = event.getPointerId(event.actionIndex),
-                x = event.x,
-                y = event.y,
-                button = when (event.buttonState) {
-                    MotionEvent.BUTTON_PRIMARY -> PointerEvent.Button.Left
-                    MotionEvent.BUTTON_SECONDARY -> PointerEvent.Button.Right
-                    else -> PointerEvent.Button.Unknown
-                }
+            val button = when (event.buttonState) {
+                MotionEvent.BUTTON_PRIMARY -> PointerEvent.Button.Left
+                MotionEvent.BUTTON_SECONDARY -> PointerEvent.Button.Right
+                else -> PointerEvent.Button.Unknown
+            }
+
+            fun dispatch(action: PointerEvent.Action, index: Int) = Input.dispatchPointerEvent(
+                action = action,
+                button = button,
+                pointerId = event.getPointerId(index),
+                x = event.getX(index),
+                y = event.getY(index)
             )
+
+            // Move and cancel events carry every pointer at once, each one is dispatched.
+            fun dispatchAll(action: PointerEvent.Action) =
+                (0 until event.pointerCount).fold(false) { consumed, index -> dispatch(action, index) or consumed }
+
+            consumed = when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> dispatch(PointerEvent.Action.Down, event.actionIndex)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> dispatch(PointerEvent.Action.Up, event.actionIndex)
+                MotionEvent.ACTION_MOVE -> dispatchAll(PointerEvent.Action.Move)
+                else -> dispatchAll(PointerEvent.Action.Unknown)
+            }
         }
 
         return consumed || super.onTouchEvent(event)

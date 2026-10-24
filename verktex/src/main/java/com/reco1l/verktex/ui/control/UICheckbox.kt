@@ -28,6 +28,7 @@ class UICheckbox(initialValue: Boolean = false) : UIControl<Boolean>(initialValu
 
 
     private var isPressed = false
+    private var pressPointerId = -1
 
 
     init {
@@ -55,28 +56,36 @@ class UICheckbox(initialValue: Boolean = false) : UIControl<Boolean>(initialValu
 
 
     override fun onInputEvent(event: InputEvent): Boolean {
-        if (event is PointerEvent) {
-            // Up and cancel events are dispatched to every component, only the pressed one handles them.
-            return when (event.action) {
-                PointerEvent.Action.Down -> {
-                    isPressed = true
-                    true
-                }
-                PointerEvent.Action.Up -> {
-                    if (!isPressed) return false
-                    isPressed = false
-                    if (containsScenePoint(event.x, event.y)) {
-                        value = !value
-                    }
-                    true
-                }
-                PointerEvent.Action.Unknown -> {
-                    isPressed = false
-                    false
-                }
-                else -> isPressed
-            }
+        if (event !is PointerEvent) {
+            return super.onInputEvent(event)
         }
-        return super.onInputEvent(event)
+
+        // Up and cancel events are dispatched to every component, only the finger that pressed
+        // this checkbox can release it.
+        if (event.action != PointerEvent.Action.Down && (!isPressed || event.pointerId != pressPointerId)) {
+            return false
+        }
+
+        return when (event.action) {
+            PointerEvent.Action.Down -> {
+                if (!isPressed) {
+                    isPressed = true
+                    pressPointerId = event.pointerId
+                }
+                true
+            }
+            PointerEvent.Action.Up -> {
+                isPressed = false
+                if (containsScenePoint(event.x, event.y)) {
+                    value = !value
+                }
+                true
+            }
+            PointerEvent.Action.Unknown -> {
+                isPressed = false
+                false
+            }
+            PointerEvent.Action.Move -> true
+        }
     }
 }

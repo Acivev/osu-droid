@@ -260,6 +260,9 @@ open class UIScrollableContainer : UIContainer() {
     private var dragX = 0f
     private var dragY = 0f
 
+    // The finger dragging this container, other fingers are left to the children.
+    private var dragPointerId = -1
+
 
     /**
      * Stops the scrolling of the container by setting the velocity to 0.
@@ -443,8 +446,15 @@ open class UIScrollableContainer : UIContainer() {
         val wasUserScrolling = isUserScrolling
 
         if (event is PointerEvent) {
+            val isDragPointer = event.pointerId == dragPointerId
+
+            if (!isDragPointer && (event.action != PointerEvent.Action.Down || dragPointerId != -1)) {
+                return super.onInputEvent(event)
+            }
+
             when (event.action) {
                 PointerEvent.Action.Down -> {
+                    dragPointerId = event.pointerId
                     dragStartTimeSec = Verktex.clock.time
                     lastPointerX = event.x
                     lastPointerY = event.y
@@ -484,7 +494,10 @@ open class UIScrollableContainer : UIContainer() {
                     dragStartTimeSec = Verktex.clock.time
                 }
 
-                PointerEvent.Action.Up, PointerEvent.Action.Unknown -> isUserScrolling = false
+                PointerEvent.Action.Up, PointerEvent.Action.Unknown -> {
+                    isUserScrolling = false
+                    dragPointerId = -1
+                }
             }
         } else {
             event as ScrollEvent
