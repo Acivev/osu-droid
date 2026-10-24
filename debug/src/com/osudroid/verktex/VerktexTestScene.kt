@@ -14,6 +14,9 @@ import com.reco1l.verktex.data.Vec2
 import com.reco1l.verktex.data.dip
 import com.reco1l.verktex.data.fill
 import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.GraphicsTexture
+import com.reco1l.verktex.math.Easing
+import com.reco1l.verktex.math.FloatAnimation
 import com.reco1l.verktex.math.interpolateFloat
 import com.reco1l.verktex.texture.Textures
 import com.reco1l.verktex.time.TickingClock
@@ -67,6 +70,7 @@ import com.reco1l.verktex.ui.text.faSolidIcon
 import com.reco1l.verktex.ui.text.text
 import com.reco1l.verktex.ui.textButton
 import kotlin.math.PI
+import kotlin.math.min
 import kotlin.math.sin
 
 class VerktexTestScene : UIScene() {
@@ -656,6 +660,44 @@ class VerktexTestScene : UIScene() {
                     }
                 }
 
+                section("Health bar") {
+                    val background = Textures.load("test-scorebar-bg", "gfx/scorebar-bg.png", isInternal = true)
+                    val fill = Textures.load("test-scorebar-colour", "gfx/scorebar-colour.png", isInternal = true)
+                    val marker = Textures.load("test-scorebar-marker", "gfx/scorebar-marker.png", isInternal = true)
+
+                    if (background == null || fill == null || marker == null) {
+                        text { text = "Failed to load the scorebar textures" }
+                        return@section
+                    }
+
+                    val hpLabel = text { text = "HP: 1.00" }
+                    val bar = HealthBar(background, fill, marker)
+                    +bar
+
+                    fun setHp(hp: Float) {
+                        bar.hp = hp
+                        hpLabel.text = "HP: ${"%.2f".format(bar.hp)}"
+                    }
+
+                    row {
+                        textButton {
+                            text = "Hit"
+                            onActionUp = {
+                                setHp(bar.hp + 0.05f)
+                                bar.flash()
+                            }
+                        }
+                        textButton {
+                            text = "Miss"
+                            onActionUp = { setHp(bar.hp - 0.15f) }
+                        }
+                        textButton {
+                            text = "Refill"
+                            onActionUp = { setHp(1f) }
+                        }
+                    }
+                }
+
                 section("Controls") {
                     val checkboxLabel = text { text = "Checkbox: false" }
                     +UICheckbox().apply {
@@ -1035,6 +1077,118 @@ class VerktexTestScene : UIScene() {
         override fun onUpdate(clock: TickingClock) {
             rotationZ = (rotationZ + degreesPerSecond * clock.elapsedTickTime) % 360f
             super.onUpdate(clock)
+        }
+    }
+
+    /**
+     * Rebuilds the gameplay health bar (HUDHealthBar) in its new style, with the default skin.
+     */
+    private class HealthBar(
+        background: GraphicsTexture.Region,
+        private val fillTexture: GraphicsTexture.Region,
+        markerTexture: GraphicsTexture.Region
+    ) : UIContainer() {
+
+        var hp = 1f
+            set(value) {
+                val hp = value.coerceIn(0f, 1f)
+                if (hp > field) {
+                    bulgeTime = 0f
+                }
+                field = hp
+                displayedHp.target = hp
+            }
+
+        private val displayedHp = FloatAnimation(1f, 0.2f, Easing.OutQuint)
+
+        private var bulgeTime = BULGE_DURATION
+        private var explodeTime = EXPLODE_DURATION
+        private var explodeScale = 1f
+
+        private val fill = UIAnimatedSprite(listOf(fillTexture))
+
+        // The fill is cut at the current HP, as the depth buffer clearing box does in gameplay.
+        private val fillClip = UIContainer().apply {
+            x = FILL_X.px
+            y = FILL_Y.px
+            height = fillTexture.height.px
+            clipping = ClipMode.Bounds
+            +fill
+        }
+
+        private val marker = UISprite(markerTexture).apply { origin = Anchor.Center }
+
+        private val explode = UISprite(markerTexture).apply {
+            origin = Anchor.Center
+            alpha = 0f
+        }
+
+
+        init {
+            +UISprite(background)
+            +fillClip
+            +marker
+            +explode
+        }
+
+
+        /**
+         * Flashes the marker like a hit note does.
+         */
+        fun flash() {
+            bulgeTime = 0f
+            explodeTime = 0f
+            explodeScale = if (hp >= EPIC_CUTOFF) 2f else 1.6f
+        }
+
+        override fun onUpdate(clock: TickingClock) {
+            val fillWidth = fillTexture.width * displayedHp.update(clock)
+            fillClip.width = fillWidth.px
+
+            val markerX = (FILL_X + fillWidth).px
+            val markerY = (FILL_Y + fillTexture.height / 2f).px
+            marker.x = markerX
+            marker.y = markerY
+            explode.x = markerX
+            explode.y = markerY
+
+            bulgeTime += clock.elapsedTickTime
+            marker.scale = 1f + 0.4f * (1f - Easing.OutQuad.interpolate(min(bulgeTime / BULGE_DURATION, 1f)))
+
+            explodeTime += clock.elapsedTickTime
+            val explodeProgress = min(explodeTime / EXPLODE_DURATION, 1f)
+            explode.scale = 1f + (explodeScale - 1f) * explodeProgress
+            explode.alpha = 1f - explodeProgress
+
+            val color = fillColor(hp)
+            fill.color = color
+            marker.color = color
+
+            super.onUpdate(clock)
+        }
+
+        private fun fillColor(hp: Float) = when {
+            hp < 0.2f -> lerp(Color4.Black, RED, (0.2f - hp) / 0.2f)
+            hp < EPIC_CUTOFF -> lerp(Color4.White, Color4.Black, (EPIC_CUTOFF - hp) / EPIC_CUTOFF)
+            else -> Color4.White
+        }
+
+        private fun lerp(from: Color4, to: Color4, t: Float) = Color4(
+            from.red + (to.red - from.red) * t,
+            from.green + (to.green - from.green) * t,
+            from.blue + (to.blue - from.blue) * t
+        )
+
+        companion object {
+            // Offsets of the fill in the new style, see HUDHealthBar.
+            private const val FILL_X = 7.5f * 1.6f
+            private const val FILL_Y = 7.8f * 1.6f
+
+            private const val EPIC_CUTOFF = 0.5f
+            private const val BULGE_DURATION = 0.2f
+            private const val EXPLODE_DURATION = 0.12f
+
+            private val RED = Color4(1f, 0f, 0f)
         }
     }
 }
