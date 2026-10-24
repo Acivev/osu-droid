@@ -14,6 +14,7 @@ import com.reco1l.verktex.ui.FAIcon
 import com.reco1l.verktex.ui.UIBadge
 import com.reco1l.verktex.ui.UIButton
 import com.reco1l.verktex.ui.UIScene
+import com.reco1l.verktex.ui.UISprite
 import com.reco1l.verktex.ui.badge
 import com.reco1l.verktex.ui.card
 import com.reco1l.verktex.ui.container.UIContainer
@@ -147,6 +148,22 @@ class VerktexTestScene : UIScene() {
                     text {
                         text = "Umlaute: äöüß ÄÖÜ €"
                     }
+                    text {
+                        width = 300f.dip
+                        alignment = Anchor.TopCenter
+                        backgroundColor = Color4(0xFF313244)
+                        text = "Centered text\nwith a manual line break\nand a third line"
+                    }
+                    text {
+                        width = 200f.dip
+                        wrapText = false
+                        clipping = ClipMode.Bounds
+                        autoScrollAxes = Axis.X
+                        autoScrollSpeed = 150f
+                        autoScrollTimeout = 1f
+                        backgroundColor = Color4(0xFF313244)
+                        text = "This text is too long for its box, so it scrolls automatically."
+                    }
                 }
 
                 section("Icons and badges") {
@@ -206,6 +223,19 @@ class VerktexTestScene : UIScene() {
                         triangle {
                             width = 64f.dip
                             height = 64f.dip
+                            color = Color4(0xFF94E2D5)
+                        }
+                        circle {
+                            width = 64f.dip
+                            height = 64f.dip
+                            color = Color4(0xFFFAB387)
+                            startAngle = 90f
+                            setPortion(-0.5f)
+                        }
+                        triangle {
+                            width = 64f.dip
+                            height = 64f.dip
+                            middle = 0f
                             color = Color4(0xFF94E2D5)
                         }
                         container {
@@ -348,28 +378,65 @@ class VerktexTestScene : UIScene() {
 
                 section("Sprite") {
                     val logo = Textures.load("test-logo", "logo.png", isInternal = true)
-                    if (logo != null) {
+                    val arrow = Textures.load("test-arrow", "back-arrow.png", isInternal = true)
+
+                    if (logo != null && arrow != null) {
+                        text { text = "Crop, fit and stretch in a wide box:" }
                         row {
-                            sprite {
-                                textureRegion = logo
-                                width = 96f.dip
-                                height = 96f.dip
+                            for (type in UISprite.ScaleType.entries) {
+                                sprite {
+                                    textureRegion = logo
+                                    scaleType = type
+                                    width = 160f.dip
+                                    height = 64f.dip
+                                    backgroundColor = Color4(0xFF313244)
+                                }
+                            }
+                        }
+
+                        text { text = "Fit aligned to the left and right, crop aligned to the top:" }
+                        row {
+                            for (alignment in listOf(Anchor.CenterLeft, Anchor.CenterRight)) {
+                                sprite {
+                                    textureRegion = logo
+                                    gravity = alignment
+                                    width = 160f.dip
+                                    height = 64f.dip
+                                    backgroundColor = Color4(0xFF313244)
+                                }
                             }
                             sprite {
                                 textureRegion = logo
-                                width = 96f.dip
-                                height = 96f.dip
-                                flippedHorizontal = true
-                            }
-                            sprite {
-                                textureRegion = logo
+                                scaleType = UISprite.ScaleType.Crop
+                                gravity = Anchor.TopCenter
                                 width = 160f.dip
                                 height = 64f.dip
                                 backgroundColor = Color4(0xFF313244)
                             }
                         }
+
+                        text { text = "Normal, flipped horizontally, vertically and both, tinted:" }
+                        row {
+                            for ((horizontal, vertical) in listOf(false to false, true to false, false to true, true to true)) {
+                                sprite {
+                                    textureRegion = logo
+                                    flippedHorizontal = horizontal
+                                    flippedVertical = vertical
+                                    width = 64f.dip
+                                    height = 64f.dip
+                                    backgroundColor = Color4(0xFF313244)
+                                }
+                            }
+                            sprite {
+                                textureRegion = arrow
+                                width = 64f.dip
+                                height = 64f.dip
+                                color = Color4(0xFFF38BA8)
+                                backgroundColor = Color4(0xFF313244)
+                            }
+                        }
                     } else {
-                        text { text = "Failed to load logo.png" }
+                        text { text = "Failed to load the sprite textures" }
                     }
                 }
 
@@ -377,6 +444,14 @@ class VerktexTestScene : UIScene() {
                     val checkboxLabel = text { text = "Checkbox: false" }
                     +UICheckbox().apply {
                         onValueChange = { checkboxLabel.text = "Checkbox: $it" }
+                    }
+
+                    val multiSelectLabel = text { text = "Multi select: none" }
+                    +UISelect<Int>().apply {
+                        width = 240f.dip
+                        selectionMode = UISelect.SelectionMode.Multiple
+                        options = (1..5).map { UISelect.Option(it, "Item $it") }
+                        onValueChange = { multiSelectLabel.text = "Multi select: $it" }
                     }
 
                     val selectLabel = text { text = "Select: none" }
