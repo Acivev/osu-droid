@@ -61,12 +61,13 @@ open class UITextInput(initialValue: String = "") : UIControl<String>(initialVal
     var maxCharacters = 0
 
     /**
-     * Whether the field loses its focus when the IME action (e.g. the enter key) is pressed.
+     * Whether the IME action (e.g. the enter key) confirms the input, calling [onConfirm] and
+     * blurring the field.
      */
-    var blurOnConfirm = true
+    var confirmOnEnter = true
 
     /**
-     * A callback that is invoked when the IME action (e.g. the enter key) is pressed.
+     * A callback that is invoked when the input is confirmed.
      */
     var onConfirm: (() -> Unit)? = null
 
@@ -101,8 +102,10 @@ open class UITextInput(initialValue: String = "") : UIControl<String>(initialVal
         override fun notifyInputError() = this@UITextInput.notifyInputError()
 
         override fun onImeAction() {
-            onConfirm?.invoke()
-            if (blurOnConfirm) blur()
+            if (confirmOnEnter) {
+                onConfirm?.invoke()
+                blur()
+            }
         }
     }
 
