@@ -1,17 +1,41 @@
 package com.osudroid.verktex
 
+import com.reco1l.verktex.data.Anchor
 import com.reco1l.verktex.data.Axis
+import com.reco1l.verktex.data.ClipMode
 import com.reco1l.verktex.data.Color4
 import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.Vec2
 import com.reco1l.verktex.data.dip
 import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.texture.Textures
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.FAIcon
+import com.reco1l.verktex.ui.UIBadge
+import com.reco1l.verktex.ui.UIButton
 import com.reco1l.verktex.ui.UIScene
+import com.reco1l.verktex.ui.badge
+import com.reco1l.verktex.ui.card
+import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.container
 import com.reco1l.verktex.ui.container.linearContainer
 import com.reco1l.verktex.ui.container.scrollableContainer
+import com.reco1l.verktex.ui.control.UICheckbox
+import com.reco1l.verktex.ui.control.UISelect
+import com.reco1l.verktex.ui.icon
+import com.reco1l.verktex.ui.iconButton
+import com.reco1l.verktex.ui.shape.UIBox
 import com.reco1l.verktex.ui.shape.box
+import com.reco1l.verktex.ui.shape.circle
+import com.reco1l.verktex.ui.shape.line
+import com.reco1l.verktex.ui.shape.triangle
+import com.reco1l.verktex.ui.sprite
+import com.reco1l.verktex.ui.text.faSolidIcon
 import com.reco1l.verktex.ui.text.text
 import com.reco1l.verktex.ui.textButton
+import kotlin.math.PI
+import kotlin.math.sin
 
 class VerktexTestScene : UIScene() {
 
@@ -28,7 +52,7 @@ class VerktexTestScene : UIScene() {
             linearContainer {
                 orientation = UILinearContainer.Orientation.Vertical
                 width = fill()
-                spacing = 12f.dip
+                spacing = 16f.dip
                 padding = Padding(24f.dip)
 
                 text {
@@ -36,42 +60,314 @@ class VerktexTestScene : UIScene() {
                     fontSize = 28f.dip
                 }
 
-                text {
-                    text = "If you can read this, text rendering works."
-                }
+                section("Buttons") {
+                    val counter = text { text = "Button clicks: 0" }
 
-                val counter = text {
-                    text = "Button clicks: 0"
-                }
-
-                textButton {
-                    text = "Click me"
-                    onActionUp = {
-                        clicks++
-                        counter.text = "Button clicks: $clicks"
+                    row {
+                        for (variant in UIButton.Variant.entries) {
+                            textButton {
+                                text = variant.name
+                                this.variant = variant
+                                onActionUp = {
+                                    clicks++
+                                    counter.text = "Button clicks: $clicks"
+                                }
+                            }
+                        }
                     }
-                }
 
-                linearContainer {
-                    orientation = UILinearContainer.Orientation.Horizontal
-                    spacing = 8f.dip
+                    row {
+                        for (density in UIButton.Density.entries) {
+                            textButton {
+                                text = density.name
+                                this.density = density
+                            }
+                        }
+                        textButton {
+                            text = "Disabled"
+                            isEnabled = false
+                        }
+                        textButton {
+                            text = "Selected"
+                            isSelected = true
+                        }
+                        textButton {
+                            text = "With icons"
+                            leadingIcon = faSolidIcon(FAIcon.Play)
+                            trailingIcon = faSolidIcon(FAIcon.Heart)
+                        }
+                    }
 
-                    for (color in listOf(0xFFF38BA8, 0xFFA6E3A1, 0xFF89B4FA, 0xFFF9E2AF)) {
-                        box {
-                            width = 48f.dip
-                            height = 48f.dip
-                            radius = 8f.dip
-                            backgroundColor = Color4(color)
+                    row {
+                        for (code in listOf(FAIcon.Gear, FAIcon.Music, FAIcon.Star, FAIcon.Heart)) {
+                            iconButton { icon = code }
                         }
                     }
                 }
 
-                for (i in 1..30) {
+                section("Text") {
                     text {
-                        text = "Scroll row $i"
+                        text = "Bold torus font"
+                        fontFamily = com.reco1l.verktex.fonts.Fonts["torus"]!!
+                    }
+                    text {
+                        text = "Small text"
+                        fontSize = 12f.dip
+                    }
+                    text {
+                        text = "Large text"
+                        fontSize = 32f.dip
+                    }
+                    text {
+                        text = "Colored text"
+                        color = Color4(0xFFF38BA8)
+                    }
+                    text {
+                        text = "Leading and trailing icons"
+                        leadingIcon = faSolidIcon(FAIcon.Star)
+                        trailingIcon = faSolidIcon(FAIcon.Check)
+                        iconSpacing = 8f.dip
+                    }
+                    text {
+                        width = 300f.dip
+                        text = "This is a long paragraph that should wrap inside a fixed width of 300dip, " +
+                            "testing word wrapping across several lines."
+                    }
+                    text {
+                        width = 300f.dip
+                        maxLines = 1
+                        text = "This line is truncated because maxLines is set to one and the text is long."
+                    }
+                    text {
+                        width = 300f.dip
+                        backgroundColor = Color4(0xFF313244)
+                        alignment = Anchor.TopRight
+                        text = "Right aligned"
+                    }
+                    text {
+                        text = "Umlaute: äöüß ÄÖÜ €"
+                    }
+                }
+
+                section("Icons and badges") {
+                    row {
+                        for (code in listOf(FAIcon.Gear, FAIcon.Music, FAIcon.Star, FAIcon.Heart, FAIcon.Play)) {
+                            icon { iconCode = code }
+                        }
+                    }
+                    row {
+                        for (variant in UIBadge.Variant.entries) {
+                            badge {
+                                text = variant.name
+                                this.variant = variant
+                            }
+                        }
+                    }
+                }
+
+                section("Shapes") {
+                    row {
+                        box {
+                            width = 64f.dip
+                            height = 64f.dip
+                            backgroundColor = Color4(0xFF89B4FA)
+                        }
+                        box {
+                            width = 64f.dip
+                            height = 64f.dip
+                            radius = 16f.dip
+                            backgroundColor = Color4(0xFFA6E3A1)
+                        }
+                        box {
+                            width = 64f.dip
+                            height = 64f.dip
+                            radius = 8f.dip
+                            borderWidth = 3f.dip
+                            borderColor = Color4(0xFFF9E2AF)
+                            backgroundColor = Color4(0xFF313244)
+                        }
+                        box {
+                            width = 64f.dip
+                            height = 64f.dip
+                            radius = 32f.dip
+                            backgroundColor = Color4(0x80F38BA8)
+                        }
+                        circle {
+                            width = 64f.dip
+                            height = 64f.dip
+                            color = Color4(0xFFCBA6F7)
+                        }
+                        circle {
+                            width = 64f.dip
+                            height = 64f.dip
+                            color = Color4(0xFFFAB387)
+                            setPortion(0.75f)
+                        }
+                        triangle {
+                            width = 64f.dip
+                            height = 64f.dip
+                            color = Color4(0xFF94E2D5)
+                        }
+                        container {
+                            width = 64f.dip
+                            height = 64f.dip
+                            line {
+                                fromPoint = Vec2(0f, 0f)
+                                toPoint = Vec2(64f.dip.toPixels(), 64f.dip.toPixels())
+                                lineWidth = 3f.dip
+                                color = Color4(0xFFF5C2E7)
+                            }
+                        }
+                    }
+                }
+
+                section("Transformations and animation") {
+                    row {
+                        +SpinningBox(Color4(0xFF89B4FA), degreesPerSecond = 90f)
+                        +SpinningBox(Color4(0xFFA6E3A1), degreesPerSecond = -180f)
+                        +OscillatingBox(Color4(0xFFF9E2AF)) { scale = 0.5f + 0.5f * it }
+                        +OscillatingBox(Color4(0xFFF38BA8)) { alpha = 0.2f + 0.8f * it }
+                    }
+                }
+
+                section("Clipping") {
+                    container {
+                        width = 200f.dip
+                        height = 64f.dip
+                        clipping = ClipMode.Bounds
+                        backgroundColor = Color4(0xFF313244)
+                        box {
+                            width = 120f.dip
+                            height = 120f.dip
+                            x = 140f.dip
+                            backgroundColor = Color4(0xFFF38BA8)
+                        }
+                        text {
+                            text = "Clipped container, red box must be cut off"
+                        }
+                    }
+                }
+
+                section("Sprite") {
+                    val logo = Textures.load("test-logo", "logo.png", isInternal = true)
+                    if (logo != null) {
+                        row {
+                            sprite {
+                                textureRegion = logo
+                                width = 96f.dip
+                                height = 96f.dip
+                            }
+                            sprite {
+                                textureRegion = logo
+                                width = 96f.dip
+                                height = 96f.dip
+                                flippedHorizontal = true
+                            }
+                            sprite {
+                                textureRegion = logo
+                                width = 160f.dip
+                                height = 64f.dip
+                                backgroundColor = Color4(0xFF313244)
+                            }
+                        }
+                    } else {
+                        text { text = "Failed to load logo.png" }
+                    }
+                }
+
+                section("Controls") {
+                    val checkboxLabel = text { text = "Checkbox: false" }
+                    +UICheckbox().apply {
+                        onValueChange = { checkboxLabel.text = "Checkbox: $it" }
+                    }
+
+                    val selectLabel = text { text = "Select: none" }
+                    +UISelect<Int>().apply {
+                        width = 240f.dip
+                        options = (1..5).map { UISelect.Option(it, "Option $it") }
+                        onValueChange = { selectLabel.text = "Select: $it" }
+                    }
+                }
+
+                section("Card") {
+                    card {
+                        width = 360f.dip
+                        title = "Collapsible card"
+                        isCollapsible = true
+                        content {
+                            text { text = "Tap the header to collapse." }
+                            text { text = "Second line of content." }
+                        }
+                    }
+                }
+
+                section("Scroll") {
+                    for (i in 1..20) {
+                        text { text = "Scroll row $i" }
                     }
                 }
             }
+        }
+    }
+
+
+    private inline fun UIContainer.section(title: String, block: UILinearContainer.() -> Unit) {
+        linearContainer {
+            orientation = UILinearContainer.Orientation.Vertical
+            width = fill()
+            spacing = 8f.dip
+            padding = Padding(12f.dip)
+            radius = 8f.dip
+            backgroundColor = Color4(0xFF181825)
+
+            text {
+                text = title
+                color = Color4(0xFF89B4FA)
+            }
+            block()
+        }
+    }
+
+    private inline fun UIContainer.row(block: UILinearContainer.() -> Unit) {
+        linearContainer {
+            orientation = UILinearContainer.Orientation.Horizontal
+            spacing = 8f.dip
+            block()
+        }
+    }
+
+
+    /**
+     * A box that calls [onWave] with a value going back and forth between 0 and 1 every second.
+     */
+    private class OscillatingBox(color: Color4, private val onWave: UIBox.(Float) -> Unit) : UIBox() {
+        private var time = 0f
+
+        init {
+            width = 64f.dip
+            height = 64f.dip
+            radius = 8f.dip
+            backgroundColor = color
+        }
+
+        override fun onUpdate(clock: TickingClock) {
+            time += clock.elapsedTickTime
+            onWave((sin(time * PI.toFloat()) + 1f) / 2f)
+            super.onUpdate(clock)
+        }
+    }
+
+    private class SpinningBox(color: Color4, private val degreesPerSecond: Float) : UIBox() {
+        init {
+            width = 64f.dip
+            height = 64f.dip
+            radius = 8f.dip
+            backgroundColor = color
+        }
+
+        override fun onUpdate(clock: TickingClock) {
+            rotationZ = (rotationZ + degreesPerSecond * clock.elapsedTickTime) % 360f
+            super.onUpdate(clock)
         }
     }
 }
