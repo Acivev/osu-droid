@@ -3,6 +3,9 @@ package com.reco1l.verktex
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
 import com.reco1l.verktex.audio.AudioDriver
+import com.reco1l.verktex.audio.Sounds
+import com.reco1l.verktex.fonts.Fonts
+import com.reco1l.verktex.texture.Textures
 import com.reco1l.verktex.graphics.GraphicsRenderer
 import com.reco1l.verktex.input.InputEvent
 import com.reco1l.verktex.time.TickingClock
@@ -295,10 +298,29 @@ object Verktex {
 
         clock.pause()
 
+        // Waits for both workers, nothing may use the graphics context after this.
         drawWorker.stop()
         updateWorker.stop()
 
+        // The context takes every GPU resource with it, cached textures and fonts must be forgotten.
+        graphics.context.destroy()
+        Textures.clear()
+        Fonts.clear()
+
+        Sounds.unloadAll()
+        audio.dispose()
+
+        treeLock.withLock {
+            focusedComponent = null
+            overlayContainer.clearChildren()
+            while (sceneStack.size > 1) {
+                sceneStack.removeLast()
+            }
+        }
+
         started = false
+        paused = false
+        isInitialized = false
     }
 
     //endregion

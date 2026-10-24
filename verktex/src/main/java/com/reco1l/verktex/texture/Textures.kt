@@ -17,6 +17,15 @@ object Textures {
     private val textureRegions = mutableMapOf<String, GraphicsTexture.Region>()
 
 
+    /**
+     * Forgets every texture without releasing it, for when the graphics context they belong to was
+     * destroyed along with them.
+     */
+    internal fun clear() {
+        atlases.clear()
+        textureRegions.clear()
+    }
+
     //region Load and Unload
 
     /**

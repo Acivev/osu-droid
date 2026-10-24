@@ -57,7 +57,13 @@ abstract class AndroidLoopWorker(override val name: String) : LoopWorker {
     override fun stop() {
         synchronized(lock) {
             running = false
+            // A paused worker would otherwise keep waiting forever.
+            paused = false
             lock.notifyAll()
+        }
+
+        if (Thread.currentThread() != thread) {
+            thread.join()
         }
     }
 
