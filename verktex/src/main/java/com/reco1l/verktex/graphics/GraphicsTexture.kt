@@ -32,7 +32,9 @@ abstract class GraphicsTexture : GraphicsResource() {
     private val pendingUploads = mutableListOf<Region>()
 
     private var freeRegionsInitialized = false
-    private var needsRepack = false
+
+    // Textures are loaded and unloaded from any thread while the draw worker binds the texture.
+    private val lock = Any()
 
 
     //region Source allocation
@@ -49,9 +51,9 @@ abstract class GraphicsTexture : GraphicsResource() {
      *
      * @see TexturePackingAlgorithm
      */
-    fun fitsSource(source: Source): Boolean {
+    fun fitsSource(source: Source): Boolean = synchronized(lock) {
         ensureFreeRegions()
-        return packingAlgorithm.fits(source.width, source.height, freeRegions)
+        packingAlgorithm.fits(source.width, source.height, freeRegions)
     }
 
     /**
@@ -61,7 +63,7 @@ abstract class GraphicsTexture : GraphicsResource() {
      * @see TexturePackingAlgorithm
      * @return The newly created [Region] if the source fits, or null if it does not fit.
      */
-    fun addSource(source: Source): Region? {
+    fun addSource(source: Source): Region? = synchronized(lock) {
 
         val existingRegion = regions.find { it.source == source }
         if (existingRegion != null) {
@@ -75,7 +77,7 @@ abstract class GraphicsTexture : GraphicsResource() {
 
         regions += region
         pendingUploads += region
-        return region
+        region
     }
 
     //endregion
@@ -84,17 +86,21 @@ abstract class GraphicsTexture : GraphicsResource() {
     /**
      * Removes the specified [region] from the texture.
      *
-     * The texture atlas will be repacked on the next bind to free up space for other regions.
+     * The remaining regions are repacked right away, so the freed space can be used immediately.
+     * They are uploaded again at their new positions on the next bind.
      */
-    fun removeRegion(region: Region) {
+    fun removeRegion(region: Region) = synchronized(lock) {
         if (regions.remove(region)) {
-            pendingUploads.remove(region)
-            needsRepack = true
+            freeRegionsInitialized = true
+            packingAlgorithm.pack(regions, freeRegions, width, height)
+
+            pendingUploads.clear()
+            pendingUploads += regions
         }
     }
 
 
-    final override fun onLoad() {
+    final override fun onLoad() = synchronized(lock) {
         onCreateTexture()
 
         // The texture storage was (re)created, so every region must be uploaded again.
@@ -102,16 +108,8 @@ abstract class GraphicsTexture : GraphicsResource() {
         pendingUploads += regions
     }
 
-    final override fun onBind() {
+    final override fun onBind() = synchronized(lock) {
         onBindTexture()
-
-        if (needsRepack) {
-            needsRepack = false
-            packingAlgorithm.pack(regions, freeRegions, width, height)
-
-            pendingUploads.clear()
-            pendingUploads += regions
-        }
 
         if (pendingUploads.isNotEmpty()) {
             for (region in pendingUploads) {
