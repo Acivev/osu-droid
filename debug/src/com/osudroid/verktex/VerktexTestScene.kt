@@ -14,6 +14,7 @@ import com.reco1l.verktex.data.Vec2
 import com.reco1l.verktex.data.dip
 import com.reco1l.verktex.data.fill
 import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.BlendMode
 import com.reco1l.verktex.graphics.GraphicsTexture
 import com.reco1l.verktex.math.Easing
 import com.reco1l.verktex.math.FloatAnimation
@@ -1139,6 +1140,7 @@ class VerktexTestScene : UIScene() {
             bulgeTime = 0f
             explodeTime = 0f
             explodeScale = if (hp >= EPIC_CUTOFF) 2f else 1.6f
+            explode.blendMode = if (hp >= EPIC_CUTOFF) BlendMode.Additive else BlendMode.Alpha
         }
 
         override fun onUpdate(clock: TickingClock) {
@@ -1163,6 +1165,8 @@ class VerktexTestScene : UIScene() {
             val color = fillColor(hp)
             fill.color = color
             marker.color = color
+            // The marker glows while the HP is high, as in gameplay.
+            marker.blendMode = if (hp < EPIC_CUTOFF) BlendMode.Alpha else BlendMode.Additive
 
             super.onUpdate(clock)
         }
