@@ -20,6 +20,7 @@ import com.reco1l.verktex.ui.UIBadge
 import com.reco1l.verktex.ui.UIButton
 import com.reco1l.verktex.ui.UIComponent
 import com.reco1l.verktex.ui.Theme
+import com.reco1l.verktex.ui.UILoadingIndicator
 import com.reco1l.verktex.ui.UIScene
 import com.reco1l.verktex.ui.UISprite
 import com.reco1l.verktex.ui.badge
@@ -298,6 +299,19 @@ class VerktexTestScene : UIScene() {
                             colorEnd = Color4(0x00A6E3A1)
                         }
                     }
+                    val overlay = UILoadingIndicator().apply {
+                        width = 96f.dip
+                        height = 96f.dip
+                        anchor = Anchor.Center
+                        origin = Anchor.Center
+                    }
+                    textButton {
+                        text = "Toggle overlay"
+                        onActionUp = {
+                            if (overlay.parent == null) Verktex.addOverlay(overlay) else Verktex.removeOverlay(overlay)
+                        }
+                    }
+
                     row {
                         loadingIndicator()
                         loadingIndicator {
