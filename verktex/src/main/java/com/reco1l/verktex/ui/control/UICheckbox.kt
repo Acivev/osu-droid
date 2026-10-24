@@ -4,6 +4,8 @@ import com.reco1l.verktex.*
 import com.reco1l.verktex.input.InputEvent
 import com.reco1l.verktex.input.PointerEvent
 import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.math.Easing
+import com.reco1l.verktex.math.FloatAnimation
 import com.reco1l.verktex.math.interpolateColor
 import com.reco1l.verktex.math.interpolateFloat
 import com.reco1l.verktex.ui.FAIcon
@@ -20,11 +22,12 @@ class UICheckbox(initialValue: Boolean = false) : UIControl<Boolean>(initialValu
         }
 
         if (!initialValue) {
-            scaleX = 0f
-            scaleY = 0f
+            scale = 0f
             alpha = 0f
         }
     }
+
+    private val checkScale = FloatAnimation(if (initialValue) 1f else 0f, 0.4f, Easing.OutBounce)
 
 
     private var isPressed = false
@@ -47,7 +50,8 @@ class UICheckbox(initialValue: Boolean = false) : UIControl<Boolean>(initialValu
         val targetScaleAndAlpha = if (value) 1f else 0f
         val targetBackgroundCOlor = if (value) Verktex.theme.palette.controlActiveBackground else Verktex.theme.palette.controlInactiveBackground
 
-        checkIcon.scale = clock.interpolateFloat(0.2f, checkIcon.scale, targetScaleAndAlpha)
+        checkScale.target = targetScaleAndAlpha
+        checkIcon.scale = checkScale.update(clock)
         checkIcon.alpha = clock.interpolateFloat(0.2f, checkIcon.alpha, targetScaleAndAlpha)
         backgroundColor = clock.interpolateColor(0.2f, backgroundColor, targetBackgroundCOlor)
 
