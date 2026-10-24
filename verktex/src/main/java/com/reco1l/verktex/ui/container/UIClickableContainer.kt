@@ -39,7 +39,8 @@ open class UIClickableContainer : UIContainer() {
 
     //endregion
 
-    private var pressStartTime = 0L
+    // Seconds the current press lasted so far, counted with the game clock.
+    private var pressedTime = 0f
 
     // The finger pressing this container, others must not release or cancel it.
     private var pressPointerId = -1
@@ -68,7 +69,7 @@ open class UIClickableContainer : UIContainer() {
                 isPressed = true
                 pressPointerId = event.pointerId
                 onActionDown?.invoke()
-                pressStartTime = System.currentTimeMillis()
+                pressedTime = 0f
                 true
             }
 
@@ -94,13 +95,20 @@ open class UIClickableContainer : UIContainer() {
     }
 
     override fun onUpdate(clock: TickingClock) {
-        if (onActionLongPress != null) {
-            if (isPressed && System.currentTimeMillis() - pressStartTime >= 500L) {
+        if (isPressed) {
+            pressedTime += clock.elapsedTickTime
+
+            if (onActionLongPress != null && pressedTime >= LONG_PRESS_DURATION) {
                 isPressed = false
                 onActionLongPress?.invoke()
             }
         }
         super.onUpdate(clock)
+    }
+
+
+    companion object {
+        private const val LONG_PRESS_DURATION = 0.5f
     }
 
 }
