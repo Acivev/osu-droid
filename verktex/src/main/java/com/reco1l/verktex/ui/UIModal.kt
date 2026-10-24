@@ -1,18 +1,20 @@
 package com.reco1l.verktex.ui
 
-import com.reco1l.verktex.*
-import com.reco1l.verktex.theme.Radius
-import com.reco1l.verktex.ui.container.UIContainer
-import com.reco1l.framework.*
-import com.reco1l.verktex.data.Color4
-import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.data.Anchor
 import com.reco1l.verktex.data.ClipMode
-import com.reco1l.verktex.data.Dimension
-import com.rian.andengine.modifier.ModifierType
-import com.rian.andengine.modifier.UniversalModifier
-import org.anddev.andengine.input.touch.*
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.math.interpolateFloat
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.container.UIContainer
 
+/**
+ * A container shown above everything else, with a [card] holding its content on top of a dimmed
+ * backdrop. It is attached as an overlay when shown, unless it was added somewhere else before.
+ */
 @Suppress("LeakingThis")
 open class UIModal(
 
@@ -23,90 +25,80 @@ open class UIModal(
         anchor = Anchor.Center
         origin = Anchor.Center
         clipping = ClipMode.Bounds
-        scaleOrigin = Anchor.Center
-        style = Style {
-            backgroundColor = it.accentColor * 0.15f
-            radius = Radius.LG
+        style = Style { theme ->
+            backgroundColor = theme.palette.surface
+            radius = theme.radius.lg
         }
     }
 
 ) : UIContainer() {
 
-
     /**
-     * Whether the modal shouldn't hide when the user clicks outside of the content.
+     * Whether the modal stays open when the user presses outside of the [card].
      */
     var staticBackdrop = false
 
     /**
-     * Whether the modal should be detached from the scene when hidden.
+     * Whether the modal is detached from its parent once hidden.
      */
     var detachOnHide = false
 
+    /**
+     * Whether the modal is shown or being shown.
+     */
+    var isShown = false
+        private set
+
+
+    // The finger that pressed the backdrop, releasing it outside of the card hides the modal.
+    private var backdropPointerId = -1
+
 
     init {
-        style = {
-            backgroundColor = Color4.Black.copy(alpha = 0.3f)
-        }
+        width = fill()
+        height = fill()
 
-        width = Dimension.FillAvailable
-        height = Dimension.FillAvailable
-
+        backgroundColor = BACKDROP_COLOR
         isVisible = false
         alpha = 0f
 
-        card.scaleX = 0.9f
-        card.scaleY = 0.9f
+        card.scale = HIDDEN_CARD_SCALE
         +card
     }
 
 
-    //region Input
-
-    override fun onInputEvent(event: InputEvent): Boolean {
-        if (!isVisible) return false
-
-        if (!super.onInputEvent(event)) {
-            if (!staticBackdrop) hide()
-        }
-        return true
-    }
-
-    //endregion
-
-    //region Visibilty state
+    //region Visibility
 
     /**
-     * Creates the show animation for the modal.
+     * Shows the modal.
      */
-    open fun createShowAnimation(): () -> UniversalModifier = {
-        card.scaleTo(1f, 0.2f)
-        fadeIn(0.2f)
-    }
+    fun show() {
+        if (isShown) return
 
-    /**
-     * Creates the hide animation for the modal.
-     */
-    open fun createHideAnimation(): () -> UniversalModifier = {
-        card.scaleTo(0.9f, 0.2f)
-        fadeOut(0.2f)
-    }
-
-
-    /**
-     * Called when [show] is called. This is where you should set up the modal's animations.
-     */
-    protected open fun onShow() {
-        // If there's no parent previously set, attach to the current scene.
         if (parent == null) {
             Verktex.addOverlay(this)
         }
+
+        isShown = true
+        isVisible = true
+        onShow()
     }
 
     /**
-     * Called after all show animations are finished.
+     * Hides the modal.
      */
-    protected open fun onShown() = Unit
+    fun hide() {
+        if (!isShown) return
+
+        isShown = false
+        backdropPointerId = -1
+        onHide()
+    }
+
+    /**
+     * Called when [show] is called.
+     */
+    protected open fun onShow() = Unit
 
     /**
      * Called when [hide] is called.
@@ -114,7 +106,7 @@ open class UIModal(
     protected open fun onHide() = Unit
 
     /**
-     * Called after all hide animations are finished.
+     * Called once the modal finished hiding.
      */
     protected open fun onHidden() {
         if (detachOnHide) {
@@ -122,38 +114,57 @@ open class UIModal(
         }
     }
 
+    override fun onUpdate(clock: TickingClock) {
+        alpha = clock.interpolateFloat(0.2f, alpha, if (isShown) 1f else 0f)
+        card.scale = clock.interpolateFloat(0.2f, card.scale, if (isShown) 1f else HIDDEN_CARD_SCALE)
 
-    /**
-     * Shows the modal.
-     */
-    fun show() {
-        if (!isVisible) {
-            onShow()
-            isVisible = true
-
-            clearModifiers(false, ModifierType.ScaleXY, ModifierType.Alpha)
-            createShowAnimation()().after {
-                onShown()
-            }
+        if (!isShown && isVisible && alpha == 0f) {
+            isVisible = false
+            onHidden()
         }
-    }
 
-    /**
-     * Hides the modal.
-     */
-    fun hide() {
-        if (isVisible) {
-            onHide()
-
-            clearModifiers(false, ModifierType.ScaleXY, ModifierType.Alpha)
-            createHideAnimation()().after {
-                isVisible = false
-                onHidden()
-            }
-        }
+        super.onUpdate(clock)
     }
 
     //endregion
+
+    //region Input
+
+    override fun onInputEvent(event: InputEvent): Boolean {
+        // While hiding the scene below is usable again.
+        if (!isShown) {
+            return false
+        }
+
+        if (super.onInputEvent(event)) {
+            return true
+        }
+
+        if (event is PointerEvent && !staticBackdrop) {
+            when (event.action) {
+                PointerEvent.Action.Down -> backdropPointerId = event.pointerId
+
+                PointerEvent.Action.Up -> if (event.pointerId == backdropPointerId) {
+                    backdropPointerId = -1
+                    if (!card.containsScenePoint(event.x, event.y)) {
+                        hide()
+                    }
+                }
+
+                PointerEvent.Action.Unknown -> backdropPointerId = -1
+                PointerEvent.Action.Move -> Unit
+            }
+        }
+
+        // The modal blocks everything below it.
+        return true
+    }
+
+    //endregion
+
+
+    companion object {
+        private val BACKDROP_COLOR = Color4.Black.copy(alpha = 0.5f)
+        private const val HIDDEN_CARD_SCALE = 0.9f
+    }
 }
-
-
