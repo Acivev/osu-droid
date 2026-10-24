@@ -27,6 +27,7 @@ import com.reco1l.verktex.ui.badge
 import com.reco1l.verktex.ui.card
 import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.constraintContainer
 import com.reco1l.verktex.ui.container.container
 import com.reco1l.verktex.ui.container.linearContainer
 import com.reco1l.verktex.ui.container.scrollableContainer
@@ -572,6 +573,48 @@ class VerktexTestScene : UIScene() {
                         width = 240f.dip
                         options = (1..5).map { UISelect.Option(it, "Option $it") }
                         onValueChange = { selectLabel.text = "Select: $it" }
+                    }
+                }
+
+                section("Constraints") {
+                    val container = constraintContainer {
+                        width = fill()
+                        height = 160f.dip
+                        backgroundColor = SURFACE_COLOR
+                    }
+
+                    // Added before their target, which must still be laid out first.
+                    val badge = container.box {
+                        width = 16f.dip
+                        height = 16f.dip
+                        radius = 8f.dip
+                        anchor = Anchor.TopRight
+                        origin = Anchor.Center
+                        backgroundColor = Color4(0xFFF38BA8)
+                    }
+                    val caption = container.text {
+                        text = "Below the target"
+                        anchor = Anchor.BottomCenter
+                        origin = Anchor.TopCenter
+                    }
+                    val target = container.box {
+                        width = 96f.dip
+                        height = 64f.dip
+                        y = 24f.dip
+                        radius = 8f.dip
+                        backgroundColor = Color4(0xFF89B4FA)
+                    }
+
+                    container.addConstraint(badge, target)
+                    container.addConstraint(caption, target)
+
+                    var moved = false
+                    textButton {
+                        text = "Move target"
+                        onActionUp = {
+                            moved = !moved
+                            target.x = if (moved) 240f.dip else 0f.dip
+                        }
                     }
                 }
 
