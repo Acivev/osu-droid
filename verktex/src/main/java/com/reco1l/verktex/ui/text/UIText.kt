@@ -8,7 +8,6 @@ import com.reco1l.verktex.graphics.GraphicsRenderer
 import com.reco1l.verktex.data.Anchor
 import com.reco1l.verktex.data.Axis
 import com.reco1l.verktex.data.Vec2
-import com.reco1l.verktex.math.almostEquals
 import com.reco1l.verktex.data.Dimension
 import com.reco1l.verktex.data.LayoutConstraints
 import com.reco1l.verktex.ui.Theme
@@ -174,7 +173,7 @@ open class UIText : UICanvas() {
      */
     var autoScrollAxes = Axis.None
         set(value) {
-            if (field == Axis.Both)
+            if (value == Axis.Both)
                 throw IllegalArgumentException("Auto scroll cannot be enabled for both axes at the same time.")
 
             field = value
@@ -193,6 +192,9 @@ open class UIText : UICanvas() {
 
     private var scrollProgress = 0f
     private var timeoutProgress = 0f
+
+    // Overflowing size along the auto scroll axis, updated when drawing.
+    private var autoScrollDistance = 0f
 
     //endregion
 
@@ -391,7 +393,8 @@ open class UIText : UICanvas() {
                 Axis.Y -> textHeight - contentHeight
                 else -> 0f
             }
-            scrollableSize.coerceAtLeast(0f) * scrollProgress
+            autoScrollDistance = scrollableSize.coerceAtLeast(0f)
+            autoScrollDistance * scrollProgress
         } else {
             0f
         }
@@ -440,15 +443,22 @@ open class UIText : UICanvas() {
 
     override fun onUpdate(clock: TickingClock) {
 
-        if (autoScrollAxes != Axis.None) {
-            // Do timeout only when scroll progress is 0 or 1f.
-            val inTimeout = timeoutProgress < 1f && (scrollProgress.almostEquals(0f) || scrollProgress.almostEquals(1f))
-
-            if (inTimeout) {
-                timeoutProgress += clock.elapsedTickTime / autoScrollTimeout
-            } else {
-                timeoutProgress = 0f
-                scrollProgress = (scrollProgress + autoScrollSpeed * clock.elapsedTickTime) % 1f
+        // Waits at the start, scrolls to the end, waits there and starts over.
+        if (autoScrollAxes != Axis.None && autoScrollDistance > 0f) {
+            when {
+                timeoutProgress < 1f -> {
+                    timeoutProgress += clock.elapsedTickTime / autoScrollTimeout
+                }
+                scrollProgress < 1f -> {
+                    scrollProgress = (scrollProgress + autoScrollSpeed * clock.elapsedTickTime / autoScrollDistance).coerceAtMost(1f)
+                    if (scrollProgress == 1f) {
+                        timeoutProgress = 0f
+                    }
+                }
+                else -> {
+                    scrollProgress = 0f
+                    timeoutProgress = 0f
+                }
             }
         }
 

@@ -505,7 +505,8 @@ abstract class GraphicsRenderer {
         color: Color4 = Color4.White,
         borderWidth: Float = 0f,
         borderColor: Color4 = Color4.Transparent,
-        radius: Float = 0f
+        radius: Float = 0f,
+        uv: Vec4 = Vec4(region.u0, region.v0, region.u1, region.v1)
     ) {
         setState(
             shader = BuiltIn.Shaders.TextureQuad,
@@ -527,14 +528,14 @@ abstract class GraphicsRenderer {
             val (x3, y3) = transform.transform(x, y + height)
 
             // Triangle 1
-            addVertex(x0, y0, region.u0, region.v0, color)
-            addVertex(x1, y1, region.u1, region.v0, color)
-            addVertex(x2, y2, region.u1, region.v1, color)
+            addVertex(x0, y0, uv.x, uv.y, color)
+            addVertex(x1, y1, uv.z, uv.y, color)
+            addVertex(x2, y2, uv.z, uv.w, color)
 
             // Triangle 2
-            addVertex(x0, y0, region.u0, region.v0, color)
-            addVertex(x2, y2, region.u1, region.v1, color)
-            addVertex(x3, y3, region.u0, region.v1, color)
+            addVertex(x0, y0, uv.x, uv.y, color)
+            addVertex(x2, y2, uv.z, uv.w, color)
+            addVertex(x3, y3, uv.x, uv.w, color)
         }
     }
 
