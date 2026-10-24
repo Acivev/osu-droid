@@ -42,6 +42,5 @@ tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
         '**/com/reco1l/verktex/ui/control/UITextInput.kt',
         '**/com/reco1l/verktex/ui/dialog/**',
         '**/com/reco1l/verktex/ui/form/**',
-        '**/com/reco1l/verktex/ui/text/UITextureText.kt'
     )
 }
