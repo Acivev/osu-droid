@@ -10,6 +10,7 @@
             android:label="Verktex Test"
             android:taskAffinity="com.osudroid.verktex"
             android:screenOrientation="sensorLandscape"
+            android:windowSoftInputMode="adjustNothing"
             android:theme="@style/Theme.AppCompat.NoActionBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

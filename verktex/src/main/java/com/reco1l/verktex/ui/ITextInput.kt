@@ -29,4 +29,9 @@ interface ITextInput {
      * Notifies the input that the last change was rejected.
      */
     fun notifyInputError()
+
+    /**
+     * Called when the IME action (e.g. the enter key) is pressed.
+     */
+    fun onImeAction() {}
 }

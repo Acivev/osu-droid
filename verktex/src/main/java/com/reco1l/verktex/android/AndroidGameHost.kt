@@ -1,6 +1,7 @@
 package com.reco1l.verktex.android
 
 import android.os.Bundle
+import android.text.InputFilter
 import android.text.InputType
 import android.text.TextWatcher
 import android.view.KeyEvent
@@ -8,9 +9,11 @@ import android.view.MotionEvent
 import android.view.ViewGroup
 import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.InputMethodManager
 import android.widget.TextView.BufferType
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatEditText
+import androidx.core.content.getSystemService
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
@@ -41,7 +44,7 @@ abstract class AndroidGameHost : AppCompatActivity(), GameHost {
         alpha = 0f
 
         inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-        imeOptions = EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI
+        imeOptions = EditorInfo.IME_ACTION_DONE or EditorInfo.IME_FLAG_NO_FULLSCREEN or EditorInfo.IME_FLAG_NO_EXTRACT_UI
 
         isClickable = false
     } }
@@ -101,58 +104,75 @@ abstract class AndroidGameHost : AppCompatActivity(), GameHost {
     }
 
 
-    override fun attachTextInput(textInput: ITextInput) {
+    override fun attachTextInput(textInput: ITextInput) = runOnUiThread {
         if (currentTextWatcher != null)
             editTextView.removeTextChangedListener(currentTextWatcher)
 
-        editTextView.setText(textInput.value, BufferType.EDITABLE)
-
-        currentTextWatcher = editTextView.doOnTextChanged { text, start, before, count ->
-            val newText = text?.toString() ?: ""
-
-            fun revertWithError() {
-                editTextView.setText(textInput.value, BufferType.EDITABLE)
-                editTextView.setSelection(textInput.value.length.coerceAtMost(start))
-                textInput.notifyInputError()
-            }
-
-            if (textInput.maxCharacters > 0 && newText.codePointCount(0, newText.length) > textInput.maxCharacters) {
-                revertWithError()
-                return@doOnTextChanged
-            }
-
-            if (count > 0) {
-                val addedText = newText.substring(start, start + count)
-                var codePointIndex = 0
-                while (codePointIndex < addedText.length) {
-                    val codePoint = addedText.codePointAt(codePointIndex)
-                    val charCount = Character.charCount(codePoint)
-                    val character = addedText.substring(codePointIndex, codePointIndex + charCount)
-
-                    if (!textInput.isCharacterAllowed(character)) {
-                        revertWithError()
-                        return@doOnTextChanged
-                    }
-
-                    codePointIndex += charCount
-                }
-            }
-
-            if (!textInput.isTextValid(newText)) {
-                revertWithError()
-                return@doOnTextChanged
-            }
-
-            textInput.value = newText
+        // The view must be part of the hierarchy to receive focus and IME input.
+        if (editTextView.parent == null) {
+            (window.decorView as ViewGroup).addView(editTextView)
         }
+
+        editTextView.setText(textInput.value, BufferType.EDITABLE)
+        editTextView.setSelection(editTextView.length())
+
+        editTextView.setOnEditorActionListener { _, _, _ ->
+            Verktex.withTreeLock { textInput.onImeAction() }
+            true
+        }
+
+        // Rejected input is filtered before it reaches the text, reverting it afterwards would break
+        // the IME's composing state.
+        editTextView.filters = arrayOf(InputFilter { source, sourceStart, sourceEnd, dest, destStart, destEnd ->
+            val inserted = source.subSequence(sourceStart, sourceEnd).toString()
+            val result = dest.substring(0, destStart) + inserted + dest.substring(destEnd)
+
+            if (isTextAccepted(textInput, inserted, result)) {
+                null
+            } else {
+                Verktex.withTreeLock { textInput.notifyInputError() }
+                // Keeps the replaced range as it was.
+                dest.subSequence(destStart, destEnd)
+            }
+        })
+
+        currentTextWatcher = editTextView.doOnTextChanged { text, _, _, _ ->
+            // The text watcher runs on the UI thread, while the component tree belongs to the engine workers.
+            val newText = text?.toString() ?: ""
+            Verktex.withTreeLock { textInput.value = newText }
+        }
+
+        editTextView.requestFocus()
+        getSystemService<InputMethodManager>()?.showSoftInput(editTextView, InputMethodManager.SHOW_IMPLICIT)
     }
 
-    override fun detachTextInput() {
+    private fun isTextAccepted(textInput: ITextInput, inserted: String, result: String): Boolean {
+        if (textInput.maxCharacters > 0 && result.codePointCount(0, result.length) > textInput.maxCharacters) {
+            return false
+        }
+
+        var index = 0
+        while (index < inserted.length) {
+            val charCount = Character.charCount(inserted.codePointAt(index))
+            if (!textInput.isCharacterAllowed(inserted.substring(index, index + charCount))) {
+                return false
+            }
+            index += charCount
+        }
+
+        return textInput.isTextValid(result)
+    }
+
+    override fun detachTextInput() = runOnUiThread {
         if (currentTextWatcher != null)
             editTextView.removeTextChangedListener(currentTextWatcher)
 
         currentTextWatcher = null
+        editTextView.setOnEditorActionListener(null)
+        editTextView.filters = arrayOf()
 
+        getSystemService<InputMethodManager>()?.hideSoftInputFromWindow(editTextView.windowToken, 0)
+        editTextView.clearFocus()
     }
 
     override fun onTouchEvent(event: MotionEvent): Boolean {

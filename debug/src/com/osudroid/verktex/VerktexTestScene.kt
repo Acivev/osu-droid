@@ -13,13 +13,16 @@ import com.reco1l.verktex.data.Padding
 import com.reco1l.verktex.data.Vec2
 import com.reco1l.verktex.data.dip
 import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.math.interpolateFloat
 import com.reco1l.verktex.texture.Textures
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.ui.FAIcon
+import com.reco1l.verktex.ui.Theme
 import com.reco1l.verktex.ui.UIBadge
 import com.reco1l.verktex.ui.UIButton
 import com.reco1l.verktex.ui.UIComponent
-import com.reco1l.verktex.ui.Theme
+import com.reco1l.verktex.ui.UIIcon
 import com.reco1l.verktex.ui.UILoadingIndicator
 import com.reco1l.verktex.ui.UIScene
 import com.reco1l.verktex.ui.UISprite
@@ -27,11 +30,15 @@ import com.reco1l.verktex.ui.badge
 import com.reco1l.verktex.ui.card
 import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.clickableContainer
 import com.reco1l.verktex.ui.container.container
 import com.reco1l.verktex.ui.container.linearContainer
 import com.reco1l.verktex.ui.container.scrollableContainer
+import com.reco1l.verktex.ui.control.IntegerTextInput
 import com.reco1l.verktex.ui.control.UICheckbox
 import com.reco1l.verktex.ui.control.UISelect
+import com.reco1l.verktex.ui.control.UITextInput
+import com.reco1l.verktex.ui.control.textInput
 import com.reco1l.verktex.ui.gradientBox
 import com.reco1l.verktex.ui.icon
 import com.reco1l.verktex.ui.iconButton
@@ -85,6 +92,27 @@ class VerktexTestScene : UIScene() {
                                 onActionUp = { Verktex.theme = Theme(palette = Theme.ColorPalette(accent)) }
                             }
                         }
+                    }
+                }
+
+                section("Text input") {
+                    val searchLabel = text { text = "Search: (empty)" }
+                    +SearchBar().apply {
+                        onSearch = { searchLabel.text = if (it.isEmpty()) "Search: (empty)" else "Search: $it" }
+                    }
+
+                    val inputLabel = text { text = "Input: (empty)" }
+                    textInput {
+                        width = 320f.dip
+                        placeholder = "Type something..."
+                        onValueChange = { inputLabel.text = "Input: $it" }
+                        onConfirm = { inputLabel.text = "Confirmed: $value" }
+                    }
+
+                    text { text = "Numbers only (0 - 100):" }
+                    +IntegerTextInput(null, 0, 100).apply {
+                        width = 160f.dip
+                        placeholder = "0 - 100"
                     }
                 }
 
@@ -651,6 +679,67 @@ class VerktexTestScene : UIScene() {
         }
     }
 
+
+    /**
+     * A search bar like the song select one: collapsed to a square search button while unused, it
+     * expands while focused or holding text, and its search icon turns into a clear button with text.
+     */
+    private class SearchBar : UIContainer() {
+
+        var onSearch: ((String) -> Unit)? = null
+
+        private val input = UITextInput().apply {
+            width = fill()
+            height = fill()
+            placeholder = "Search..."
+        }
+
+        private val icon = UIIcon(FAIcon.MagnifyingGlass).apply {
+            anchor = Anchor.Center
+            origin = Anchor.Center
+        }
+
+        private var currentWidth = COLLAPSED_WIDTH.toPixels()
+
+        init {
+            height = COLLAPSED_WIDTH
+            width = COLLAPSED_WIDTH
+
+            +input
+            input.padding = Padding(12f.dip, 0f.dip, COLLAPSED_WIDTH, 0f.dip)
+            input.onValueChange = { onSearch?.invoke(it) }
+
+            clickableContainer {
+                width = COLLAPSED_WIDTH
+                height = fill()
+                anchor = Anchor.CenterRight
+                origin = Anchor.CenterRight
+
+                +icon
+
+                onActionUp = {
+                    if (input.value.isEmpty()) input.focus() else input.value = ""
+                }
+            }
+        }
+
+        override fun onUpdate(clock: TickingClock) {
+            val isInUse = input.isFocused || input.value.isNotEmpty()
+            val targetWidth = if (isInUse) EXPANDED_WIDTH.toPixels() else COLLAPSED_WIDTH.toPixels()
+
+            currentWidth = clock.interpolateFloat(0.2f, currentWidth, targetWidth)
+            width = currentWidth.px
+
+            icon.iconCode = if (input.value.isEmpty()) FAIcon.MagnifyingGlass else FAIcon.Xmark
+
+            super.onUpdate(clock)
+        }
+
+        companion object {
+            private val COLLAPSED_WIDTH = 40f.dip
+            private val EXPANDED_WIDTH = 360f.dip
+        }
+    }
 
     /**
      * A box that calls [onWave] with a value going back and forth between 0 and 1 every second.

@@ -20,12 +20,12 @@ interface GameHost {
 
 
     /**
-     * Starts listening to IME events.
+     * Starts listening to IME events and shows the soft keyboard.
      */
     fun attachTextInput(textInput: ITextInput)
 
     /**
-     * Stops listening to IME events.
+     * Stops listening to IME events and hides the soft keyboard.
      */
     fun detachTextInput()
 }

@@ -8,6 +8,7 @@ import com.reco1l.verktex.fonts.Fonts
 import com.reco1l.verktex.texture.Textures
 import com.reco1l.verktex.graphics.GraphicsRenderer
 import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.time.SystemBasedTickingClock
 import com.reco1l.verktex.ui.Theme
@@ -205,6 +206,12 @@ object Verktex {
      * re-acquires it in a loop and starves the update worker.
      */
     private val treeLock = ReentrantLock(true)
+
+    /**
+     * Runs [block] while holding the component tree lock, for code modifying components from outside
+     * the engine workers (e.g. platform callbacks).
+     */
+    internal fun <T> withTreeLock(block: () -> T): T = treeLock.withLock(block)
 
     private var lastUpdateNanos = 0L
 
@@ -444,6 +451,13 @@ object Verktex {
         // Containers dispatch events to their children themselves (with hit testing), so only the
         // roots receive them here.
         treeLock.withLock {
+            // Pressing outside the focused component removes its focus (e.g. closes the keyboard).
+            val focused = focusedComponent
+            if (event is PointerEvent && event.action == PointerEvent.Action.Down
+                && focused is UIComponent && !focused.containsScenePoint(event.x, event.y)) {
+                clearFocus()
+            }
+
             return overlayContainer.onInputEvent(event) || scene.onInputEvent(event)
         }
     }
