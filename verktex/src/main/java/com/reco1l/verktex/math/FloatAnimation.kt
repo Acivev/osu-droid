@@ -47,6 +47,15 @@ class FloatAnimation(
     }
 
     /**
+     * Sets [value] and [target] right away, stopping any transition.
+     */
+    fun jumpTo(value: Float) {
+        this.value = value
+        target = value
+        elapsed = duration
+    }
+
+    /**
      * Advances the animation by the clock's elapsed tick time and returns the current [value].
      */
     fun update(clock: TickingClock): Float {
