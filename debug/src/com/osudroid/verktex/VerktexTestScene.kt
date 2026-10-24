@@ -40,6 +40,12 @@ import com.reco1l.verktex.ui.control.UISelect
 import com.reco1l.verktex.ui.control.UITextInput
 import com.reco1l.verktex.ui.control.slider
 import com.reco1l.verktex.ui.control.textInput
+import com.reco1l.verktex.ui.form.FormCheckbox
+import com.reco1l.verktex.ui.form.FormContainer
+import com.reco1l.verktex.ui.form.FormInput
+import com.reco1l.verktex.ui.form.FormSelect
+import com.reco1l.verktex.ui.form.FormSlider
+import com.reco1l.verktex.ui.form.IntegerFormInput
 import com.reco1l.verktex.ui.gradientBox
 import com.reco1l.verktex.ui.icon
 import com.reco1l.verktex.ui.iconButton
@@ -629,6 +635,46 @@ class VerktexTestScene : UIScene() {
                         max = 100f
                         step = 1f
                         onValueChange = { offsetLabel.text = "Offset (-100 to 100): ${it.toInt()}" }
+                    }
+                }
+
+                section("Forms") {
+                    val formLabel = text { text = "Submitted: nothing yet" }
+
+                    val form = FormContainer().apply {
+                        orientation = UILinearContainer.Orientation.Vertical
+                        width = 500f.dip
+                        onSubmit = { formLabel.text = "Submitted: $it" }
+
+                        +FormCheckbox().apply {
+                            key = "enabled"
+                            label = "Enabled"
+                        }
+                        +FormSlider(0.5f).apply {
+                            key = "volume"
+                            label = "Volume"
+                            control.precision = 2
+                        }
+                        +IntegerFormInput(50, 0, 100).apply {
+                            key = "offset"
+                            label = "Offset (0 - 100)"
+                        }
+                        +FormSelect<String>().apply {
+                            key = "mode"
+                            label = "Mode"
+                            options = listOf("Easy", "Normal", "Hard").map { UISelect.Option(it, it) }
+                        }
+                        +FormInput().apply {
+                            key = "name"
+                            label = "Name"
+                            isEnabled = false
+                        }
+                    }
+                    +form
+
+                    textButton {
+                        text = "Submit"
+                        onActionUp = { form.submit() }
                     }
                 }
 
