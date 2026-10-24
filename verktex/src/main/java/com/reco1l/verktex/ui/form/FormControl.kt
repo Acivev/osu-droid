@@ -57,8 +57,11 @@ abstract class FormControl<V : Any, C : UIControl<V>>(initialValue: V) : UILinea
         onActionUp = { value = defaultValue }
     }
 
-    // Buttons animate their own alpha, so the reset button is faded through a holder.
-    private val resetButtonHolder = UIContainer().apply {
+    // Buttons animate their own alpha, so the reset button is faded through a holder. Hidden
+    // components still receive input, so the holder ignores it while hidden.
+    private val resetButtonHolder = object : UIContainer() {
+        override fun onInputEvent(event: InputEvent) = isVisible && super.onInputEvent(event)
+    }.apply {
         isVisible = false
         alpha = 0f
         +resetButton
@@ -103,9 +106,9 @@ abstract class FormControl<V : Any, C : UIControl<V>>(initialValue: V) : UILinea
      * The formatter of the [valueText].
      */
     var valueFormatter: (value: V) -> String = Any::toString
-        set(value) {
-            field = value
-            valueText?.text = value(this.value)
+        set(formatter) {
+            field = formatter
+            valueText?.text = formatter(value)
         }
 
     /**
