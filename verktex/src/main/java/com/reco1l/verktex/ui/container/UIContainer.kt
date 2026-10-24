@@ -142,10 +142,10 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
         // Topmost children (drawn last) get the event first.
         for (child in children.asReversed()) {
 
-            // Down and move events only go to the children under the pointer, while up and cancel
-            // events go to every child so pressed components can release themselves.
+            // Only presses go to the children under the pointer. Every other event goes to all of
+            // them, so a pressed component keeps following its pointer after it left its bounds.
             if (event is PointerEvent
-                && (event.action == PointerEvent.Action.Down || event.action == PointerEvent.Action.Move)
+                && event.action == PointerEvent.Action.Down
                 && !child.containsScenePoint(event.x, event.y)) {
                 continue
             }
