@@ -1,5 +1,10 @@
 package com.osudroid.verktex
 
+import android.os.SystemClock
+import android.view.MotionEvent
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.android.AndroidGameHost
+import com.reco1l.verktex.audio.Sounds
 import com.reco1l.verktex.data.Anchor
 import com.reco1l.verktex.data.Axis
 import com.reco1l.verktex.data.ClipMode
@@ -8,19 +13,16 @@ import com.reco1l.verktex.data.Padding
 import com.reco1l.verktex.data.Vec2
 import com.reco1l.verktex.data.dip
 import com.reco1l.verktex.data.fill
-import com.reco1l.verktex.Verktex
-import com.reco1l.verktex.audio.Sounds
 import com.reco1l.verktex.texture.Textures
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.ui.FAIcon
 import com.reco1l.verktex.ui.UIBadge
 import com.reco1l.verktex.ui.UIButton
+import com.reco1l.verktex.ui.UIComponent
 import com.reco1l.verktex.ui.UIScene
 import com.reco1l.verktex.ui.UISprite
 import com.reco1l.verktex.ui.badge
 import com.reco1l.verktex.ui.card
-import com.reco1l.verktex.ui.gradientBox
-import com.reco1l.verktex.ui.loadingIndicator
 import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.container.UILinearContainer
 import com.reco1l.verktex.ui.container.container
@@ -28,8 +30,10 @@ import com.reco1l.verktex.ui.container.linearContainer
 import com.reco1l.verktex.ui.container.scrollableContainer
 import com.reco1l.verktex.ui.control.UICheckbox
 import com.reco1l.verktex.ui.control.UISelect
+import com.reco1l.verktex.ui.gradientBox
 import com.reco1l.verktex.ui.icon
 import com.reco1l.verktex.ui.iconButton
+import com.reco1l.verktex.ui.loadingIndicator
 import com.reco1l.verktex.ui.shape.UIBox
 import com.reco1l.verktex.ui.shape.box
 import com.reco1l.verktex.ui.shape.circle
@@ -364,6 +368,27 @@ class VerktexTestScene : UIScene() {
                     }
                 }
 
+                section("Multi-touch") {
+                    text { text = "Simulates finger A holding the target while finger B taps elsewhere, then A releases on the target." }
+
+                    val resultLabel = text { text = "Target clicks: 0 (expected 1 per run)" }
+                    var targetClicks = 0
+
+                    row {
+                        val target = textButton {
+                            text = "Target"
+                            onActionUp = {
+                                targetClicks++
+                                resultLabel.text = "Target clicks: $targetClicks (expected 1 per run)"
+                            }
+                        }
+                        textButton {
+                            text = "Run test"
+                            onActionUp = { simulateSecondFingerTap(target) }
+                        }
+                    }
+                }
+
                 section("Nested clipping and scrolling") {
                     text { text = "The inner list must stay inside the outer box:" }
 
@@ -561,6 +586,38 @@ class VerktexTestScene : UIScene() {
     /**
      * A box that calls [onWave] with a value going back and forth between 0 and 1 every second.
      */
+    /**
+     * Dispatches a two finger gesture through the host like real touches: finger A presses
+     * [target], finger B taps away from it, then finger A is released on [target].
+     */
+    private fun simulateSecondFingerTap(target: UIComponent) {
+        val host = Verktex.host as AndroidGameHost
+        val (ax, ay) = target.toSceneSpace(target.bounds.width / 2f, target.bounds.height / 2f)
+
+        // After the current touch, so the gesture does not start inside its dispatch.
+        host.window.decorView.post {
+            val downTime = SystemClock.uptimeMillis()
+
+            fun send(action: Int, vararg pointers: Triple<Int, Float, Float>) {
+                val properties = Array(pointers.size) { i -> MotionEvent.PointerProperties().apply { id = pointers[i].first } }
+                val coords = Array(pointers.size) { i -> MotionEvent.PointerCoords().apply { x = pointers[i].second; y = pointers[i].third } }
+                val event = MotionEvent.obtain(downTime, SystemClock.uptimeMillis(), action, pointers.size, properties, coords, 0, 0, 1f, 1f, 0, 0, 0, 0)
+                host.onTouchEvent(event)
+                event.recycle()
+            }
+
+            val a = Triple(0, ax, ay)
+            val b = Triple(1, ax, ay + 300f)
+            val pointer1 = 1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT
+
+            send(MotionEvent.ACTION_DOWN, a)
+            send(MotionEvent.ACTION_POINTER_DOWN or pointer1, a, b)
+            send(MotionEvent.ACTION_POINTER_UP or pointer1, a, b)
+            send(MotionEvent.ACTION_UP, a)
+        }
+    }
+
+
     companion object {
         /**
          * Background of the boxes the test cases are drawn in.
