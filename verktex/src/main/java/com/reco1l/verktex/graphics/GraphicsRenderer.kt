@@ -46,6 +46,10 @@ abstract class GraphicsRenderer {
 
     private val commandBatch = ArrayDeque<DrawCommand>()
 
+    // Vertex buffers are reused across frames, creating and deleting them per command is costly.
+    private val bufferPool = ArrayList<GraphicsBuffer>()
+    private var buffersUsed = 0
+
     /**
      * The draw commands recorded for the current frame so far.
      */
@@ -118,8 +122,9 @@ abstract class GraphicsRenderer {
             )
         ) return
 
-        // Per-frame buffers are disposed right after being drawn, see end().
-        val vertexBuffer = device.createBuffer()
+        val vertexBuffer = bufferPool.getOrNull(buffersUsed) ?: createVertexBuffer().also(bufferPool::add)
+        buffersUsed++
+        vertexBuffer.clear()
 
         activeTexture = texture
         activeShader = usedShader
@@ -749,16 +754,16 @@ abstract class GraphicsRenderer {
 
         // Should not happen but just in case, clear the command batch to avoid rendering stale commands.
         commandBatch.clear()
+        buffersUsed = 0
     }
 
     abstract fun drawCommand(command: DrawCommand)
 
     open fun end() {
         while (commandBatch.isNotEmpty()) {
-            val command = commandBatch.removeFirst()
-            drawCommand(command)
-            command.buffer?.dispose()
+            drawCommand(commandBatch.removeFirst())
         }
+        buffersUsed = 0
         PerformanceStats.onFrameDrawn()
     }
 
