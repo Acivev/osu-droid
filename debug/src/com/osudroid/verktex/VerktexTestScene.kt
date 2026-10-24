@@ -500,6 +500,13 @@ class VerktexTestScene : UIScene() {
                                 audioLabel.text = "Stream playing: ${stream.isPlaying}, length: ${"%.2f".format(stream.length)}s"
                             }
                         }
+                        textButton {
+                            text = "Seek near the end"
+                            onActionUp = {
+                                stream.position = stream.length - 1.0
+                                audioLabel.text = "Stream position: ${"%.2f".format(stream.position)}s of ${"%.2f".format(stream.length)}s"
+                            }
+                        }
                     }
                 }
 
