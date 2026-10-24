@@ -294,7 +294,7 @@ sealed class RangeConstrainedTextInput<T : Comparable<T>?>(
 
         val value = convertValue(text)
 
-        return value == null || (value >= minValue!! && value <= maxValue!!)
+        return value == null || ((minValue == null || value >= minValue) && (maxValue == null || value <= maxValue))
     }
 
     /**
