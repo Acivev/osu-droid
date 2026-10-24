@@ -1,5 +1,7 @@
 package com.reco1l.verktex.ui
 
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.Color4
 import com.reco1l.verktex.data.Dimension
 import com.reco1l.verktex.data.dip
 import com.reco1l.verktex.graphics.GraphicsRenderer
@@ -24,6 +26,11 @@ open class UILoadingIndicator : UICanvas() {
      */
     var rotationSpeed = 360f
 
+    /**
+     * The color of the arc, or `null` to use the accent color of the current theme.
+     */
+    var arcColor: Color4? = null
+
 
     private var angle = 0f
 
@@ -31,10 +38,6 @@ open class UILoadingIndicator : UICanvas() {
     init {
         width = 32f.dip
         height = 32f.dip
-
-        style = Style { theme ->
-            color = theme.palette.accent
-        }
     }
 
 
@@ -54,7 +57,7 @@ open class UILoadingIndicator : UICanvas() {
             thickness = thickness.toPixels(),
             startAngle = angle,
             endAngle = angle + ARC_LENGTH,
-            color = contentColor
+            color = arcColor ?: Verktex.theme.palette.accent
         )
     }
 
