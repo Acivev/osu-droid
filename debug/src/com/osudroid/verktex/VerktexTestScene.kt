@@ -38,6 +38,7 @@ import com.reco1l.verktex.ui.control.IntegerTextInput
 import com.reco1l.verktex.ui.control.UICheckbox
 import com.reco1l.verktex.ui.control.UISelect
 import com.reco1l.verktex.ui.control.UITextInput
+import com.reco1l.verktex.ui.control.slider
 import com.reco1l.verktex.ui.control.textInput
 import com.reco1l.verktex.ui.gradientBox
 import com.reco1l.verktex.ui.icon
@@ -600,6 +601,34 @@ class VerktexTestScene : UIScene() {
                         width = 240f.dip
                         options = (1..5).map { UISelect.Option(it, "Option $it") }
                         onValueChange = { selectLabel.text = "Select: $it" }
+                    }
+                }
+
+                section("Slider") {
+                    val sliderLabel = text { text = "Slider: 0.5" }
+                    slider {
+                        width = 400f.dip
+                        value = 0.5f
+                        precision = 2
+                        onValueChange = { sliderLabel.text = "Slider: $it" }
+                    }
+
+                    val stepLabel = text { text = "Steps of 10: 50" }
+                    slider {
+                        width = 400f.dip
+                        max = 100f
+                        step = 10f
+                        value = 50f
+                        onValueChange = { stepLabel.text = "Steps of 10: ${it.toInt()}" }
+                    }
+
+                    val offsetLabel = text { text = "Offset (-100 to 100): 0" }
+                    slider {
+                        width = 400f.dip
+                        min = -100f
+                        max = 100f
+                        step = 1f
+                        onValueChange = { offsetLabel.text = "Offset (-100 to 100): ${it.toInt()}" }
                     }
                 }
 
