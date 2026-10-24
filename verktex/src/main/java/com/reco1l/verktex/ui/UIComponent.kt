@@ -100,7 +100,7 @@ abstract class UIComponent {
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
     /**
@@ -115,7 +115,7 @@ abstract class UIComponent {
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
     /**
@@ -480,8 +480,8 @@ abstract class UIComponent {
     /**
      * Whether the component's layout is invalid and needs to be processed next frame.
      */
-    // Components start invalid so they get measured and laid out on their first frame.
-    // TODO: Reset these flags once every property setter reliably invalidates the component.
+    // Laying out is cheap, so it runs every frame and this flag is never reset. Scrolling and
+    // animated positions rely on it.
     var layoutInvalid = true
         private set
 
@@ -509,8 +509,8 @@ abstract class UIComponent {
      * Marks this component's measure as invalid.
      */
     fun invalidateMeasure() {
-        if (measureInvalid) return
         measureInvalid = true
+        // The parent's size can depend on this component's one.
         parent?.invalidateMeasure()
     }
 
@@ -688,7 +688,7 @@ abstract class UIComponent {
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
     /**
@@ -752,15 +752,21 @@ abstract class UIComponent {
     var measuredSize = Vec2.Zero
         protected set
 
+    private var lastMeasureConstraints: LayoutConstraints? = null
+
     /**
      * Measures the component with the given layout constraints. This method will call [onMeasure]
      * to perform the actual measurement.
      */
     fun measure(parentContraints: LayoutConstraints): Vec2 {
 
-        if (!measureInvalid) {
+        if (!measureInvalid && parentContraints == lastMeasureConstraints) {
             return measuredSize
         }
+
+        // Reset before measuring, invalidations made meanwhile must trigger another pass.
+        measureInvalid = false
+        lastMeasureConstraints = parentContraints
 
         val ownConstraints = parentContraints.resolve(width, height)
         val contentConstraints = ownConstraints.shrink(padding)

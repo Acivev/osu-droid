@@ -37,7 +37,7 @@ open class UIText : UICanvas() {
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
     //region Icons
@@ -49,7 +49,7 @@ open class UIText : UICanvas() {
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
     /**
@@ -59,14 +59,14 @@ open class UIText : UICanvas() {
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
     var iconSpacing: Dimension.Fixed = 0f.px
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
     //endregion
@@ -81,6 +81,7 @@ open class UIText : UICanvas() {
             if (field == value) return
             field = value
             fontSettingsChanged = true
+            invalidateMeasure()
         }
 
     /**
@@ -91,6 +92,7 @@ open class UIText : UICanvas() {
             if (field == value) return
             field = value
             fontSettingsChanged = true
+            invalidateMeasure()
         }
 
     /**
@@ -101,6 +103,7 @@ open class UIText : UICanvas() {
             if (field == value) return
             field = value
             fontSettingsChanged = true
+            invalidateMeasure()
         }
 
     /**
@@ -111,6 +114,7 @@ open class UIText : UICanvas() {
             if (field == value) return
             field = value
             fontSettingsChanged = true
+            invalidateMeasure()
         }
 
     /**
@@ -150,7 +154,7 @@ open class UIText : UICanvas() {
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
     /**
@@ -161,7 +165,7 @@ open class UIText : UICanvas() {
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
     //endregion

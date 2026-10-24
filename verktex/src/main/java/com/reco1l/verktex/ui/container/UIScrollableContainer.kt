@@ -29,6 +29,11 @@ open class UIScrollableContainer : UIContainer() {
      * Determines which axes can be scrolled by the user.
      */
     var scrollAxes: Axis = Axis.Both
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidateMeasure()
+        }
 
     /**
      * Determines which axes can be overflowed by the scroll.

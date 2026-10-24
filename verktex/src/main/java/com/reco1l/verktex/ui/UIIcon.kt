@@ -15,13 +15,17 @@ fun UIContainer.icon(builder: UIIcon.() -> Unit) = UIIcon().apply(builder).also 
 /**
  * A UI component that displays an icon from a font family, such as Font Awesome.
  */
-open class UIIcon(
-    /**
-     * The text to be displayed
-     */
-    var iconCode: Int = FAIcon.Question
+open class UIIcon(iconCode: Int = FAIcon.Question) : UICanvas() {
 
-) : UICanvas() {
+    /**
+     * The code point of the icon to display.
+     */
+    var iconCode = iconCode
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidateMeasure()
+        }
 
     /**
      * The font family to use for this text.
@@ -31,6 +35,7 @@ open class UIIcon(
             if (field == value) return
             field = value
             fontSettingsChanged = true
+            invalidateMeasure()
         }
 
     /**
@@ -41,6 +46,7 @@ open class UIIcon(
             if (field == value) return
             field = value
             fontSettingsChanged = true
+            invalidateMeasure()
         }
 
 

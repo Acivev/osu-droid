@@ -236,6 +236,7 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
             child.onDetached()
         }
         children.clear()
+        invalidateMeasure()
     }
 
     /**
@@ -246,6 +247,7 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
         children.add(child)
         child.parent = this
         child.onAttached()
+        invalidateMeasure()
     }
 
     /**
@@ -256,6 +258,7 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
         children.remove(child)
         child.parent = null
         child.onDetached()
+        invalidateMeasure()
     }
 
     /**
@@ -301,6 +304,7 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
         children[index] = child
         child.parent = this
         child.onAttached()
+        invalidateMeasure()
     }
 
 

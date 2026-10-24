@@ -20,7 +20,7 @@ open class UILinearContainer : UIContainer() {
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
     /**
@@ -30,7 +30,7 @@ open class UILinearContainer : UIContainer() {
         set(value) {
             if (field == value) return
             field = value
-            invalidateLayout()
+            invalidateMeasure()
         }
 
 
