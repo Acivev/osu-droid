@@ -19,6 +19,7 @@ import com.reco1l.verktex.ui.FAIcon
 import com.reco1l.verktex.ui.UIBadge
 import com.reco1l.verktex.ui.UIButton
 import com.reco1l.verktex.ui.UIComponent
+import com.reco1l.verktex.ui.Theme
 import com.reco1l.verktex.ui.UIScene
 import com.reco1l.verktex.ui.UISprite
 import com.reco1l.verktex.ui.badge
@@ -67,6 +68,23 @@ class VerktexTestScene : UIScene() {
                 text {
                     text = "Verktex test scene"
                     fontSize = 28f.dip
+                }
+
+                section("Theme") {
+                    row {
+                        for (scale in listOf(1f, 1.3f)) {
+                            textButton {
+                                text = "Font scale $scale"
+                                onActionUp = { Verktex.fontScale = scale }
+                            }
+                        }
+                        for ((name, accent) in listOf("Default accent" to Theme.DEFAULT_ACCENT_COLOR, "Green accent" to Color4(0xFFA6E3A1))) {
+                            textButton {
+                                text = name
+                                onActionUp = { Verktex.theme = Theme(palette = Theme.ColorPalette(accent)) }
+                            }
+                        }
+                    }
                 }
 
                 section("Buttons") {
