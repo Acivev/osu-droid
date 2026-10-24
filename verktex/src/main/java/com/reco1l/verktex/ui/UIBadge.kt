@@ -40,6 +40,7 @@ open class UIBadge : UIText() {
     init {
         style = Style { theme ->
             borderWidth = if (variant == Variant.Outline) 1.5f.dip else Dimension.Zero
+            color = if (variant == Variant.Solid) theme.palette.contentOnSolid else Color4.White
 
             when (variant) {
                 Variant.Solid -> {
