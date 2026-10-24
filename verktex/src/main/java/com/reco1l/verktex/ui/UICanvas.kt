@@ -12,9 +12,10 @@ import com.reco1l.verktex.graphics.GraphicsShader
 abstract class UICanvas : UIComponent() {
 
     /**
-     * The shader to use for rendering the canvas. If null, the default shader will be used.
+     * The shader to use for rendering the canvas. If null, the default shader will be used. It must
+     * use the built-in vertex layout, see [GraphicsRenderer.pushShader].
      */
-    val shader: GraphicsShader? = null
+    var shader: GraphicsShader? = null
 
     /**
      * The blend mode to use for rendering the canvas.
@@ -28,10 +29,13 @@ abstract class UICanvas : UIComponent() {
 
 
     override fun drawContent(renderer: GraphicsRenderer) {
+        val shader = shader
+        if (shader != null) renderer.pushShader(shader)
         renderer.pushBlendMode(blendMode)
         renderer.pushDepthState(depthState)
         onDraw(renderer)
         renderer.popDepthState()
         renderer.popBlendMode()
+        if (shader != null) renderer.popShader()
     }
 }

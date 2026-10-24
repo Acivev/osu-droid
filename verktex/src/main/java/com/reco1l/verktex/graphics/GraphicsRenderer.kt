@@ -53,6 +53,7 @@ abstract class GraphicsRenderer {
     private val scissorStack = ArrayDeque<Vec4>()
     private val blendModeStack = ArrayDeque<BlendMode>()
     private val depthStateStack = ArrayDeque<DepthState>()
+    private val shaderStack = ArrayDeque<GraphicsShader>()
     //endregion
 
     //region State
@@ -60,8 +61,6 @@ abstract class GraphicsRenderer {
     private var activeBuffer: GraphicsBuffer? = null
     private var activeTexture: GraphicsTexture? = null
     private var activeScissor: Vec4? = null
-    private var activeBlendMode: BlendMode = BlendMode.Alpha
-    private var activeDepthState: DepthState = DepthState.Default
     private var activeUniformSet: GraphicsShader.UniformSet = GraphicsShader.UniformSet()
 
 
@@ -97,10 +96,13 @@ abstract class GraphicsRenderer {
         depthState: DepthState = depthStateStack.lastOrNull() ?: DepthState.Default,
         uniformSet: GraphicsShader.UniformSet = activeUniformSet
     ) {
+        // A pushed shader replaces the one the draw call asked for, see pushShader.
+        val usedShader = shaderStack.lastOrNull() ?: shader
+
         val lastCommand = commandBatch.lastOrNull()
         if (lastCommand != null &&
             lastCommand.canReuse(
-                shader,
+                usedShader,
                 texture,
                 scissor,
                 blendMode,
@@ -113,16 +115,14 @@ abstract class GraphicsRenderer {
         val vertexBuffer = device.createBuffer()
 
         activeTexture = texture
-        activeShader = shader
+        activeShader = usedShader
         activeBuffer = vertexBuffer
         activeScissor = scissor
-        activeBlendMode = blendMode
-        activeDepthState = depthState
         activeUniformSet = uniformSet
 
         val command = DrawCommand(
             buffer = vertexBuffer,
-            shader = shader,
+            shader = usedShader,
             texture = texture,
             scissor = scissor,
             blendMode = blendMode,
@@ -159,6 +159,22 @@ abstract class GraphicsRenderer {
      */
     fun popColor(): Color4? {
         return colorStack.removeLastOrNull()
+    }
+
+    /**
+     * Pushes a shader onto the shader stack. It replaces the shader of subsequent drawing operations,
+     * so it must use the built-in vertex layout: position at location 0, UV at 1 and color at 2.
+     * Uniforms it does not declare are skipped.
+     */
+    fun pushShader(shader: GraphicsShader) {
+        shaderStack.addLast(shader)
+    }
+
+    /**
+     * Pops a shader from the shader stack and returns it.
+     */
+    fun popShader(): GraphicsShader? {
+        return shaderStack.removeLastOrNull()
     }
 
     /**
@@ -715,8 +731,6 @@ abstract class GraphicsRenderer {
         activeShader = null
         activeTexture = null
         activeScissor = null
-        activeBlendMode = BlendMode.Alpha
-        activeDepthState = DepthState.Default
         activeUniformSet = GraphicsShader.UniformSet()
 
         // Should not happen but just in case, clear the command batch to avoid rendering stale commands.
