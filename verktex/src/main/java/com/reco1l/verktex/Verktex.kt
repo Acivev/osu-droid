@@ -12,7 +12,6 @@ import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.time.SystemBasedTickingClock
 import com.reco1l.verktex.ui.Theme
 import com.reco1l.verktex.ui.*
-import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.worker.LoopWorker
 import com.reco1l.verktex.worker.RunOnDrawWorker
 import com.reco1l.verktex.worker.RunOnUpdateWorker
@@ -117,7 +116,8 @@ object Verktex {
     //endregion
 
     private val sceneStack = ArrayDeque<UIScene>().apply { addLast(UIScene.EmptyScene) }
-    private val overlayContainer = UIContainer()
+    // A scene of its own, so overlays are measured and laid out over the whole window.
+    private val overlayContainer = UIScene()
 
 
     /**
@@ -195,6 +195,7 @@ object Verktex {
         clock.tick()
         treeLock.withLock {
             scene.update(clock)
+            overlayContainer.update(clock)
         }
     }
 
@@ -371,7 +372,7 @@ object Verktex {
      * and receiving input events.
      */
     @JvmStatic
-    fun removeOverlay(overlay: UIContainer) {
+    fun removeOverlay(overlay: UIComponent) {
         overlayContainer -= overlay
     }
 
