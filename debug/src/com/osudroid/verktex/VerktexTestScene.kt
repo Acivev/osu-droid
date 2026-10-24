@@ -40,6 +40,8 @@ import com.reco1l.verktex.ui.control.UISelect
 import com.reco1l.verktex.ui.control.UITextInput
 import com.reco1l.verktex.ui.control.slider
 import com.reco1l.verktex.ui.control.textInput
+import com.reco1l.verktex.ui.dialog.UIConfirmDialog
+import com.reco1l.verktex.ui.dialog.UIMessageDialog
 import com.reco1l.verktex.ui.gradientBox
 import com.reco1l.verktex.ui.icon
 import com.reco1l.verktex.ui.iconButton
@@ -629,6 +631,37 @@ class VerktexTestScene : UIScene() {
                         max = 100f
                         step = 1f
                         onValueChange = { offsetLabel.text = "Offset (-100 to 100): ${it.toInt()}" }
+                    }
+                }
+
+                section("Dialogs") {
+                    val dialogLabel = text { text = "Dialog result: none" }
+
+                    row {
+                        textButton {
+                            text = "Message dialog"
+                            onActionUp = {
+                                UIMessageDialog().apply {
+                                    title = "Message"
+                                    text = "This is a message dialog. Tap outside of it or the button to close it."
+                                    addButton {
+                                        text = "Close"
+                                        onActionUp = { hide() }
+                                    }
+                                }.show()
+                            }
+                        }
+                        textButton {
+                            text = "Confirm dialog"
+                            onActionUp = {
+                                UIConfirmDialog().apply {
+                                    title = "Confirm"
+                                    text = "Do you want to confirm?"
+                                    onConfirm = { dialogLabel.text = "Dialog result: confirmed" }
+                                    onCancel = { dialogLabel.text = "Dialog result: cancelled" }
+                                }.show()
+                            }
+                        }
                     }
                 }
 
