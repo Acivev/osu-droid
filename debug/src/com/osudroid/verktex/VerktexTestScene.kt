@@ -42,6 +42,8 @@ import com.reco1l.verktex.ui.shape.circle
 import com.reco1l.verktex.ui.shape.line
 import com.reco1l.verktex.ui.shape.triangle
 import com.reco1l.verktex.ui.sprite
+import com.reco1l.verktex.ui.text.TextAlign
+import com.reco1l.verktex.ui.text.UITextureText
 import com.reco1l.verktex.ui.text.faSolidIcon
 import com.reco1l.verktex.ui.text.text
 import com.reco1l.verktex.ui.textButton
@@ -543,6 +545,39 @@ class VerktexTestScene : UIScene() {
                             flippedVertical = true
                         }
                         logoSprite(64f, 64f) { color = Color4(0xFF89B4FA) }
+                    }
+                }
+
+                section("Texture text") {
+                    val digits = ('0'..'9').associateWith { Textures.load("test-score-$it", "gfx/score-$it.png", isInternal = true) }
+
+                    text { text = "Natural widths, and fixed widths sized for \"8888\" aligned to the right:" }
+
+                    val natural = UITextureText(digits).apply {
+                        text = "1"
+                        spacing = 4f
+                    }
+                    val fixed = UITextureText(digits).apply {
+                        text = "1"
+                        spacing = 4f
+                        fixedCharWidths = digits['8']?.let { eight -> digits.keys.associateWith { eight.width } }
+                        measureText = "8888"
+                        textAlign = TextAlign.Right
+                        backgroundColor = SURFACE_COLOR
+                    }
+                    row {
+                        +natural
+                        +fixed
+                    }
+
+                    var score = 1
+                    textButton {
+                        text = "Add 111"
+                        onActionUp = {
+                            score = (score + 111) % 10000
+                            natural.text = score.toString()
+                            fixed.text = score.toString()
+                        }
                     }
                 }
 
