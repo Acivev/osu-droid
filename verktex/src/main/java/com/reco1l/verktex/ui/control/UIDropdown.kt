@@ -12,6 +12,8 @@ import com.reco1l.verktex.data.Axis
 import com.reco1l.verktex.data.ClipMode
 import com.reco1l.verktex.input.InputEvent
 import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.math.Easing
+import com.reco1l.verktex.math.FloatAnimation
 import com.reco1l.verktex.math.interpolateFloat
 import com.reco1l.verktex.data.Padding
 import com.reco1l.verktex.ui.UIButton
@@ -48,6 +50,8 @@ class UIDropdown(var trigger: UIComponent) : UIScrollableContainer() {
 
     @Volatile
     private var isRemovalScheduled = false
+
+    private val menuScale = FloatAnimation(0f, 0.2f)
 
     private var menuX = 0f
     private var menuY = 0f
@@ -158,11 +162,13 @@ class UIDropdown(var trigger: UIComponent) : UIScrollableContainer() {
             // Expansion animation
             scaleOrigin = if (expandUpwards) Anchor.BottomCenter else Anchor.TopCenter
             alpha = clock.interpolateFloat(0.2f, alpha, 1f)
-            scale = clock.interpolateFloat(0.3f, scale, 1f)
+            menuScale.animateTo(1f, 0.4f, Easing.OutBounce)
+            scale = menuScale.update(clock)
 
         } else {
             alpha = clock.interpolateFloat(0.2f, alpha, 0f)
-            scale = clock.interpolateFloat(0.2f, scale, 0f)
+            menuScale.animateTo(0f, 0.2f, Easing.OutExpo)
+            scale = menuScale.update(clock)
 
             // Scheduled once, the update worker ticks more often than the draw worker.
             if (alpha == 0f && !isRemovalScheduled) {
