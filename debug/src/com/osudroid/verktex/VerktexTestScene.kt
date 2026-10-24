@@ -248,6 +248,104 @@ class VerktexTestScene : UIScene() {
                     }
                 }
 
+                section("Nested transforms") {
+                    val nestedLabel = text { text = "Nested clicks: 0, long presses: 0" }
+                    var nestedClicks = 0
+                    var longPresses = 0
+
+                    fun updateNestedLabel() {
+                        nestedLabel.text = "Nested clicks: $nestedClicks, long presses: $longPresses"
+                    }
+
+                    row {
+                        spacing = 48f.dip
+
+                        container {
+                            width = 220f.dip
+                            height = 120f.dip
+                            radius = 8f.dip
+                            rotationZ = 15f
+                            backgroundColor = Color4(0xFF313244)
+
+                            textButton {
+                                text = "Rotated"
+                                anchor = Anchor.Center
+                                origin = Anchor.Center
+                                onActionUp = { nestedClicks++; updateNestedLabel() }
+                            }
+                        }
+
+                        container {
+                            width = 220f.dip
+                            height = 120f.dip
+                            radius = 8f.dip
+                            scale = 0.7f
+                            backgroundColor = Color4(0xFF313244)
+
+                            textButton {
+                                text = "Scaled"
+                                anchor = Anchor.Center
+                                origin = Anchor.Center
+                                onActionUp = { nestedClicks++; updateNestedLabel() }
+                            }
+                        }
+
+                        textButton {
+                            text = "Long press me"
+                            onActionLongPress = { longPresses++; updateNestedLabel() }
+                        }
+                    }
+                }
+
+                section("Nested clipping and scrolling") {
+                    text { text = "The inner list must stay inside the outer box:" }
+
+                    container {
+                        width = 300f.dip
+                        height = 150f.dip
+                        clipping = ClipMode.Bounds
+                        backgroundColor = Color4(0xFF313244)
+
+                        // Taller than its parent, so its own clipping must be cut by the parent one.
+                        scrollableContainer {
+                            width = fill()
+                            height = 260f.dip
+                            scrollAxes = Axis.Y
+                            clipping = ClipMode.Bounds
+                            backgroundColor = Color4(0x40F38BA8)
+
+                            linearContainer {
+                                orientation = UILinearContainer.Orientation.Vertical
+                                padding = Padding(8f.dip)
+                                for (i in 1..15) {
+                                    text { text = "Inner row $i" }
+                                }
+                            }
+                        }
+                    }
+
+                    text { text = "Horizontal scrolling:" }
+
+                    scrollableContainer {
+                        width = 300f.dip
+                        height = 64f.dip
+                        scrollAxes = Axis.X
+                        clipping = ClipMode.Bounds
+                        backgroundColor = Color4(0xFF313244)
+
+                        row {
+                            for (i in 0 until 12) {
+                                box {
+                                    width = 56f.dip
+                                    height = 56f.dip
+                                    radius = 8f.dip
+                                    backgroundColor = if (i % 2 == 0) Color4(0xFF89B4FA) else Color4(0xFFA6E3A1)
+                                }
+                            }
+                        }
+                    }
+                }
+
                 section("Sprite") {
                     val logo = Textures.load("test-logo", "logo.png", isInternal = true)
                     if (logo != null) {
