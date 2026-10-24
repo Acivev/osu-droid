@@ -584,6 +584,25 @@ abstract class UIComponent {
     var isVisible = true
 
     /**
+     * Whether the bounds of this component, transformed to scene space, overlap the given scene
+     * rectangle. Anything drawn outside of the bounds is not considered.
+     */
+    fun intersectsSceneRect(x: Float, y: Float, width: Float, height: Float): Boolean {
+        if (transformationsInvalid) {
+            transformationsInvalid = false
+            calculateTransformations()
+        }
+
+        val (x0, y0) = localToSceneMatrix.transform(0f, 0f)
+        val (x1, y1) = localToSceneMatrix.transform(bounds.width, 0f)
+        val (x2, y2) = localToSceneMatrix.transform(bounds.width, bounds.height)
+        val (x3, y3) = localToSceneMatrix.transform(0f, bounds.height)
+
+        return minOf(x0, x1, x2, x3) <= x + width && maxOf(x0, x1, x2, x3) >= x
+            && minOf(y0, y1, y2, y3) <= y + height && maxOf(y0, y1, y2, y3) >= y
+    }
+
+    /**
      * Draws the component using the given renderer. This method is responsible for setting up the
      * rendering context, applying transformations, and calling [onDraw] to perform the actual
      * drawing of the component.

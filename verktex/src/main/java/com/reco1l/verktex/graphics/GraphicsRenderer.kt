@@ -169,6 +169,13 @@ abstract class GraphicsRenderer {
     }
 
     /**
+     * The area drawing is currently limited to, in scene space as x, y, width and height: the
+     * innermost scissor, or the window when nothing is clipped.
+     */
+    val clipBounds: Vec4
+        get() = scissorStack.lastOrNull() ?: Vec4(0f, 0f, window.windowWidth.toFloat(), window.windowHeight.toFloat())
+
+    /**
      * Pushes a shader onto the shader stack. It replaces the shader of subsequent drawing operations,
      * so it must use the built-in vertex layout: position at location 0, UV at 1 and color at 2.
      * Uniforms it does not declare are skipped.

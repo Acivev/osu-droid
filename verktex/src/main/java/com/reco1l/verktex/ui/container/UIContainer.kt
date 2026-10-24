@@ -205,7 +205,13 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
 
 
     override fun onDraw(renderer: GraphicsRenderer) {
+        val clip = renderer.clipBounds
+
         for (child in children) {
+            // Children fully outside the visible area cannot be seen, so they are not drawn.
+            if (!child.intersectsSceneRect(clip.x, clip.y, clip.z, clip.w)) {
+                continue
+            }
             onDrawChild(renderer, child)
         }
     }
