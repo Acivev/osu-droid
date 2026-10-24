@@ -39,22 +39,6 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
     }
 
 
-    final override fun layout(assignedBounds: Vec4) {
-
-        // Whether this container needs or not re-layout, descendants that are marked as invalid
-        // still needs to be re-layout.
-        if (!layoutInvalid) {
-            val hasInvalidDescendants = children.any(UIComponent::layoutInvalid)
-
-            if (hasInvalidDescendants) {
-                onLayout(bounds)
-            }
-        }
-
-        super.layout(assignedBounds)
-    }
-
-
     //region Attachment
 
     /**
