@@ -316,6 +316,7 @@ class VerktexTestScene : UIScene() {
                         +SpinningBox(Color4(0xFFA6E3A1), degreesPerSecond = -180f)
                         +OscillatingBox(Color4(0xFFF9E2AF)) { scale = 0.5f + 0.5f * it }
                         +OscillatingBox(Color4(0xFFF38BA8)) { alpha = 0.2f + 0.8f * it }
+                        +OscillatingBox(Color4(0xFFCBA6F7)) { translationY = fill(it * 0.5f - 0.25f) }
                     }
                 }
 
