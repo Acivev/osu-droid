@@ -19,6 +19,8 @@ import com.reco1l.verktex.graphics.GraphicsTexture
 import com.reco1l.verktex.math.Easing
 import com.reco1l.verktex.math.FloatAnimation
 import com.reco1l.verktex.math.interpolateFloat
+import com.reco1l.verktex.settings.Settings
+import com.reco1l.verktex.settings.VerktexSettings
 import com.reco1l.verktex.texture.Textures
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.ui.FAIcon
@@ -109,6 +111,12 @@ class VerktexTestScene : UIScene() {
                             textButton {
                                 text = name
                                 onActionUp = { Verktex.theme = Theme(palette = Theme.ColorPalette(accent)) }
+                            }
+                        }
+                        textButton {
+                            text = "Performance"
+                            onActionUp = {
+                                Settings[VerktexSettings.ShowPerformanceOverlay] = !Settings[VerktexSettings.ShowPerformanceOverlay, false]
                             }
                         }
                     }
