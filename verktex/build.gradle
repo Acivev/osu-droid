@@ -36,6 +36,5 @@ dependencies {
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
     exclude(
         '**/com/reco1l/verktex/ui/form/**',
-        '**/com/reco1l/verktex/ui/text/UITextureText.kt'
     )
 }

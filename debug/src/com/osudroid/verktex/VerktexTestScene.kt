@@ -19,6 +19,7 @@ import com.reco1l.verktex.texture.Textures
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.ui.FAIcon
 import com.reco1l.verktex.ui.Theme
+import com.reco1l.verktex.ui.UIAnimatedSprite
 import com.reco1l.verktex.ui.UIBadge
 import com.reco1l.verktex.ui.UIButton
 import com.reco1l.verktex.ui.UIComponent
@@ -26,7 +27,6 @@ import com.reco1l.verktex.ui.UIIcon
 import com.reco1l.verktex.ui.UILoadingIndicator
 import com.reco1l.verktex.ui.UIScene
 import com.reco1l.verktex.ui.UISprite
-import com.reco1l.verktex.ui.UIAnimatedSprite
 import com.reco1l.verktex.ui.animatedSprite
 import com.reco1l.verktex.ui.badge
 import com.reco1l.verktex.ui.card
@@ -55,6 +55,8 @@ import com.reco1l.verktex.ui.shape.circle
 import com.reco1l.verktex.ui.shape.line
 import com.reco1l.verktex.ui.shape.triangle
 import com.reco1l.verktex.ui.sprite
+import com.reco1l.verktex.ui.text.TextAlign
+import com.reco1l.verktex.ui.text.UITextureText
 import com.reco1l.verktex.ui.text.faSolidIcon
 import com.reco1l.verktex.ui.text.text
 import com.reco1l.verktex.ui.textButton
@@ -611,6 +613,39 @@ class VerktexTestScene : UIScene() {
                         textButton {
                             text = "Stop"
                             onActionUp = { looping.stop(); once.stop() }
+                        }
+                    }
+                }
+
+                section("Texture text") {
+                    val digits = ('0'..'9').associateWith { Textures.load("test-score-$it", "gfx/score-$it.png", isInternal = true) }
+
+                    text { text = "Natural widths, and fixed widths sized for \"8888\" aligned to the right:" }
+
+                    val natural = UITextureText(digits).apply {
+                        text = "1"
+                        spacing = 4f
+                    }
+                    val fixed = UITextureText(digits).apply {
+                        text = "1"
+                        spacing = 4f
+                        fixedCharWidths = digits['8']?.let { eight -> digits.keys.associateWith { eight.width } }
+                        measureText = "8888"
+                        textAlign = TextAlign.Right
+                        backgroundColor = SURFACE_COLOR
+                    }
+                    row {
+                        +natural
+                        +fixed
+                    }
+
+                    var score = 1
+                    textButton {
+                        text = "Add 111"
+                        onActionUp = {
+                            score = (score + 111) % 10000
+                            natural.text = score.toString()
+                            fixed.text = score.toString()
                         }
                     }
                 }
