@@ -30,10 +30,3 @@ dependencies {
 
     implementation project(':LibBASS')
 }
-
-// Work-in-progress components from Reco1l's reci-client branch that still depend on AndEngine or
-// app classes. Excluded from compilation until they are ported to the Verktex API.
-tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
-    exclude(
-    )
-}
