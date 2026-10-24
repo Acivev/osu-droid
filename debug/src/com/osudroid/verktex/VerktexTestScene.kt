@@ -141,7 +141,7 @@ class VerktexTestScene : UIScene() {
                     }
                     text {
                         width = 300f.dip
-                        backgroundColor = Color4(0xFF313244)
+                        backgroundColor = SURFACE_COLOR
                         alignment = Anchor.TopRight
                         text = "Right aligned"
                     }
@@ -151,7 +151,7 @@ class VerktexTestScene : UIScene() {
                     text {
                         width = 300f.dip
                         alignment = Anchor.TopCenter
-                        backgroundColor = Color4(0xFF313244)
+                        backgroundColor = SURFACE_COLOR
                         text = "Centered text\nwith a manual line break\nand a third line"
                     }
                     text {
@@ -161,7 +161,7 @@ class VerktexTestScene : UIScene() {
                         autoScrollAxes = Axis.X
                         autoScrollSpeed = 150f
                         autoScrollTimeout = 1f
-                        backgroundColor = Color4(0xFF313244)
+                        backgroundColor = SURFACE_COLOR
                         text = "This text is too long for its box, so it scrolls automatically."
                     }
                 }
@@ -201,7 +201,7 @@ class VerktexTestScene : UIScene() {
                             radius = 8f.dip
                             borderWidth = 3f.dip
                             borderColor = Color4(0xFFF9E2AF)
-                            backgroundColor = Color4(0xFF313244)
+                            backgroundColor = SURFACE_COLOR
                         }
                         box {
                             width = 64f.dip
@@ -265,7 +265,7 @@ class VerktexTestScene : UIScene() {
                         width = 200f.dip
                         height = 64f.dip
                         clipping = ClipMode.Bounds
-                        backgroundColor = Color4(0xFF313244)
+                        backgroundColor = SURFACE_COLOR
                         box {
                             width = 120f.dip
                             height = 120f.dip
@@ -295,7 +295,7 @@ class VerktexTestScene : UIScene() {
                             height = 120f.dip
                             radius = 8f.dip
                             rotationZ = 15f
-                            backgroundColor = Color4(0xFF313244)
+                            backgroundColor = SURFACE_COLOR
 
                             textButton {
                                 text = "Rotated"
@@ -310,7 +310,7 @@ class VerktexTestScene : UIScene() {
                             height = 120f.dip
                             radius = 8f.dip
                             scale = 0.7f
-                            backgroundColor = Color4(0xFF313244)
+                            backgroundColor = SURFACE_COLOR
 
                             textButton {
                                 text = "Scaled"
@@ -334,7 +334,7 @@ class VerktexTestScene : UIScene() {
                         width = 300f.dip
                         height = 150f.dip
                         clipping = ClipMode.Bounds
-                        backgroundColor = Color4(0xFF313244)
+                        backgroundColor = SURFACE_COLOR
 
                         // Taller than its parent, so its own clipping must be cut by the parent one.
                         scrollableContainer {
@@ -361,7 +361,7 @@ class VerktexTestScene : UIScene() {
                         height = 64f.dip
                         scrollAxes = Axis.X
                         clipping = ClipMode.Bounds
-                        backgroundColor = Color4(0xFF313244)
+                        backgroundColor = SURFACE_COLOR
 
                         row {
                             for (i in 0 until 12) {
@@ -378,65 +378,47 @@ class VerktexTestScene : UIScene() {
 
                 section("Sprite") {
                     val logo = Textures.load("test-logo", "logo.png", isInternal = true)
-                    val arrow = Textures.load("test-arrow", "back-arrow.png", isInternal = true)
 
-                    if (logo != null && arrow != null) {
-                        text { text = "Crop, fit and stretch in a wide box:" }
-                        row {
-                            for (type in UISprite.ScaleType.entries) {
-                                sprite {
-                                    textureRegion = logo
-                                    scaleType = type
-                                    width = 160f.dip
-                                    height = 64f.dip
-                                    backgroundColor = Color4(0xFF313244)
-                                }
-                            }
-                        }
+                    if (logo == null) {
+                        text { text = "Failed to load logo.png" }
+                        return@section
+                    }
 
-                        text { text = "Fit aligned to the left and right, crop aligned to the top:" }
-                        row {
-                            for (alignment in listOf(Anchor.CenterLeft, Anchor.CenterRight)) {
-                                sprite {
-                                    textureRegion = logo
-                                    gravity = alignment
-                                    width = 160f.dip
-                                    height = 64f.dip
-                                    backgroundColor = Color4(0xFF313244)
-                                }
-                            }
-                            sprite {
-                                textureRegion = logo
-                                scaleType = UISprite.ScaleType.Crop
-                                gravity = Anchor.TopCenter
-                                width = 160f.dip
-                                height = 64f.dip
-                                backgroundColor = Color4(0xFF313244)
-                            }
-                        }
+                    fun UIContainer.logoSprite(width: Float, height: Float, block: UISprite.() -> Unit = {}) = sprite {
+                        textureRegion = logo
+                        this.width = width.dip
+                        this.height = height.dip
+                        backgroundColor = SURFACE_COLOR
+                        block()
+                    }
 
-                        text { text = "Normal, flipped horizontally, vertically and both, tinted:" }
-                        row {
-                            for ((horizontal, vertical) in listOf(false to false, true to false, false to true, true to true)) {
-                                sprite {
-                                    textureRegion = logo
-                                    flippedHorizontal = horizontal
-                                    flippedVertical = vertical
-                                    width = 64f.dip
-                                    height = 64f.dip
-                                    backgroundColor = Color4(0xFF313244)
-                                }
-                            }
-                            sprite {
-                                textureRegion = arrow
-                                width = 64f.dip
-                                height = 64f.dip
-                                color = Color4(0xFFF38BA8)
-                                backgroundColor = Color4(0xFF313244)
-                            }
+                    text { text = "Crop, fit and stretch in a wide box:" }
+                    row {
+                        for (type in UISprite.ScaleType.entries) {
+                            logoSprite(160f, 64f) { scaleType = type }
                         }
-                    } else {
-                        text { text = "Failed to load the sprite textures" }
+                    }
+
+                    text { text = "Fit aligned to the left and right, crop aligned to the top:" }
+                    row {
+                        logoSprite(160f, 64f) { gravity = Anchor.CenterLeft }
+                        logoSprite(160f, 64f) { gravity = Anchor.CenterRight }
+                        logoSprite(160f, 64f) {
+                            scaleType = UISprite.ScaleType.Crop
+                            gravity = Anchor.TopCenter
+                        }
+                    }
+
+                    text { text = "Normal, flipped horizontally, vertically and both, tinted:" }
+                    row {
+                        logoSprite(64f, 64f)
+                        logoSprite(64f, 64f) { flippedHorizontal = true }
+                        logoSprite(64f, 64f) { flippedVertical = true }
+                        logoSprite(64f, 64f) {
+                            flippedHorizontal = true
+                            flippedVertical = true
+                        }
+                        logoSprite(64f, 64f) { color = Color4(0xFF89B4FA) }
                     }
                 }
 
@@ -513,6 +495,14 @@ class VerktexTestScene : UIScene() {
     /**
      * A box that calls [onWave] with a value going back and forth between 0 and 1 every second.
      */
+    companion object {
+        /**
+         * Background of the boxes the test cases are drawn in.
+         */
+        private val SURFACE_COLOR = Color4(0xFF313244)
+    }
+
+
     private class OscillatingBox(color: Color4, private val onWave: UIBox.(Float) -> Unit) : UIBox() {
         private var time = 0f
 
