@@ -17,6 +17,8 @@ import com.reco1l.verktex.ui.UIScene
 import com.reco1l.verktex.ui.UISprite
 import com.reco1l.verktex.ui.badge
 import com.reco1l.verktex.ui.card
+import com.reco1l.verktex.ui.gradientBox
+import com.reco1l.verktex.ui.loadingIndicator
 import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.container.UILinearContainer
 import com.reco1l.verktex.ui.container.container
@@ -247,6 +249,39 @@ class VerktexTestScene : UIScene() {
                                 lineWidth = 3f.dip
                                 color = Color4(0xFFF5C2E7)
                             }
+                        }
+                    }
+                }
+
+                section("Gradients and loading indicators") {
+                    row {
+                        for (angle in listOf(0f, 90f, 45f)) {
+                            gradientBox {
+                                width = 120f.dip
+                                height = 64f.dip
+                                gradientAngle = angle
+                                colorStart = Color4(0xFF89B4FA)
+                                colorEnd = Color4(0xFFF38BA8)
+                            }
+                        }
+                        gradientBox {
+                            width = 120f.dip
+                            height = 64f.dip
+                            radius = 16f.dip
+                            borderWidth = 2f.dip
+                            borderColor = Color4(0xFFF9E2AF)
+                            colorStart = Color4(0xFFA6E3A1)
+                            colorEnd = Color4(0x00A6E3A1)
+                        }
+                    }
+                    row {
+                        loadingIndicator()
+                        loadingIndicator {
+                            width = 64f.dip
+                            height = 64f.dip
+                            thickness = 6f.dip
+                            rotationSpeed = 180f
+                            color = Color4(0xFFF38BA8)
                         }
                     }
                 }
