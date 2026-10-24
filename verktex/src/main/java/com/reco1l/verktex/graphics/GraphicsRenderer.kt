@@ -628,14 +628,17 @@ abstract class GraphicsRenderer {
         radius: Float = 0f,
         uv: Vec4 = Vec4(region.u0, region.v0, region.u1, region.v1)
     ) {
+        // The texture shader only reads the uniforms for rounded corners, so plain textures share
+        // an empty set and consecutive ones from the same texture end up in one draw call.
+        val uniformSet = GraphicsShader.UniformSet()
+        if (radius > 0f) {
+            uniformSet["uRadius"] = radius
+            uniformSet["uSize"] = Vec2(width, height)
+        }
+
         setState(
             shader = BuiltIn.Shaders.TextureQuad,
-            uniformSet = GraphicsShader.UniformSet().apply {
-                set("uRadius", radius)
-                set("uBorderWidth", borderWidth)
-                set("uBorderColor", borderColor)
-                set("uSize", Vec2(width, height))
-            },
+            uniformSet = uniformSet,
             texture = texture
         )
 
