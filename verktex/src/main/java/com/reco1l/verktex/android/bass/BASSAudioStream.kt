@@ -27,12 +27,12 @@ class BASSAudioStream(
             val pos = BASS.BASS_ChannelGetPosition(id, BASS.BASS_POS_BYTE)
             if (pos == -1L) return 0.0
 
-            return BASS.BASS_ChannelBytes2Seconds(id, pos) * 1000
+            return BASS.BASS_ChannelBytes2Seconds(id, pos)
         }
         set(value) {
             if (value < 0.0) throw IllegalArgumentException("Position cannot be negative")
 
-            val pos = BASS.BASS_ChannelSeconds2Bytes(id, value / 1000)
+            val pos = BASS.BASS_ChannelSeconds2Bytes(id, value)
             BASS.BASS_ChannelSetPosition(id, pos, BASS.BASS_POS_BYTE)
         }
 
