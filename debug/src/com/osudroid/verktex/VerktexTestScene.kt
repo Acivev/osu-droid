@@ -545,6 +545,13 @@ class VerktexTestScene : UIScene() {
                         onValueChange = { multiSelectLabel.text = "Multi select: $it" }
                     }
 
+                    val longSelectLabel = text { text = "Long select: none" }
+                    +UISelect<Int>().apply {
+                        width = 240f.dip
+                        options = (1..40).map { UISelect.Option(it, "Entry $it") }
+                        onValueChange = { longSelectLabel.text = "Long select: $it" }
+                    }
+
                     val selectLabel = text { text = "Select: none" }
                     +UISelect<Int>().apply {
                         width = 240f.dip
