@@ -31,9 +31,9 @@ object PerformanceStats {
     var drawCommands = 0
 
     /**
-     * Average frames per second over the kept frame times.
+     * Average time between frames in milliseconds over the kept frame times.
      */
-    val fps: Float
+    val frameTime: Float
         get() {
             var total = 0f
             var count = 0
@@ -43,7 +43,22 @@ object PerformanceStats {
                     count++
                 }
             }
-            return if (total > 0f) count * 1000f / total else 0f
+            return if (count > 0) total / count else 0f
+        }
+
+    /**
+     * The longest kept frame time in milliseconds.
+     */
+    val maxFrameTime: Float
+        get() = frameTimes.max()
+
+    /**
+     * Average frames per second over the kept frame times.
+     */
+    val fps: Float
+        get() {
+            val frameTime = frameTime
+            return if (frameTime > 0f) 1000f / frameTime else 0f
         }
 
 

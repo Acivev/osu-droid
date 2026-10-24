@@ -6,24 +6,42 @@ import com.reco1l.verktex.data.Anchor
 import com.reco1l.verktex.data.Color4
 import com.reco1l.verktex.data.Padding
 import com.reco1l.verktex.data.dip
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.fonts.Font
 import com.reco1l.verktex.graphics.GraphicsRenderer
 import com.reco1l.verktex.graphics.GraphicsShader
 import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.container.UILinearContainer
 import com.reco1l.verktex.ui.text.UIText
 import kotlin.math.min
 
 /**
- * Shows the frame rate, the frame, draw and update times and a graph of the last frame times in a
- * corner of the window. Enabled with the `ShowPerformanceOverlay` setting.
+ * Shows the frame rate, frame, draw and update times and a graph of the last frame times in the
+ * top right corner. Enabled with the `ShowPerformanceOverlay` setting.
  */
 class UIPerformanceOverlay : UILinearContainer() {
 
-    private val label = UIText().apply {
-        fontSize = 12f.dip
+    private val fpsText = UIText().apply {
+        fontSize = 18f.dip
+        fontWeight = Font.Weight.Bold
+        anchor = Anchor.CenterLeft
+        origin = Anchor.CenterLeft
     }
 
-    private var timeSinceLabelUpdate = LABEL_INTERVAL
+    private val frameTimeText = UIText().apply {
+        fontSize = 12f.dip
+        color = SECONDARY_TEXT_COLOR
+        anchor = Anchor.CenterRight
+        origin = Anchor.CenterRight
+    }
+
+    private val drawTimeText = statValue()
+    private val updateTimeText = statValue()
+    private val drawCallsText = statValue()
+
+    private var timeSinceTextUpdate = TEXT_INTERVAL
 
 
     init {
@@ -32,28 +50,85 @@ class UIPerformanceOverlay : UILinearContainer() {
         origin = Anchor.TopRight
         x = (-8f).dip
         y = 8f.dip
-        padding = Padding(6f.dip)
-        spacing = 4f.dip
-        radius = 6f.dip
-        backgroundColor = Color4(0xB0000000)
+        width = PANEL_WIDTH.dip
+        padding = Padding(PANEL_PADDING.dip)
+        spacing = 8f.dip
+        radius = 8f.dip
+        backgroundColor = BACKGROUND_COLOR
 
-        +label
-        +Graph()
+        +UIContainer().apply {
+            width = fill()
+            +fpsText
+            +frameTimeText
+        }
+
+        +UIContainer().apply {
+            width = fill()
+            +Graph()
+
+            // Guide labels, placed just above their lines.
+            for ((label, frameTime) in listOf("120" to FRAME_TIME_120, "60" to FRAME_TIME_60)) {
+                +UIText().apply {
+                    text = label
+                    fontSize = 9f.dip
+                    color = GUIDE_COLOR
+                    padding = Padding(3f.dip, 0f.dip)
+                    radius = 3f.dip
+                    backgroundColor = BACKGROUND_COLOR
+                    anchor = Anchor.TopRight
+                    origin = Anchor.BottomRight
+                    x = (-4f).dip
+                    y = (GRAPH_HEIGHT * (1f - frameTime / MAX_FRAME_TIME)).dip
+                }
+            }
+        }
+
+        +UILinearContainer().apply {
+            width = fill()
+            spacing = STAT_SPACING.dip
+
+            +stat("DRAW", drawTimeText)
+            +stat("UPDATE", updateTimeText)
+            +stat("DRAW CALLS", drawCallsText)
+        }
+    }
+
+
+    private fun statValue() = UIText().apply {
+        fontSize = 13f.dip
+    }
+
+    /**
+     * A column with a caption above a value, all three share the panel width.
+     */
+    private fun stat(caption: String, value: UIText) = UILinearContainer().apply {
+        orientation = Orientation.Vertical
+        width = ((PANEL_WIDTH - 2 * PANEL_PADDING - 2 * STAT_SPACING) / 3).dip
+        spacing = 1f.dip
+
+        +UIText().apply {
+            text = caption
+            fontSize = 9f.dip
+            color = SECONDARY_TEXT_COLOR
+        }
+        +value
     }
 
 
     override fun onUpdate(clock: TickingClock) {
-        // Re-measuring the text is not free, so it refreshes a few times per second only.
-        timeSinceLabelUpdate += clock.elapsedTickTime
+        // Re-measuring the texts is not free, so they refresh a few times per second only.
+        timeSinceTextUpdate += clock.elapsedTickTime
 
-        if (timeSinceLabelUpdate >= LABEL_INTERVAL) {
-            timeSinceLabelUpdate = 0f
-            label.text = "%.0f fps   draw %.1f ms   update %.2f ms   %d draw calls".format(
-                PerformanceStats.fps,
-                PerformanceStats.drawTime,
-                PerformanceStats.updateTime,
-                PerformanceStats.drawCommands
-            )
+        if (timeSinceTextUpdate >= TEXT_INTERVAL) {
+            timeSinceTextUpdate = 0f
+
+            val fps = PerformanceStats.fps
+            fpsText.text = "%.0f FPS".format(fps)
+            fpsText.color = colorFor(if (fps > 0f) 1000f / fps else 0f)
+            frameTimeText.text = "%.1f ms · max %.1f ms".format(PerformanceStats.frameTime, PerformanceStats.maxFrameTime)
+            drawTimeText.text = "%.1f ms".format(PerformanceStats.drawTime)
+            updateTimeText.text = "%.2f ms".format(PerformanceStats.updateTime)
+            drawCallsText.text = PerformanceStats.drawCommands.toString()
         }
 
         super.onUpdate(clock)
@@ -61,13 +136,15 @@ class UIPerformanceOverlay : UILinearContainer() {
 
 
     /**
-     * One bar per frame, green up to 120 fps, yellow up to 60 fps, red below, with guides at both.
+     * One bar per frame with guide lines at 120 and 60 fps.
      */
     private class Graph : UICanvas() {
 
         init {
-            width = (PerformanceStats.HISTORY_SIZE * BAR_WIDTH).dip
+            width = fill()
             height = GRAPH_HEIGHT.dip
+            radius = 4f.dip
+            backgroundColor = GRAPH_BACKGROUND_COLOR
         }
 
         override fun onDraw(renderer: GraphicsRenderer) = with(renderer) {
@@ -84,11 +161,7 @@ class UIPerformanceOverlay : UILinearContainer() {
                     if (frameTime <= 0f) continue
 
                     val barHeight = min(frameTime / MAX_FRAME_TIME, 1f) * height
-                    val color = when {
-                        frameTime <= FRAME_TIME_120 -> GOOD_COLOR
-                        frameTime <= FRAME_TIME_60 -> OK_COLOR
-                        else -> BAD_COLOR
-                    }.copy(alpha = baseColor.alpha)
+                    val color = colorFor(frameTime).copy(alpha = baseColor.alpha)
 
                     val x = i * barWidth
                     val y = height - barHeight
@@ -116,18 +189,32 @@ class UIPerformanceOverlay : UILinearContainer() {
 
 
     companion object {
-        private const val LABEL_INTERVAL = 0.25f
-        private const val BAR_WIDTH = 2f
-        private const val GRAPH_HEIGHT = 48f
+        private const val TEXT_INTERVAL = 0.25f
+        private const val PANEL_WIDTH = 300f
+        private const val PANEL_PADDING = 10f
+        private const val STAT_SPACING = 6f
+        private const val GRAPH_HEIGHT = 56f
 
         // Milliseconds, the graph is full at 30 fps.
         private const val MAX_FRAME_TIME = 1000f / 30f
         private const val FRAME_TIME_120 = 1000f / 120f
         private const val FRAME_TIME_60 = 1000f / 60f
 
+        private val BACKGROUND_COLOR = Color4(0xCC11111B)
+        private val GRAPH_BACKGROUND_COLOR = Color4(0x40000000)
+        private val SECONDARY_TEXT_COLOR = Color4(0xFFA6ADC8)
+        private val GUIDE_COLOR = Color4(0x80FFFFFF)
         private val GOOD_COLOR = Color4(0xFFA6E3A1)
         private val OK_COLOR = Color4(0xFFF9E2AF)
         private val BAD_COLOR = Color4(0xFFF38BA8)
-        private val GUIDE_COLOR = Color4(0x60FFFFFF)
+
+        /**
+         * Green up to 120 fps, yellow up to 60 fps, red below.
+         */
+        private fun colorFor(frameTime: Float) = when {
+            frameTime <= FRAME_TIME_120 -> GOOD_COLOR
+            frameTime <= FRAME_TIME_60 -> OK_COLOR
+            else -> BAD_COLOR
+        }
     }
 }
