@@ -22,7 +22,8 @@ open class UITriangle : UICanvas() {
             y = 0f,
             width = bounds.width,
             height = bounds.height,
-            middle = middle
+            middle = middle,
+            color = contentColor
         )
     }
 }

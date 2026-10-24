@@ -9,6 +9,8 @@ import com.reco1l.verktex.data.Dimension
 import com.reco1l.verktex.data.Vec4
 import com.reco1l.verktex.ui.UIComponent
 import com.reco1l.verktex.data.LayoutConstraints
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.Theme
 import kotlin.math.*
 
 
@@ -80,15 +82,60 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
         val childConstraints = contentConstraints.loosen()
 
         forEach { child ->
-            val childMeasuredSize = child.measure(childConstraints)
+            val childMeasuredSize = child.measure(childConstraints.withoutFillLimits(child))
 
             measuredWidth = max(measuredWidth, child.x.resolve(contentConstraints.availableWidth) + childMeasuredSize.x)
             measuredHeight = max(measuredHeight, child.y.resolve(contentConstraints.availableHeight) + childMeasuredSize.y)
         }
 
-        val measuredSize = Vec2(measuredWidth, measuredHeight).expand(padding.toVec4())
+        val measuredSize = parentConstraints.constrain(Vec2(measuredWidth, measuredHeight).expand(padding.toVec4()))
+        stretchFillingChildren(measuredSize) { childConstraints }
+        return measuredSize
+    }
 
-        return parentConstraints.constrain(measuredSize)
+    /**
+     * Whether [child] fills the width while this container wraps its own. Such a child would take
+     * all the available space, so it is measured by its content first (see [withoutFillLimits]) and
+     * stretched to the container afterwards (see [stretchFillingChildren]).
+     */
+    protected open fun fillsWrappedWidth(child: UIComponent) =
+        width is Dimension.ContentSizeFraction && child.width is Dimension.AvailableSizeFraction
+
+    /**
+     * Same as [fillsWrappedWidth] for the height.
+     */
+    protected open fun fillsWrappedHeight(child: UIComponent) =
+        height is Dimension.ContentSizeFraction && child.height is Dimension.AvailableSizeFraction
+
+    /**
+     * Removes the limits of the axes [child] fills while this container wraps them.
+     */
+    protected fun LayoutConstraints.withoutFillLimits(child: UIComponent) = copy(
+        maxWidth = if (fillsWrappedWidth(child)) Float.POSITIVE_INFINITY else maxWidth,
+        maxHeight = if (fillsWrappedHeight(child)) Float.POSITIVE_INFINITY else maxHeight
+    )
+
+    /**
+     * Measures again the children filling a wrapped axis, now limited to the content area of the
+     * [measuredSize] of this container.
+     */
+    protected fun stretchFillingChildren(measuredSize: Vec2, constraintsFor: (UIComponent) -> LayoutConstraints) {
+        val contentWidth = measuredSize.x - paddingLeft.toPixels() - paddingRight.toPixels()
+        val contentHeight = measuredSize.y - paddingTop.toPixels() - paddingBottom.toPixels()
+
+        forEach { child ->
+            val fillsWidth = fillsWrappedWidth(child)
+            val fillsHeight = fillsWrappedHeight(child)
+
+            if (fillsWidth || fillsHeight) {
+                val constraints = constraintsFor(child)
+
+                child.measure(constraints.copy(
+                    maxWidth = if (fillsWidth) contentWidth else constraints.maxWidth,
+                    maxHeight = if (fillsHeight) contentHeight else constraints.maxHeight
+                ))
+            }
+        }
     }
 
     override fun onLayout(bounds: Vec4) {
@@ -124,6 +171,29 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
             }
         }
         return false
+    }
+
+    //endregion
+
+    //region Style
+
+    override fun onStyle(theme: Theme) {
+        super.onStyle(theme)
+        // Children styles can depend on this container's state (e.g. a button's density).
+        children.forEach { it.style() }
+    }
+
+    //endregion
+
+    //region Update
+
+    override fun onUpdate(clock: TickingClock) {
+        // Indexed loop, children can be added or removed while updating.
+        var i = 0
+        while (i < children.size) {
+            children.getOrNull(i)?.update(clock)
+            i++
+        }
     }
 
     //endregion

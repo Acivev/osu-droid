@@ -58,6 +58,7 @@ open class UIIcon(
         parentConstraints: LayoutConstraints,
         contentConstraints: LayoutConstraints
     ): Vec2 {
+        val font = iconFamily[iconSize]
         val measuredWidth = font[iconCode].advance
         val measuredHeight = font.metrics.lineHeight
         val measuredSize = Vec2(measuredWidth, measuredHeight)
@@ -79,12 +80,16 @@ open class UIIcon(
 
         val font = font
 
+        // Centered inside the content area, so rotations around the center keep the glyph in place.
+        val contentWidth = bounds.width - paddingLeft.toPixels() - paddingRight.toPixels()
+        val contentHeight = bounds.height - paddingTop.toPixels() - paddingBottom.toPixels()
+
         renderer.drawText(
             font = font,
-            text = iconCode.toChar().toString(),
-            x = 0f,
-            y = 0f,
-            color = color
+            text = String(Character.toChars(iconCode)),
+            x = paddingLeft.toPixels() + (contentWidth - font[iconCode].advance) / 2f,
+            y = paddingTop.toPixels() + (contentHeight - font.metrics.lineHeight) / 2f,
+            color = contentColor
         )
     }
 

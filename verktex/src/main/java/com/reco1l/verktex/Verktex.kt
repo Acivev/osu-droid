@@ -1,5 +1,7 @@
 package com.reco1l.verktex
 
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import com.reco1l.verktex.audio.AudioDriver
 import com.reco1l.verktex.graphics.GraphicsRenderer
 import com.reco1l.verktex.input.InputEvent
@@ -165,17 +167,41 @@ object Verktex {
         }
 
         graphics.begin()
-        scene.draw(graphics)
-        overlayContainer.draw(graphics)
+        treeLock.withLock {
+            scene.draw(graphics)
+            overlayContainer.draw(graphics)
+        }
         graphics.end()
     }
 
     @RunOnUpdateWorker
     private fun update() {
         updateWorker.check()
+
+        // Without a cap the update worker spins as fast as it can, which wastes a CPU core and makes
+        // each tick so short that eased interpolations barely move.
+        val remainingNanos = UPDATE_INTERVAL_NANOS - (System.nanoTime() - lastUpdateNanos)
+        if (remainingNanos > 0) {
+            Thread.sleep(remainingNanos / 1_000_000, (remainingNanos % 1_000_000).toInt())
+        }
+        lastUpdateNanos = System.nanoTime()
+
         clock.tick()
-        scene.update(clock)
+        treeLock.withLock {
+            scene.update(clock)
+        }
     }
+
+    /**
+     * Guards the component tree, which is traversed by the draw and update workers and modified by
+     * input events coming from the platform's UI thread. It is fair, otherwise the draw worker
+     * re-acquires it in a loop and starves the update worker.
+     */
+    private val treeLock = ReentrantLock(true)
+
+    private var lastUpdateNanos = 0L
+
+    private const val UPDATE_INTERVAL_NANOS = 1_000_000_000L / 240
 
 
     /**
@@ -362,7 +388,7 @@ object Verktex {
         if (!started) {
             throw IllegalStateException("Engine has not been started. Call start() before scheduling tasks.")
         }
-        return drawWorker.schedule(action)
+        return drawWorker.schedule { treeLock.withLock { action() } }
     }
 
     /**
@@ -376,7 +402,7 @@ object Verktex {
         if (!started) {
             throw IllegalStateException("Engine has not been started. Call start() before scheduling tasks.")
         }
-        return updateWorker.schedule(action)
+        return updateWorker.schedule { treeLock.withLock { action() } }
     }
 
 
@@ -389,10 +415,11 @@ object Verktex {
     }
 
     internal fun onInputEvent(event: InputEvent): Boolean {
-        if (overlayContainer.propagateConsumable { it.onInputEvent(event) }) {
-            return true
+        // Containers dispatch events to their children themselves (with hit testing), so only the
+        // roots receive them here.
+        treeLock.withLock {
+            return overlayContainer.onInputEvent(event) || scene.onInputEvent(event)
         }
-        return scene.propagateConsumable { it.onInputEvent(event) }
     }
 
     fun onGameWindowFocusChange(hasFocus: Boolean) {

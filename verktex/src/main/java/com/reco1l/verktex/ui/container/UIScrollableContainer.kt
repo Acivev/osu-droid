@@ -212,15 +212,22 @@ open class UIScrollableContainer : UIContainer() {
         var contentHeight = 0f
 
         forEach { child ->
-            val childSize = child.measure(childConstraints)
+            val childSize = child.measure(childConstraints.withoutFillLimits(child))
             contentWidth = max(contentWidth, childSize.x)
             contentHeight = max(contentHeight, childSize.y)
         }
 
         contentSize = Vec2(contentWidth, contentHeight)
 
-        return parentConstraints.constrain(contentSize.expand(padding.toVec4()))
+        val measuredSize = parentConstraints.constrain(contentSize.expand(padding.toVec4()))
+        stretchFillingChildren(measuredSize) { childConstraints }
+        return measuredSize
     }
+
+    // Scrollable axes are unbounded, so filling them is the same as wrapping.
+    override fun fillsWrappedWidth(child: UIComponent) = !scrollAxes.isHorizontal && super.fillsWrappedWidth(child)
+
+    override fun fillsWrappedHeight(child: UIComponent) = !scrollAxes.isVertical && super.fillsWrappedHeight(child)
 
     override fun onLayout(bounds: Vec4) {
         // Children are offset by the current scroll position.

@@ -10,6 +10,7 @@ import com.reco1l.verktex.fonts.Font
 import com.reco1l.verktex.math.toRadians
 import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.sin
@@ -362,6 +363,8 @@ abstract class GraphicsRenderer {
             uniformSet = GraphicsShader.UniformSet()
         )
 
+        // The quad shader fades out at UV edges, so every vertex samples its center to keep the
+        // shape opaque up to its geometric edges.
         drawGeometry { transform, baseColor ->
             val color = transformColor(color)
 
@@ -369,9 +372,50 @@ abstract class GraphicsRenderer {
             val (x1, y1) = transform.transform(x + width, y)
             val (x2, y2) = transform.transform(x + width * middle, y + height)
 
-            addVertex(x0, y0, 0f, 0f, color)
-            addVertex(x1, y1, 1f, 0f, color)
-            addVertex(x2, y2, 0.5f, 1f, color)
+            addVertex(x0, y0, 0.5f, 0.5f, color)
+            addVertex(x1, y1, 0.5f, 0.5f, color)
+            addVertex(x2, y2, 0.5f, 0.5f, color)
+        }
+    }
+
+    /**
+     * Draws a line between two points with the specified width and color.
+     */
+    fun drawLine(
+        x1: Float,
+        y1: Float,
+        x2: Float,
+        y2: Float,
+        lineWidth: Float,
+        color: Color4 = Color4.White
+    ) {
+        val length = hypot(x2 - x1, y2 - y1)
+        if (length <= 0f || lineWidth <= 0f) return
+
+        setState(
+            shader = BuiltIn.Shaders.SolidQuad,
+            uniformSet = GraphicsShader.UniformSet()
+        )
+
+        drawGeometry { transform, baseColor ->
+            val color = transformColor(color)
+
+            // Perpendicular offset of half the line width.
+            val nx = -(y2 - y1) / length * lineWidth / 2f
+            val ny = (x2 - x1) / length * lineWidth / 2f
+
+            val (ax, ay) = transform.transform(x1 + nx, y1 + ny)
+            val (bx, by) = transform.transform(x2 + nx, y2 + ny)
+            val (cx, cy) = transform.transform(x2 - nx, y2 - ny)
+            val (dx, dy) = transform.transform(x1 - nx, y1 - ny)
+
+            addVertex(ax, ay, 0.5f, 0.5f, color)
+            addVertex(bx, by, 0.5f, 0.5f, color)
+            addVertex(cx, cy, 0.5f, 0.5f, color)
+
+            addVertex(ax, ay, 0.5f, 0.5f, color)
+            addVertex(cx, cy, 0.5f, 0.5f, color)
+            addVertex(dx, dy, 0.5f, 0.5f, color)
         }
     }
 
@@ -436,8 +480,8 @@ abstract class GraphicsRenderer {
                     val (px, py) = transform.transform(previousX, previousY)
                     val (nx, ny) = transform.transform(x, y)
 
-                    addVertex(px, py, 0f, 0f, color)
-                    addVertex(nx, ny, 1f, 1f, color)
+                    addVertex(px, py, 0.5f, 0.5f, color)
+                    addVertex(nx, ny, 0.5f, 0.5f, color)
                     addVertex(centerX, centerY, 0.5f, 0.5f, color)
                 }
 
@@ -513,21 +557,23 @@ abstract class GraphicsRenderer {
         drawGeometry { transform, baseColor ->
             val color = transformColor(color)
 
-            val (x, y) = transform.transform(x, y)
+            // Glyphs are laid out in local space and every corner is transformed, so rotation and
+            // scale apply to text as well.
             val baseline = y - font.metrics.ascent
 
             var charIndex = 0
             var cursor = x
+            var previousCodePoint = -1
 
             while (charIndex < text.length) {
 
                 val codePoint = text.codePointAt(charIndex)
                 val charCount = Character.charCount(codePoint)
 
-                if (charIndex > 0) {
-                    val previousCodePoint = text.codePointAt(charIndex - 1)
+                if (previousCodePoint != -1) {
                     cursor += font.getKerning(previousCodePoint, codePoint)
                 }
+                previousCodePoint = codePoint
 
                 val glyph = font[codePoint]
 
@@ -545,13 +591,18 @@ abstract class GraphicsRenderer {
                     val u1 = glyph.region.u1
                     val v1 = glyph.region.v1
 
-                    addVertex(left, top, u0, v0, color)
-                    addVertex(left, bottom, u0, v1, color)
-                    addVertex(right, bottom, u1, v1, color)
+                    val (x0, y0) = transform.transform(left, top)
+                    val (x1, y1) = transform.transform(left, bottom)
+                    val (x2, y2) = transform.transform(right, bottom)
+                    val (x3, y3) = transform.transform(right, top)
 
-                    addVertex(right, bottom, u1, v1, color)
-                    addVertex(right, top, u1, v0, color)
-                    addVertex(left, top, u0, v0, color)
+                    addVertex(x0, y0, u0, v0, color)
+                    addVertex(x1, y1, u0, v1, color)
+                    addVertex(x2, y2, u1, v1, color)
+
+                    addVertex(x2, y2, u1, v1, color)
+                    addVertex(x3, y3, u1, v0, color)
+                    addVertex(x0, y0, u0, v0, color)
                 }
 
                 cursor += glyph.advance

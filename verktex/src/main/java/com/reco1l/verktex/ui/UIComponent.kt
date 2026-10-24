@@ -175,7 +175,7 @@ abstract class UIComponent {
     /**
      * The scale in the X axis.
      */
-    var scaleX = 0f
+    var scaleX = 1f
         set(value) {
             if (field.almostEquals(value)) return
             field = value
@@ -185,7 +185,7 @@ abstract class UIComponent {
     /**
      * The scale in the Y axis.
      */
-    var scaleY = 0f
+    var scaleY = 1f
         set(value) {
             if (field.almostEquals(value)) return
             field = value
@@ -305,12 +305,12 @@ abstract class UIComponent {
      * [x], [y], [scaleX], [scaleY], [rotationX], [rotationY], [rotationZ]
      */
     open fun calculateTransformations() {
+        // Mat2 operations are applied after the existing ones, so the order here is the order in
+        // which they affect a local point: scale, rotate and finally move to the layout position.
         localToParentMatrix.apply {
             identity()
 
-            translate(bounds.x, bounds.y)
-
-            if (scaleX != 0f || scaleY != 0f) {
+            if (scaleX != 1f || scaleY != 1f) {
                 val scaleCenterX = bounds.width * scaleOrigin.x
                 val scaleCenterY = bounds.height * scaleOrigin.y
 
@@ -327,18 +327,25 @@ abstract class UIComponent {
                 rotate(rotationZ)
                 translate(rotationCenterX, rotationCenterY)
             }
+
+            translate(bounds.x, bounds.y)
         }
 
         parentToLocalMatrix.set(localToParentMatrix)
-        parentToLocalMatrix.invert()
+        parentToLocalMatrix.invertOrNaN()
 
         val parent = parent
 
-        localToSceneMatrix.set(localToParentMatrix)
-        if (parent != null) localToSceneMatrix.concat(parent.localToSceneMatrix)
+        // concat() applies the given matrix first, so the local transform goes into the parent's.
+        if (parent != null) {
+            localToSceneMatrix.set(parent.localToSceneMatrix)
+            localToSceneMatrix.concat(localToParentMatrix)
+        } else {
+            localToSceneMatrix.set(localToParentMatrix)
+        }
 
         sceneToLocalMatrix.set(localToSceneMatrix)
-        sceneToLocalMatrix.invert()
+        sceneToLocalMatrix.invertOrNaN()
     }
 
     /**
@@ -388,6 +395,13 @@ abstract class UIComponent {
      * The color of the component boxed in a [Color4] object.
      */
     var color = Color4.White
+
+    /**
+     * The [color] without its alpha, used to draw the component's own content. The alpha is
+     * already applied to everything the component draws through the renderer's color stack.
+     */
+    protected val contentColor
+        get() = color.copy(alpha = 1f)
 
     /**
      * The alpha component of the compoent's color.
@@ -530,7 +544,8 @@ abstract class UIComponent {
      * This is usually called when the component is added to a container.
      */
     open fun onAttached() {
-        style()
+        // The style is already applied when assigned, applying it again here would override the
+        // values set by the builder after construction.
     }
 
     /**
@@ -578,20 +593,7 @@ abstract class UIComponent {
         renderer.pushMatrix(localToSceneMatrix)
         renderer.pushColor(color)
 
-        if (clipping != ClipMode.Disabled) {
-            val clippingBounds = if (clipping == ClipMode.Bounds)
-                bounds
-            else
-                bounds.shrink(padding.toVec4())
-
-            renderer.pushScissor(
-                x = if (clipping == ClipMode.Bounds) 0f else paddingLeft.toPixels(),
-                y = if (clipping == ClipMode.Bounds) 0f else paddingTop.toPixels(),
-                width = clippingBounds.width,
-                height = clippingBounds.height
-            )
-        }
-
+        // The background is drawn before clipping, padding clipping must only affect the content.
         if (backgroundColor.alpha > 0f || (borderColor.alpha > 0f && borderWidth.value > 0f)) {
             renderer.drawRect(
                 x = 0f,
@@ -602,6 +604,20 @@ abstract class UIComponent {
                 borderWidth = borderWidth.toPixels(),
                 borderColor = borderColor,
                 radius = radius.toPixels()
+            )
+        }
+
+        if (clipping != ClipMode.Disabled) {
+            val clippingBounds = if (clipping == ClipMode.Bounds)
+                bounds
+            else
+                bounds.shrink(padding.toVec4())
+
+            renderer.pushScissor(
+                x = if (clipping == ClipMode.Bounds) 0f else paddingLeft.toPixels(),
+                y = if (clipping == ClipMode.Bounds) 0f else paddingTop.toPixels(),
+                width = clippingBounds.width.coerceAtLeast(0f),
+                height = clippingBounds.height.coerceAtLeast(0f)
             )
         }
 
@@ -750,7 +766,12 @@ abstract class UIComponent {
         val contentConstraints = ownConstraints.shrink(padding)
 
         val oldMeasuredSize = measuredSize
-        measuredSize = ownConstraints.constrain(onMeasure(parentContraints, contentConstraints))
+
+        val contentSize = onMeasure(parentContraints, contentConstraints)
+        val widthFactor = (width as? Dimension.ContentSizeFraction)?.factor ?: 1f
+        val heightFactor = (height as? Dimension.ContentSizeFraction)?.factor ?: 1f
+
+        measuredSize = ownConstraints.constrain(Vec2(contentSize.x * widthFactor, contentSize.y * heightFactor))
 
         if (oldMeasuredSize != measuredSize) {
             invalidateLayout()

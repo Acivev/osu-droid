@@ -43,6 +43,7 @@ open class UICircle : UICanvas() {
             height = bounds.height,
             startAngle = startAngle,
             endAngle = endAngle,
+            color = contentColor
         )
     }
 

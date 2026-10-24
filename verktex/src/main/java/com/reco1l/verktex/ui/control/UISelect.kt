@@ -9,7 +9,6 @@ import com.reco1l.verktex.data.Padding
 import com.reco1l.verktex.data.dip
 import com.reco1l.verktex.data.fill
 import com.reco1l.verktex.graphics.GraphicsRenderer
-import com.reco1l.verktex.math.Easing
 import com.reco1l.verktex.math.interpolateFloat
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.ui.text.UIText
@@ -85,16 +84,15 @@ open class UISelect<T : Any>(initialValues: List<T> = emptyList()) : UIControl<L
 
 
     init {
-        +button.apply {
-            text = placeholder
-        }
-
+        // The button is already attached by its builder.
+        button.text = placeholder
+        +chevronIcon
     }
 
     override fun onUpdate(clock: TickingClock) {
 
         val targetChevronRotation = if (dropdown.isExpanded) 180f else 0f
-        chevronIcon.rotationZ = clock.interpolateFloat(0.4f, chevronIcon.rotationZ, targetChevronRotation, Easing.OutBounce)
+        chevronIcon.rotationZ = clock.interpolateFloat(0.4f, chevronIcon.rotationZ, targetChevronRotation)
 
         super.onUpdate(clock)
     }

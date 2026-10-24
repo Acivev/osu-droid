@@ -221,17 +221,21 @@ open class UIText : UICanvas() {
         var lines: List<String>
         var linesWidth: FloatArray
 
-        val processedLines = text
-            .split('\n')
-            .let { lines ->
-                if (lines.size > maxLines) {
-                    val truncatedLines = lines.subList(maxLines, lines.size).toMutableList()
-                    truncatedLines[truncatedLines.size - 1] = truncatedLines.last() + "..."
-                    truncatedLines
-                } else {
-                    lines
-                }
-            }
+        val processedLines = text.split('\n')
+
+        val iconSpacing = iconSpacing.toPixels()
+        val leadingIcon = leadingIcon
+        val trailingIcon = trailingIcon
+
+        var iconsWidth = 0f
+
+        if (leadingIcon != null) {
+            iconsWidth += iconSpacing + leadingIcon.getGlyph(fontSize, fontWeight, fontStyle).advance
+        }
+
+        if (trailingIcon != null) {
+            iconsWidth += iconSpacing + trailingIcon.getGlyph(fontSize, fontWeight, fontStyle).advance
+        }
 
         val widthSpec = width
         if (wrapText && widthSpec is Dimension.ConstraintDriven) {
@@ -239,48 +243,25 @@ open class UIText : UICanvas() {
             val wrappedLinesWidth = mutableListOf<Float>()
 
             processedLines.forEach { line ->
-                wrapLine(line, font, contentConstraints.availableWidth, wrappedLines, wrappedLinesWidth)
+                wrapLine(line, font, contentConstraints.availableWidth - iconsWidth, wrappedLines, wrappedLinesWidth)
             }
 
             lines = wrappedLines
             linesWidth = wrappedLinesWidth.toFloatArray()
         } else {
-
             lines = processedLines
-            linesWidth = FloatArray(processedLines.size) { i ->
-                val line = processedLines[i]
-                var lineWidth = 0f
-                var charIndex = 0
+            linesWidth = FloatArray(processedLines.size) { i -> measureLineWidth(processedLines[i], font) }
+        }
 
-                while (charIndex < line.length) {
-                    val codePoint = line.codePointAt(charIndex)
-                    val charCount = Character.charCount(codePoint)
-
-                    lineWidth += font[codePoint].advance
-                    charIndex += charCount
-                }
-                lineWidth
-            }
+        if (lines.size > maxLines) {
+            lines = lines.take(maxLines).toMutableList().also { it[it.lastIndex] = it.last().trimEnd() + "..." }
+            linesWidth = FloatArray(lines.size) { i -> measureLineWidth(lines[i], font) }
         }
 
         this.lines = lines
         this.linesWidth = linesWidth
 
-        var measuredWidth = linesWidth.maxOrNull() ?: 0f
-
-        val iconSpacing = iconSpacing.toPixels()
-        val leadingIcon = leadingIcon
-        val trailingIcon = trailingIcon
-
-        if (leadingIcon != null) {
-            val leadingIconGlyph = leadingIcon.getGlyph(fontSize, fontWeight, fontStyle)
-            measuredWidth += iconSpacing + leadingIconGlyph.advance
-        }
-
-        if (trailingIcon != null) {
-            val trailingIconGlyph = trailingIcon.getGlyph(fontSize, fontWeight, fontStyle)
-            measuredWidth += iconSpacing + trailingIconGlyph.advance
-        }
+        val measuredWidth = (linesWidth.maxOrNull() ?: 0f) + iconsWidth
 
         val measuredHeight = (font.metrics.lineHeight + font.metrics.lineGap) * lines.size - font.metrics.lineGap
 
@@ -290,6 +271,18 @@ open class UIText : UICanvas() {
         )
 
         return parentConstraints.constrain(measuredSize.expand(padding.toVec4()))
+    }
+
+    private fun measureLineWidth(line: String, font: Font): Float {
+        var lineWidth = 0f
+        var charIndex = 0
+
+        while (charIndex < line.length) {
+            val codePoint = line.codePointAt(charIndex)
+            lineWidth += font[codePoint].advance
+            charIndex += Character.charCount(codePoint)
+        }
+        return lineWidth
     }
 
     private fun wrapLine(line: String, font: Font, maxWidth: Float, outputLines: MutableList<String>, outputWidths: MutableList<Float>) {
@@ -377,49 +370,68 @@ open class UIText : UICanvas() {
 
         val font = font
 
-        val leadingIconGlyph = leadingIcon?.let { it.family[fontSize, fontWeight, fontStyle][it.code] }
-        val trailingIconGlyph = trailingIcon?.let { it.family[fontSize, fontWeight, fontStyle][it.code] }
+        val leadingIconFont = leadingIcon?.let { it.family[fontSize, fontWeight, fontStyle] }
+        val trailingIconFont = trailingIcon?.let { it.family[fontSize, fontWeight, fontStyle] }
+
+        val iconSpacing = iconSpacing.toPixels()
+        val leadingWidth = leadingIconFont?.let { it[leadingIcon!!.code].advance + iconSpacing } ?: 0f
+        val trailingWidth = trailingIconFont?.let { it[trailingIcon!!.code].advance + iconSpacing } ?: 0f
+
+        val lineStep = font.metrics.lineHeight + font.metrics.lineGap
+        val textHeight = lineStep * lines.size - font.metrics.lineGap
+
+        val contentLeft = paddingLeft.toPixels()
+        val contentTop = paddingTop.toPixels()
+        val contentWidth = bounds.width - contentLeft - paddingRight.toPixels()
+        val contentHeight = bounds.height - contentTop - paddingBottom.toPixels()
+
+        val offset = if (autoScrollAxes != Axis.None) {
+            val scrollableSize = when (autoScrollAxes) {
+                Axis.X -> (linesWidth.maxOrNull() ?: 0f) + leadingWidth + trailingWidth - contentWidth
+                Axis.Y -> textHeight - contentHeight
+                else -> 0f
+            }
+            scrollableSize.coerceAtLeast(0f) * scrollProgress
+        } else {
+            0f
+        }
+
+        val offsetX = if (autoScrollAxes == Axis.X) offset else 0f
+        val offsetY = if (autoScrollAxes == Axis.Y) offset else 0f
+
+        val blockY = contentTop + (contentHeight - textHeight) * alignment.y - offsetY
 
         lines.forEachIndexed { index, string ->
             val width = linesWidth[index]
 
-            val x = (bounds.width - width) * alignment.x
-            val y = (font.metrics.lineHeight + font.metrics.lineGap) * index * alignment.y
+            val x = contentLeft + (contentWidth - (width + leadingWidth + trailingWidth)) * alignment.x - offsetX
+            val y = blockY + lineStep * index
 
-            val offset = if (autoScrollAxes != Axis.None) {
-                val scrollableSize = when (autoScrollAxes) {
-                    Axis.X -> width - bounds.width
-                    Axis.Y -> (font.metrics.lineHeight + font.metrics.lineGap) * lines.size - bounds.height
-                    else -> 0f
-                }
-
-                scrollableSize * scrollProgress
-            } else {
-                0f
-            }
-
-            if (index == 0 && leadingIconGlyph != null) {
+            if (index == 0 && leadingIconFont != null) {
                 renderer.drawText(
-                    font = leadingIcon!!.family[fontSize, fontWeight, fontStyle],
+                    color = contentColor,
+                    font = leadingIconFont,
                     text = String(Character.toChars(leadingIcon!!.code)),
-                    x = x - if (autoScrollAxes == Axis.X) offset else 0f,
-                    y = y - if (autoScrollAxes == Axis.Y) offset else 0f
+                    x = x,
+                    y = y + (font.metrics.lineHeight - leadingIconFont.metrics.lineHeight) / 2f
                 )
             }
 
             renderer.drawText(
+                color = contentColor,
                 font = font,
                 text = string,
-                x = x - if (autoScrollAxes == Axis.X) offset else 0f,
-                y = y - if (autoScrollAxes == Axis.Y) offset else 0f
+                x = x + leadingWidth,
+                y = y
             )
 
-            if (index == lines.lastIndex && trailingIconGlyph != null) {
+            if (index == lines.lastIndex && trailingIconFont != null) {
                 renderer.drawText(
-                    font = trailingIcon!!.family[fontSize, fontWeight, fontStyle],
+                    color = contentColor,
+                    font = trailingIconFont,
                     text = String(Character.toChars(trailingIcon!!.code)),
-                    x = x + width + iconSpacing.toPixels() - if (autoScrollAxes == Axis.X) offset else 0f,
-                    y = y - if (autoScrollAxes == Axis.Y) offset else 0f
+                    x = x + leadingWidth + width + iconSpacing,
+                    y = y + (font.metrics.lineHeight - trailingIconFont.metrics.lineHeight) / 2f
                 )
             }
         }
