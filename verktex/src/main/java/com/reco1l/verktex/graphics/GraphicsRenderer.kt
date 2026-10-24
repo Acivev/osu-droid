@@ -6,6 +6,7 @@ import com.reco1l.verktex.data.Vec2
 import com.reco1l.verktex.data.Vec4
 import com.reco1l.verktex.BuiltIn
 import com.reco1l.verktex.Logger
+import com.reco1l.verktex.PerformanceStats
 import com.reco1l.verktex.fonts.Font
 import com.reco1l.verktex.math.toRadians
 import kotlin.math.abs
@@ -44,6 +45,12 @@ abstract class GraphicsRenderer {
 
 
     private val commandBatch = ArrayDeque<DrawCommand>()
+
+    /**
+     * The draw commands recorded for the current frame so far.
+     */
+    val commandCount
+        get() = commandBatch.size
     private val gpuResources = ArrayDeque<GraphicsResource>()
 
 
@@ -745,6 +752,7 @@ abstract class GraphicsRenderer {
             drawCommand(command)
             command.buffer?.dispose()
         }
+        PerformanceStats.onFrameDrawn()
     }
 
     //endregion

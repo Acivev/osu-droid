@@ -9,6 +9,8 @@ import com.reco1l.verktex.texture.Textures
 import com.reco1l.verktex.graphics.GraphicsRenderer
 import com.reco1l.verktex.input.InputEvent
 import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.settings.Setting
+import com.reco1l.verktex.settings.VerktexSettings
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.time.SystemBasedTickingClock
 import com.reco1l.verktex.ui.Theme
@@ -173,9 +175,11 @@ object Verktex {
             return
         }
 
+        PerformanceStats.onFrameStart()
         graphics.begin()
         treeLock.withLock {
             scene.draw(graphics)
+            PerformanceStats.drawCommands = graphics.commandCount
             overlayContainer.draw(graphics)
         }
         graphics.end()
@@ -195,10 +199,22 @@ object Verktex {
 
         clock.tick()
         treeLock.withLock {
+            // Measured inside the lock, so waiting for the draw worker does not count.
+            val updateStartNanos = System.nanoTime()
+
+            if (showPerformanceOverlay != (performanceOverlay.parent != null)) {
+                if (showPerformanceOverlay) overlayContainer += performanceOverlay else overlayContainer -= performanceOverlay
+            }
+
             scene.update(clock)
             overlayContainer.update(clock)
+
+            PerformanceStats.updateTime = (System.nanoTime() - updateStartNanos) / 1_000_000f
         }
     }
+
+    private val showPerformanceOverlay by Setting(VerktexSettings.ShowPerformanceOverlay, false)
+    private val performanceOverlay by lazy { UIPerformanceOverlay() }
 
     /**
      * Guards the component tree, which is traversed by the draw and update workers and modified by
