@@ -35,6 +35,5 @@ dependencies {
 // app classes. Excluded from compilation until they are ported to the Verktex API.
 tasks.withType(org.jetbrains.kotlin.gradle.tasks.KotlinCompile).configureEach {
     exclude(
-        '**/com/reco1l/verktex/ui/form/**',
     )
 }
