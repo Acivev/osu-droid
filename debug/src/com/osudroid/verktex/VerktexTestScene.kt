@@ -305,7 +305,7 @@ class VerktexTestScene : UIScene() {
                             height = 64f.dip
                             thickness = 6f.dip
                             rotationSpeed = 180f
-                            color = Color4(0xFFF38BA8)
+                            arcColor = Color4(0xFFF38BA8)
                         }
                     }
                 }
