@@ -54,6 +54,13 @@ open class UIIcon(iconCode: Int = FAIcon.Question) : UICanvas() {
     private var fontSettingsChanged = true
 
 
+    override fun onThemeChanged() {
+        // The font scale changes the resolved font even if the settings stay the same.
+        fontSettingsChanged = true
+        super.onThemeChanged()
+    }
+
+
     init {
         width = wrap()
         height = wrap()

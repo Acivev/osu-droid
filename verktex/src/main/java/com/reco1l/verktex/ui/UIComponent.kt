@@ -465,6 +465,14 @@ abstract class UIComponent {
     }
 
     /**
+     * Called when the theme or the font scale changed, after the style was applied again.
+     * Cached values depending on them must be invalidated here.
+     */
+    open fun onThemeChanged() {
+        invalidateMeasure()
+    }
+
+    /**
      * Called when the style of the component needs to be applied.
      *
      * Usually this calls the [style] lambda with the current theme.

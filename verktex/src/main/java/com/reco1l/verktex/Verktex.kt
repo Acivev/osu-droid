@@ -409,11 +409,11 @@ object Verktex {
     }
 
 
-    private fun onThemeChange() {
-        sceneStack.forEach { scene ->
-            scene.propagate { child ->
-                child.onStyle(theme)
-            }
+    private fun onThemeChange() = treeLock.withLock {
+        for (root in sceneStack + listOf(overlayContainer)) {
+            // Containers apply the style to their children themselves.
+            root.style()
+            root.propagate { it.onThemeChanged() }
         }
     }
 

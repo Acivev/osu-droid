@@ -1,6 +1,8 @@
 package com.reco1l.verktex.fonts
 
+import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.data.Dimension
+import com.reco1l.verktex.data.px
 import com.reco1l.verktex.ui.UIComponent
 import kotlin.concurrent.atomics.AtomicReference
 import kotlin.concurrent.atomics.ExperimentalAtomicApi
@@ -40,7 +42,9 @@ class FontFamily(
      * Retrieves a [Font] instance based on the provided size, weight, and style.
      */
     operator fun get(size: Dimension.Fixed, weight: Font.Weight = Font.Weight.Normal, style: Font.Style = Font.Style.Normal): Font {
-        return get(Font.Descriptor(this, size, weight, style))
+        // Every font size follows the user's font scale.
+        val scaledSize = if (Verktex.fontScale == 1f) size else (size.toPixels() * Verktex.fontScale).px
+        return get(Font.Descriptor(this, scaledSize, weight, style))
     }
 
     /**

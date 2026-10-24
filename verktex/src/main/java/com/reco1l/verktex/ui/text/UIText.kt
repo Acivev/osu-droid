@@ -138,6 +138,13 @@ open class UIText : UICanvas() {
     private var font = fontFamily[fontSize, fontWeight, fontStyle]
     private var fontSettingsChanged = true
 
+
+    override fun onThemeChanged() {
+        // The font scale changes the resolved font even if the settings stay the same.
+        fontSettingsChanged = true
+        super.onThemeChanged()
+    }
+
     //endregion
 
     //region Text settings
@@ -202,12 +209,6 @@ open class UIText : UICanvas() {
 
     //endregion
 
-
-    init {
-        style = Style {
-            fontSettings = Verktex.theme.typography.body
-        }
-    }
 
 
     //region Measurement
