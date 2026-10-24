@@ -328,7 +328,8 @@ abstract class UIComponent {
                 translate(rotationCenterX, rotationCenterY)
             }
 
-            translate(bounds.x, bounds.y)
+            // Fractions of the translation are relative to the component's own size, as in CSS.
+            translate(bounds.x + translationX.resolve(bounds.width), bounds.y + translationY.resolve(bounds.height))
         }
 
         parentToLocalMatrix.set(localToParentMatrix)
