@@ -88,6 +88,8 @@ open class UISlider(initialValue: Float = 0f) : UIControl<Float>(initialValue) {
     }
 
 
+    private var thumbX = 0f
+
     // The finger dragging the slider, others are ignored.
     private var pressPointerId = -1
 
@@ -146,9 +148,11 @@ open class UISlider(initialValue: Float = 0f) : UIControl<Float>(initialValue) {
         // Ranges crossing zero fill from zero, so negative and positive values grow in opposite ways.
         val zeroX = if (min < 0f && max > 0f) width * (-min / (max - min)) else 0f
 
-        thumb.x = clock.interpolateFloat(0.15f, thumb.x.resolve(width), targetThumbX).px
-        progressBar.x = minOf(zeroX, targetThumbX).px
-        progressBar.width = clock.interpolateFloat(0.15f, progressBar.bounds.width, abs(targetThumbX - zeroX)).px
+        // The bar follows the animated thumb, so both always meet.
+        thumbX = clock.interpolateFloat(0.15f, thumbX, targetThumbX)
+        thumb.x = thumbX.px
+        progressBar.x = minOf(zeroX, thumbX).px
+        progressBar.width = abs(thumbX - zeroX).px
 
         thumb.scale = clock.interpolateFloat(0.1f, thumb.scale, if (isPressed) 1.25f else 1f)
 
