@@ -123,16 +123,20 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
     }
 
     override fun onLayout(bounds: Vec4) {
-        // Children are laid out in local space, inside the content area (bounds minus padding).
-        val contentBounds = Vec4(
-            x = paddingLeft.toPixels(),
-            y = paddingTop.toPixels(),
-            z = bounds.width - paddingRight.toPixels(),
-            w = bounds.height - paddingBottom.toPixels()
-        )
-
+        val contentBounds = contentBounds(bounds)
         forEach { child -> child.layout(contentBounds) }
     }
+
+    /**
+     * Returns the area children are laid out in. It is in local space, inside the [bounds] minus
+     * the padding.
+     */
+    protected fun contentBounds(bounds: Vec4) = Vec4(
+        x = paddingLeft.toPixels(),
+        y = paddingTop.toPixels(),
+        z = bounds.width - paddingRight.toPixels(),
+        w = bounds.height - paddingBottom.toPixels()
+    )
 
     //endregion
 
