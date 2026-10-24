@@ -53,6 +53,9 @@ open class UIModal(
     // The finger that pressed the backdrop, releasing it outside of the card hides the modal.
     private var backdropPointerId = -1
 
+    // Whether onShown was called for the current show.
+    private var isFullyShown = false
+
 
     init {
         width = fill()
@@ -81,6 +84,7 @@ open class UIModal(
 
         isShown = true
         isVisible = true
+        isFullyShown = false
         onShow()
     }
 
@@ -101,6 +105,11 @@ open class UIModal(
     protected open fun onShow() = Unit
 
     /**
+     * Called once the show animation finished.
+     */
+    protected open fun onShown() = Unit
+
+    /**
      * Called when [hide] is called.
      */
     protected open fun onHide() = Unit
@@ -114,11 +123,33 @@ open class UIModal(
         }
     }
 
-    override fun onUpdate(clock: TickingClock) {
-        alpha = clock.interpolateFloat(0.2f, alpha, if (isShown) 1f else 0f)
-        card.scale = clock.interpolateFloat(0.2f, card.scale, if (isShown) 1f else HIDDEN_CARD_SCALE)
+    /**
+     * Advances the show animation by one tick and returns whether it finished. Override it to
+     * change how the modal appears.
+     */
+    protected open fun onShowAnimation(clock: TickingClock): Boolean {
+        alpha = clock.interpolateFloat(0.2f, alpha, 1f)
+        card.scale = clock.interpolateFloat(0.2f, card.scale, 1f)
+        return alpha == 1f && card.scale == 1f
+    }
 
-        if (!isShown && isVisible && alpha == 0f) {
+    /**
+     * Advances the hide animation by one tick and returns whether it finished. Override it to
+     * change how the modal disappears.
+     */
+    protected open fun onHideAnimation(clock: TickingClock): Boolean {
+        alpha = clock.interpolateFloat(0.2f, alpha, 0f)
+        card.scale = clock.interpolateFloat(0.2f, card.scale, HIDDEN_CARD_SCALE)
+        return alpha == 0f
+    }
+
+    override fun onUpdate(clock: TickingClock) {
+        if (isShown) {
+            if (!isFullyShown && onShowAnimation(clock)) {
+                isFullyShown = true
+                onShown()
+            }
+        } else if (isVisible && onHideAnimation(clock)) {
             isVisible = false
             onHidden()
         }
