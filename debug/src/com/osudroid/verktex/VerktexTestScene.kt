@@ -26,6 +26,8 @@ import com.reco1l.verktex.ui.UISprite
 import com.reco1l.verktex.ui.badge
 import com.reco1l.verktex.ui.card
 import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.dialog.UIConfirmDialog
+import com.reco1l.verktex.ui.dialog.UIMessageDialog
 import com.reco1l.verktex.ui.container.UILinearContainer
 import com.reco1l.verktex.ui.container.container
 import com.reco1l.verktex.ui.container.linearContainer
@@ -572,6 +574,37 @@ class VerktexTestScene : UIScene() {
                         width = 240f.dip
                         options = (1..5).map { UISelect.Option(it, "Option $it") }
                         onValueChange = { selectLabel.text = "Select: $it" }
+                    }
+                }
+
+                section("Dialogs") {
+                    val dialogLabel = text { text = "Dialog result: none" }
+
+                    row {
+                        textButton {
+                            text = "Message dialog"
+                            onActionUp = {
+                                UIMessageDialog().apply {
+                                    title = "Message"
+                                    text = "This is a message dialog. Tap outside of it or the button to close it."
+                                    addButton {
+                                        text = "Close"
+                                        onActionUp = { hide() }
+                                    }
+                                }.show()
+                            }
+                        }
+                        textButton {
+                            text = "Confirm dialog"
+                            onActionUp = {
+                                UIConfirmDialog().apply {
+                                    title = "Confirm"
+                                    text = "Do you want to confirm?"
+                                    onConfirm = { dialogLabel.text = "Dialog result: confirmed" }
+                                    onCancel = { dialogLabel.text = "Dialog result: cancelled" }
+                                }.show()
+                            }
+                        }
                     }
                 }
 
