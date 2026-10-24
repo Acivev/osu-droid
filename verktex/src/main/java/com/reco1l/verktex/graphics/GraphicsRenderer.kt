@@ -194,8 +194,9 @@ abstract class GraphicsRenderer {
 
             intersectedX = minX
             intersectedY = minY
-            intersectedWidth = (maxX - minX)
-            intersectedHeight = (maxY - minY)
+            // Without overlap nothing must be drawn, a negative size would be rejected by GL.
+            intersectedWidth = (maxX - minX).coerceAtLeast(0f)
+            intersectedHeight = (maxY - minY).coerceAtLeast(0f)
         }
 
         val rect = Vec4(intersectedX, intersectedY, intersectedWidth, intersectedHeight)

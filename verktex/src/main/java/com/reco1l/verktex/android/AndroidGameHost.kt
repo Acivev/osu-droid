@@ -6,6 +6,7 @@ import android.text.TextWatcher
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.TextView.BufferType
 import androidx.appcompat.app.AppCompatActivity
@@ -47,6 +48,15 @@ abstract class AndroidGameHost : AppCompatActivity(), GameHost {
 
     private var currentTextWatcher: TextWatcher? = null
 
+    /**
+     * Whether the screen is kept on while the game is in the foreground.
+     */
+    var keepScreenOn = true
+        set(value) {
+            field = value
+            runOnUiThread { applyKeepScreenOn() }
+        }
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -62,11 +72,20 @@ abstract class AndroidGameHost : AppCompatActivity(), GameHost {
         insetsController.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
 
         hideSystemBars()
+        applyKeepScreenOn()
 
         Verktex.start()
         onEngineStarted()
     }
 
+
+    private fun applyKeepScreenOn() {
+        if (keepScreenOn) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
 
     private fun hideSystemBars() {
         insetsController.hide(WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.navigationBars())
