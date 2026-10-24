@@ -8,6 +8,8 @@ import com.reco1l.verktex.data.Padding
 import com.reco1l.verktex.data.Vec2
 import com.reco1l.verktex.data.dip
 import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.audio.Sounds
 import com.reco1l.verktex.texture.Textures
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.ui.FAIcon
@@ -476,6 +478,28 @@ class VerktexTestScene : UIScene() {
                         width = 240f.dip
                         options = (1..5).map { UISelect.Option(it, "Option $it") }
                         onValueChange = { selectLabel.text = "Select: $it" }
+                    }
+                }
+
+                section("Audio") {
+                    val sample = Sounds.loadSample("test-click", "sfx/click-short-confirm.ogg", isExternal = false)
+                    val stream = Sounds.loadStream("test-applause", "sfx/applause.ogg", isExternal = false)
+
+                    val audioLabel = text { text = "Devices: ${Verktex.audio.devices.size}, active: ${Verktex.audio.activeDevice?.name}" }
+
+                    row {
+                        textButton {
+                            text = "Play sample"
+                            onActionUp = { sample.play() }
+                        }
+                        textButton {
+                            text = "Play stream"
+                            onActionUp = {
+                                stream.position = 0.0
+                                stream.play()
+                                audioLabel.text = "Stream playing: ${stream.isPlaying}, length: ${"%.2f".format(stream.length)}s"
+                            }
+                        }
                     }
                 }
 
