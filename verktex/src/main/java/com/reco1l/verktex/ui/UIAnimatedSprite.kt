@@ -15,6 +15,19 @@ inline fun UIContainer.animatedSprite(builder: UIAnimatedSprite.() -> Unit): UIA
 open class UIAnimatedSprite(frames: List<GraphicsTexture.Region> = emptyList()) : UISprite(frames.firstOrNull()) {
 
     /**
+     * Creates an animated sprite playing [frames] at [framesPerSecond]. When it is 0 the amount of
+     * frames is used instead, so the whole animation takes one second.
+     */
+    constructor(frames: List<GraphicsTexture.Region>, framesPerSecond: Float) : this(frames) {
+        val fps = if (framesPerSecond > 0f) framesPerSecond else frames.size.toFloat()
+
+        if (fps > 0f) {
+            frameTime = 1f / fps
+        }
+    }
+
+
+    /**
      * List of frames for the animation.
      *
      * Changing this value will restart the animation from the first frame.
