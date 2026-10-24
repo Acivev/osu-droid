@@ -3,9 +3,6 @@ package com.reco1l.verktex.fonts
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.data.Dimension
 import com.reco1l.verktex.data.px
-import com.reco1l.verktex.ui.UIComponent
-import kotlin.concurrent.atomics.AtomicReference
-import kotlin.concurrent.atomics.ExperimentalAtomicApi
 
 /**
  * Represents a family of fonts, which can be used to retrieve specific [Font] instances based on their
@@ -21,7 +18,6 @@ import kotlin.concurrent.atomics.ExperimentalAtomicApi
  * Due to this, fonts could be **rendered differently** on different platforms, and the same font family
  * may look different on Android, iOS, or other platforms.
  */
-@OptIn(ExperimentalAtomicApi::class)
 class FontFamily(
 
     /**
@@ -35,7 +31,6 @@ class FontFamily(
 ) {
 
     private val fonts = mutableMapOf<Font.Descriptor, Font>()
-    private val subscribers = mutableMapOf<Font, MutableList<AtomicReference<UIComponent>>>()
 
 
     /**
@@ -52,21 +47,6 @@ class FontFamily(
      */
     operator fun get(descriptor: Font.Descriptor): Font {
         return fonts.getOrPut(descriptor) { source.onCreateFont(descriptor) }
-    }
-
-
-    fun subscribe(font: Font, component: UIComponent) {
-        if (font.descriptor.family != this) {
-            throw IllegalArgumentException("Font does not belong to this FontFamily.")
-        }
-
-        subscribers[font] = subscribers.getOrPut(font) { mutableListOf() }.apply {
-            add(AtomicReference(component))
-        }
-    }
-
-    fun unsubscribe(font: Font, component: UIComponent) {
-        subscribers[font]?.removeIf { it.load() == component }
     }
 
 

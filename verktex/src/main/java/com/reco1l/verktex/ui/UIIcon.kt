@@ -85,9 +85,6 @@ open class UIIcon(iconCode: Int = FAIcon.Question) : UICanvas() {
 
             val newFont = iconFamily[iconSize]
 
-            iconFamily.unsubscribe(font, this)
-            iconFamily.subscribe(newFont, this)
-
             font = newFont
         }
 
@@ -104,11 +101,6 @@ open class UIIcon(iconCode: Int = FAIcon.Question) : UICanvas() {
             y = paddingTop.toPixels() + (contentHeight - font.metrics.lineHeight) / 2f,
             color = contentColor
         )
-    }
-
-
-    fun finalize() {
-        iconFamily.unsubscribe(font, this)
     }
 
 

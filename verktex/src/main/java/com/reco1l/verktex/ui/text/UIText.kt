@@ -369,9 +369,6 @@ open class UIText : UICanvas() {
 
             val newFont = fontFamily[fontSize, fontWeight, fontStyle]
 
-            fontFamily.unsubscribe(font, this)
-            fontFamily.subscribe(newFont, this)
-
             font = newFont
         }
 
@@ -471,11 +468,6 @@ open class UIText : UICanvas() {
     }
 
     //endregion
-
-
-    fun finalize() {
-        fontFamily.unsubscribe(font, this)
-    }
 
 
     /**
