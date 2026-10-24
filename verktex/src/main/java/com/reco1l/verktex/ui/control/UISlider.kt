@@ -6,6 +6,8 @@ import com.reco1l.verktex.data.fill
 import com.reco1l.verktex.data.px
 import com.reco1l.verktex.input.InputEvent
 import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.math.Easing
+import com.reco1l.verktex.math.FloatAnimation
 import com.reco1l.verktex.math.interpolateFloat
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.ui.container.UIContainer
@@ -90,6 +92,11 @@ open class UISlider(initialValue: Float = 0f) : UIControl<Float>(initialValue) {
 
     private var thumbX = 0f
 
+    private val thumbScale = FloatAnimation(1f, 0.3f)
+
+    // How far the slider is stretched by dragging past its ends, from 0 to 1.
+    private val stretch = FloatAnimation(0f, 0.4f, Easing.OutElastic)
+
     // The finger dragging the slider, others are ignored.
     private var pressPointerId = -1
 
@@ -154,7 +161,11 @@ open class UISlider(initialValue: Float = 0f) : UIControl<Float>(initialValue) {
         progressBar.x = minOf(zeroX, thumbX).px
         progressBar.width = abs(thumbX - zeroX).px
 
-        thumb.scale = clock.interpolateFloat(0.1f, thumb.scale, if (isPressed) 1.25f else 1f)
+        thumb.scale = thumbScale.update(clock)
+
+        val stretch = stretch.update(clock)
+        scaleX = 1f + stretch * 0.15f
+        scaleY = 1f - stretch * 0.3f
 
         super.onUpdate(clock)
     }
@@ -180,6 +191,7 @@ open class UISlider(initialValue: Float = 0f) : UIControl<Float>(initialValue) {
                 // Dragging the slider must not scroll its parents.
                 setHierarchyScrollPrevention(true)
                 onStartDragging()
+                thumbScale.animateTo(1.25f, 0.1f, Easing.InExpo)
                 updateValueFromPointer(event.x, event.y)
             }
 
@@ -189,6 +201,9 @@ open class UISlider(initialValue: Float = 0f) : UIControl<Float>(initialValue) {
                 pressPointerId = -1
                 setHierarchyScrollPrevention(false)
                 onStopDragging()
+                thumbScale.animateTo(1f, 0.3f, Easing.OutBounce)
+                // Springs back from the stretch.
+                stretch.target = 0f
                 return event.action == PointerEvent.Action.Up
             }
         }
@@ -197,7 +212,14 @@ open class UISlider(initialValue: Float = 0f) : UIControl<Float>(initialValue) {
 
     private fun updateValueFromPointer(sceneX: Float, sceneY: Float) {
         val localX = toLocalSpaceFromScene(sceneX, sceneY).x
-        val progress = if (bounds.width > 0f) (localX / bounds.width).coerceIn(0f, 1f) else 0f
+        val width = bounds.width
+
+        // Dragging past an end stretches the slider towards the finger, anchored at the other end.
+        val overflow = maxOf(-localX, localX - width, 0f)
+        scaleOrigin = if (localX < 0f) Anchor.CenterRight else Anchor.CenterLeft
+        stretch.jumpTo(if (width > 0f) minOf(overflow / width, 1f) else 0f)
+
+        val progress = if (width > 0f) (localX / width).coerceIn(0f, 1f) else 0f
         value = min + progress * (max - min)
     }
 
