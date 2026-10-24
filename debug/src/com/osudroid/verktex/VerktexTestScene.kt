@@ -23,6 +23,8 @@ import com.reco1l.verktex.ui.Theme
 import com.reco1l.verktex.ui.UILoadingIndicator
 import com.reco1l.verktex.ui.UIScene
 import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.UIAnimatedSprite
+import com.reco1l.verktex.ui.animatedSprite
 import com.reco1l.verktex.ui.badge
 import com.reco1l.verktex.ui.card
 import com.reco1l.verktex.ui.container.UIContainer
@@ -543,6 +545,41 @@ class VerktexTestScene : UIScene() {
                             flippedVertical = true
                         }
                         logoSprite(64f, 64f) { color = Color4(0xFF89B4FA) }
+                    }
+                }
+
+                section("Animated sprite") {
+                    val frames = (0..9).mapNotNull { Textures.load("test-digit-$it", "gfx/default-$it.png", isInternal = true) }
+
+                    text { text = "Looping at 4 FPS, and once at 8 FPS:" }
+
+                    lateinit var looping: UIAnimatedSprite
+                    lateinit var once: UIAnimatedSprite
+                    row {
+                        looping = animatedSprite {
+                            this.frames = frames
+                            frameTime = 1f / 4f
+                        }
+                        once = animatedSprite {
+                            this.frames = frames
+                            frameTime = 1f / 8f
+                            isLoop = false
+                        }
+                    }
+
+                    row {
+                        textButton {
+                            text = "Play"
+                            onActionUp = { looping.play(); once.play() }
+                        }
+                        textButton {
+                            text = "Pause"
+                            onActionUp = { looping.pause(); once.pause() }
+                        }
+                        textButton {
+                            text = "Stop"
+                            onActionUp = { looping.stop(); once.stop() }
+                        }
                     }
                 }
 
