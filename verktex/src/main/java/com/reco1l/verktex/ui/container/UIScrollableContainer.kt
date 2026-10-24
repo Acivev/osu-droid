@@ -9,6 +9,7 @@ import com.reco1l.verktex.data.Vec2
 import com.reco1l.verktex.data.Axis
 import com.reco1l.verktex.data.LayoutConstraints
 import com.reco1l.verktex.data.Vec4
+import com.reco1l.verktex.data.dip
 import com.reco1l.verktex.input.InputEvent
 import com.reco1l.verktex.input.PointerEvent
 import com.reco1l.verktex.input.ScrollEvent
@@ -343,13 +344,15 @@ open class UIScrollableContainer : UIContainer() {
     override fun onDraw(renderer: GraphicsRenderer) {
         super.onDraw(renderer)
 
+        val indicatorThickness = INDICATOR_THICKNESS.toPixels()
+
         if (showVerticalIndicator && (scrollAxes == Axis.Both || scrollAxes == Axis.Y)) {
             val indicatorHeight = bounds.height * (bounds.height / scrollableContentHeight).coerceAtMost(1f)
 
             renderer.drawRect(
-                x = bounds.width - 4f,
+                x = bounds.width - indicatorThickness,
                 y = scrollY * (bounds.height / scrollableContentHeight),
-                width = 4f,
+                width = indicatorThickness,
                 height = indicatorHeight,
                 color = Color4.White.copy(alpha = indicatorYAlpha)
             )
@@ -360,9 +363,9 @@ open class UIScrollableContainer : UIContainer() {
 
             renderer.drawRect(
                 x = scrollX * (bounds.width / scrollableContentWidth),
-                y = bounds.height - 4f,
+                y = bounds.height - indicatorThickness,
                 width = indicatorWidth,
-                height = 4f,
+                height = indicatorThickness,
                 color = Color4.White.copy(alpha = indicatorXAlpha)
             )
         }
@@ -512,6 +515,8 @@ open class UIScrollableContainer : UIContainer() {
         const val DEFAULT_DECELERATION = 0.98f
         const val DEFAULT_MINIMUM_TRAVEL = 20f
         const val DEFAULT_MAX_VELOCITY = 3000f
+
+        private val INDICATOR_THICKNESS = 3f.dip
 
     }
 }
