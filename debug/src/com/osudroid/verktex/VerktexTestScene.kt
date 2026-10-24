@@ -489,6 +489,35 @@ class VerktexTestScene : UIScene() {
                         }
                     }
 
+                    text { text = "Atlas repacking, the logo must stay intact and play.png only fits after back.png is unloaded:" }
+                    row {
+                        // Room for the logo and one of the wide buttons below it, but not both buttons.
+                        val atlas = Verktex.graphics.createTexture(600f, 700f)
+                        val logoInAtlas = Textures.load("test-atlas-logo", "logo.png", isInternal = true, destinationAtlas = atlas)!!
+                        val back = Textures.load("test-atlas-back", "back.png", isInternal = true, destinationAtlas = atlas)!!
+
+                        sprite {
+                            textureRegion = logoInAtlas
+                            width = 96f.dip
+                            height = 96f.dip
+                            backgroundColor = SURFACE_COLOR
+                        }
+                        val swapped = sprite {
+                            textureRegion = back
+                            width = 300f.dip
+                            height = 46f.dip
+                            backgroundColor = SURFACE_COLOR
+                        }
+
+                        textButton {
+                            text = "Swap texture"
+                            onActionUp = {
+                                Textures.unload("test-atlas-back")
+                                swapped.textureRegion = Textures.load("test-atlas-play", "play.png", isInternal = true, destinationAtlas = atlas)
+                            }
+                        }
+                    }
+
                     text { text = "Normal, flipped horizontally, vertically and both, tinted:" }
                     row {
                         logoSprite(64f, 64f)
