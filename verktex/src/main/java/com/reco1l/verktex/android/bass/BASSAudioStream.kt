@@ -67,9 +67,12 @@ class BASSAudioStream(
         }
 
 
-    override var looping: Boolean
-        get() = TODO("Not yet implemented")
-        set(value) {}
+    override var looping = false
+        set(value) {
+            if (field == value) return
+            field = value
+            BASS.BASS_ChannelFlags(id, if (value) BASS.BASS_SAMPLE_LOOP else 0, BASS.BASS_SAMPLE_LOOP)
+        }
 
 
     private val baseFrequency: Int

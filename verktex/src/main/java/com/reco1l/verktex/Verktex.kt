@@ -105,6 +105,9 @@ object Verktex {
         this.audio = audio
         this.host = host
 
+        // Activates the first device, without it no audio can be played.
+        audio.enumerateDevices()
+
         isInitialized = true
     }
 

@@ -107,7 +107,7 @@ class BASSAudioSample(
                 frequency *= speed
             }
 
-            BASS.BASS_ChannelSetAttribute(channelId, BASS.BASS_ATTRIB_FREQ, baseFrequency * frequency)
+            BASS.BASS_ChannelSetAttribute(channelId, BASS.BASS_ATTRIB_FREQ, frequency)
         }
 
 
