@@ -493,6 +493,61 @@ abstract class GraphicsRenderer {
     }
 
     /**
+     * Draws the outline of an arc with the specified thickness, angles are in degrees starting
+     * from the top and going clockwise, as in [drawArc].
+     */
+    fun drawArcStroke(
+        x: Float,
+        y: Float,
+        width: Float,
+        height: Float,
+        thickness: Float,
+        startAngle: Float = 0f,
+        endAngle: Float = 360f,
+        color: Color4 = Color4.White
+    ) {
+        val segments = calculateArcResolution(width, height, abs(endAngle - startAngle))
+        if (segments <= 0 || thickness <= 0f) return
+
+        setState(
+            shader = BuiltIn.Shaders.SolidQuad,
+            uniformSet = GraphicsShader.UniformSet()
+        )
+
+        drawGeometry { transform, _ ->
+            val color = transformColor(color)
+
+            val cx = x + width / 2f
+            val cy = y + height / 2f
+            val outerX = width / 2f
+            val outerY = height / 2f
+            val innerX = (outerX - thickness).coerceAtLeast(0f)
+            val innerY = (outerY - thickness).coerceAtLeast(0f)
+
+            val start = (startAngle - 90f).toRadians()
+            val delta = ((endAngle - 90f).toRadians() - start) / segments
+
+            for (segment in 0 until segments) {
+                val a0 = start + segment * delta
+                val a1 = a0 + delta
+
+                val (ox0, oy0) = transform.transform(cx + outerX * cos(a0), cy + outerY * sin(a0))
+                val (ox1, oy1) = transform.transform(cx + outerX * cos(a1), cy + outerY * sin(a1))
+                val (ix0, iy0) = transform.transform(cx + innerX * cos(a0), cy + innerY * sin(a0))
+                val (ix1, iy1) = transform.transform(cx + innerX * cos(a1), cy + innerY * sin(a1))
+
+                addVertex(ox0, oy0, 0.5f, 0.5f, color)
+                addVertex(ox1, oy1, 0.5f, 0.5f, color)
+                addVertex(ix1, iy1, 0.5f, 0.5f, color)
+
+                addVertex(ox0, oy0, 0.5f, 0.5f, color)
+                addVertex(ix1, iy1, 0.5f, 0.5f, color)
+                addVertex(ix0, iy0, 0.5f, 0.5f, color)
+            }
+        }
+    }
+
+    /**
      * Draws a texture with the specified position, size, color, border width, border color, and corner radius.
      */
     fun drawTexture(
