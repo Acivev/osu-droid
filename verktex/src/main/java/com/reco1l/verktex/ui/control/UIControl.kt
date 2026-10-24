@@ -1,6 +1,7 @@
 package com.reco1l.verktex.ui.control
 
 import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.form.FormControl
 
 /**
  * Interface for a control that has a value and can notify when the value changes.
@@ -41,7 +42,16 @@ abstract class UIControl<T : Any>(initialValue: T) : UIContainer() {
      */
     open fun onValueChanged() {
         onValueChange?.invoke(value)
-        // TODO: Notify the parent FormControl once the form components are ported to Verktex.
+
+        // The form control wrapping this control, if any, reacts to every change too.
+        var parent = parent
+        while (parent != null) {
+            if (parent is FormControl<*, *> && parent.control === this) {
+                parent.onControlValueChanged()
+                break
+            }
+            parent = parent.parent
+        }
     }
 
     //endregion
