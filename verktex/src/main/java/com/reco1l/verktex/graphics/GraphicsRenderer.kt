@@ -51,6 +51,8 @@ abstract class GraphicsRenderer {
     private val matrixStack = ArrayDeque<Mat2>()
     private val colorStack = ArrayDeque<Color4>()
     private val scissorStack = ArrayDeque<Vec4>()
+    private val blendModeStack = ArrayDeque<BlendMode>()
+    private val depthStateStack = ArrayDeque<DepthState>()
     //endregion
 
     //region State
@@ -91,8 +93,8 @@ abstract class GraphicsRenderer {
         shader: GraphicsShader? = activeShader,
         texture: GraphicsTexture? = activeTexture,
         scissor: Vec4? = scissorStack.lastOrNull(),
-        blendMode: BlendMode = activeBlendMode,
-        depthState: DepthState = activeDepthState,
+        blendMode: BlendMode = blendModeStack.lastOrNull() ?: BlendMode.Alpha,
+        depthState: DepthState = depthStateStack.lastOrNull() ?: DepthState.Default,
         uniformSet: GraphicsShader.UniformSet = activeUniformSet
     ) {
         val lastCommand = commandBatch.lastOrNull()
@@ -157,6 +159,34 @@ abstract class GraphicsRenderer {
      */
     fun popColor(): Color4? {
         return colorStack.removeLastOrNull()
+    }
+
+    /**
+     * Pushes a blend mode onto the blend mode stack. It will be used for subsequent drawing operations.
+     */
+    fun pushBlendMode(blendMode: BlendMode) {
+        blendModeStack.addLast(blendMode)
+    }
+
+    /**
+     * Pops a blend mode from the blend mode stack and returns it.
+     */
+    fun popBlendMode(): BlendMode? {
+        return blendModeStack.removeLastOrNull()
+    }
+
+    /**
+     * Pushes a depth state onto the depth state stack. It will be used for subsequent drawing operations.
+     */
+    fun pushDepthState(depthState: DepthState) {
+        depthStateStack.addLast(depthState)
+    }
+
+    /**
+     * Pops a depth state from the depth state stack and returns it.
+     */
+    fun popDepthState(): DepthState? {
+        return depthStateStack.removeLastOrNull()
     }
 
     /**

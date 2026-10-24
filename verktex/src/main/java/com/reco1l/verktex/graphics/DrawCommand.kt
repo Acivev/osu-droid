@@ -30,7 +30,7 @@ data class DrawCommand(
     /**
      * The blend mode to be used for rendering the object, determining how it blends with the background.
      */
-    val blendMode: BlendMode = BlendMode.Additive,
+    val blendMode: BlendMode = BlendMode.Alpha,
 
     /**
      * The depth state to be used for rendering the object, controlling how it interacts with

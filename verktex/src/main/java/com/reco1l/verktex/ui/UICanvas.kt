@@ -19,18 +19,19 @@ abstract class UICanvas : UIComponent() {
     /**
      * The blend mode to use for rendering the canvas.
      */
-    val blendMode: BlendMode = BlendMode.Additive
+    var blendMode: BlendMode = BlendMode.Alpha
 
     /**
      * The state of the depth buffer for rendering the canvas.
      */
-    val depthState: DepthState = DepthState.Default
+    var depthState: DepthState = DepthState.Default
 
 
-    override fun onDraw(renderer: GraphicsRenderer) {
-        renderer.setState(
-            blendMode = blendMode,
-            depthState = depthState,
-        )
+    override fun drawContent(renderer: GraphicsRenderer) {
+        renderer.pushBlendMode(blendMode)
+        renderer.pushDepthState(depthState)
+        onDraw(renderer)
+        renderer.popDepthState()
+        renderer.popBlendMode()
     }
 }

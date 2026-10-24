@@ -630,8 +630,7 @@ abstract class UIComponent {
             )
         }
 
-        // Render component and children
-        onDraw(renderer)
+        drawContent(renderer)
 
         // Debug outline
         if (showComponentBoundaries) {
@@ -642,6 +641,14 @@ abstract class UIComponent {
 
         renderer.popColor()
         renderer.popMatrix()
+    }
+
+    /**
+     * Draws the component and its children by calling [onDraw]. Subclasses can wrap it to set up
+     * render state around the drawing, see [UICanvas].
+     */
+    protected open fun drawContent(renderer: GraphicsRenderer) {
+        onDraw(renderer)
     }
 
     /**
