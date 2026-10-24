@@ -12,6 +12,7 @@ abstract class AndroidLoopWorker(override val name: String) : LoopWorker {
 
     // Tasks are scheduled from other threads, so the queue must be thread safe.
     private val taskQueue = ConcurrentLinkedQueue<LoopWorker.TaskState>()
+    // java.lang.Object on purpose, the thread waits and is notified on it.
     private val lock = Object()
 
     private val thread = object : Thread(name) {

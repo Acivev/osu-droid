@@ -36,10 +36,11 @@ open class FormContainer : UILinearContainer() {
         val json = JSONObject()
 
         fun UIComponent.collect() {
-            val key = (this as? UIControl<*>)?.key
+            val control = this as? UIControl<*>
+            val key = control?.key
 
-            if (key != null) {
-                json.put(key, onEncodeControlData(this as UIControl<*>))
+            if (control != null && key != null) {
+                json.put(key, onEncodeControlData(control))
             } else if (this is UIContainer) {
                 forEach { it.collect() }
             }

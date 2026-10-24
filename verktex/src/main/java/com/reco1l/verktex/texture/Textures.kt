@@ -69,7 +69,7 @@ object Textures {
      * @param isInternal A boolean indicating whether the file path is internal to the application.
      * @return A [GraphicsTexture.Region] representing the loaded texture.
      */
-    open fun load(key: String, path: String, isInternal: Boolean = false, destinationAtlas: GraphicsTexture? = null): GraphicsTexture.Region? {
+    fun load(key: String, path: String, isInternal: Boolean = false, destinationAtlas: GraphicsTexture? = null): GraphicsTexture.Region? {
 
         /*val highDefinitionVariantPath = filePath.substringAfterLast('.') + "@2x." + filePath.substringAfterLast('.')
 
@@ -102,7 +102,7 @@ object Textures {
      *
      * @param key The key associated with the texture region to unload.
      */
-    open fun unload(key: String) {
+    fun unload(key: String) {
         val region = textureRegions[key] ?: run {
             Logger.w(
                 "TextureManager",
