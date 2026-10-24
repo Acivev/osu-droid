@@ -48,40 +48,44 @@ open class UIClickableContainer : UIContainer() {
             return true
         }
 
-        if (event is PointerEvent) {
-            when(event.action) {
-                PointerEvent.Action.Down -> {
-                    isPressed = true
-                    onActionDown?.invoke()
-                    pressStartTime = System.currentTimeMillis()
-                }
+        // Other events (e.g. keys) are not handled by clickable containers.
+        if (event !is PointerEvent) {
+            return false
+        }
 
-                PointerEvent.Action.Up -> {
-                    if (!isPressed) {
-                        return false
-                    }
+        return when (event.action) {
+            PointerEvent.Action.Down -> {
+                isPressed = true
+                onActionDown?.invoke()
+                pressStartTime = System.currentTimeMillis()
+                true
+            }
 
-                    if (containsScenePoint(event.x, event.y)) {
-                        onActionUp?.invoke()
-                    } else {
-                        onActionCancel?.invoke()
-                    }
-                    isPressed = false
-                }
-
-                PointerEvent.Action.Move -> return isPressed
-
-                // Cancel events are dispatched to every component, so they must not be consumed.
-                PointerEvent.Action.Unknown -> {
-                    if (isPressed) {
-                        onActionCancel?.invoke()
-                        isPressed = false
-                    }
+            PointerEvent.Action.Up -> {
+                if (!isPressed) {
                     return false
                 }
+
+                if (containsScenePoint(event.x, event.y)) {
+                    onActionUp?.invoke()
+                } else {
+                    onActionCancel?.invoke()
+                }
+                isPressed = false
+                true
+            }
+
+            PointerEvent.Action.Move -> isPressed
+
+            // Cancel events are dispatched to every component, so they must not be consumed.
+            PointerEvent.Action.Unknown -> {
+                if (isPressed) {
+                    onActionCancel?.invoke()
+                    isPressed = false
+                }
+                false
             }
         }
-        return true
     }
 
     override fun onUpdate(clock: TickingClock) {
