@@ -23,6 +23,12 @@ object BuildSettings {
      * Whether to use the debug playground scene or not.
      */
     const val DEBUG_PLAYGROUND = false
+
+    /**
+     * Whether score submission to the server is disabled. Debug builds never submit, so test plays
+     * on logged-in accounts cannot reach the production database.
+     */
+    val NO_SCORE_SUBMISSION = BuildConfig.DEBUG
 }
 
 

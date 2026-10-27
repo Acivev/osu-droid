@@ -4,6 +4,7 @@ import android.content.Intent;
 import android.net.Uri;
 
 import com.google.android.material.snackbar.Snackbar;
+import com.osudroid.BuildSettings;
 import com.osudroid.data.BeatmapInfo;
 import com.osudroid.utils.Execution;
 import com.osudroid.ui.SendingPanel;
@@ -134,6 +135,13 @@ public class OnlineScoring {
     public void sendRecord(final BeatmapInfo beatmap, final StatisticV2 record, final SendingPanel panel, final String replayPath) {
         if (!OnlineManager.getInstance().isStayOnline())
             return;
+
+        if (BuildSettings.INSTANCE.getNO_SCORE_SUBMISSION()) {
+            Debug.i("Score submission is disabled in this build");
+            ToastLogger.showText("Score submission is disabled in debug builds", false);
+            panel.setFail();
+            return;
+        }
 
         Debug.i("Sending score");
 
