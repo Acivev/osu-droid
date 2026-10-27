@@ -1,9 +1,12 @@
 package com.osudroid.verktex
 
+import com.reco1l.verktex.data.Vec4
 import com.reco1l.verktex.ui.shape.UIBox
 import com.reco1l.verktex.ui.container.UIContainer
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
@@ -57,5 +60,20 @@ class UIContainerInsertTest {
 
         assertSame(container, child.parent)
         assertEquals(1, child.attached)
+    }
+
+    @Test
+    fun moveToBackInvalidatesAStaticContainer() {
+        val container = UIContainer().apply { staticLayout = true }
+        val a = UIBox()
+        val b = UIBox()
+        container += a
+        container += b
+        container.layout(Vec4(0f, 0f, 100f, 100f))
+        assertFalse(container.layoutInvalid)
+
+        with(container) { b.moveToBack() }
+
+        assertTrue(container.layoutInvalid)
     }
 }

@@ -354,7 +354,7 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
         children.remove(this)
         children.add(this)
         // The order can matter to the layout, e.g. in a linear container.
-        invalidateLayout()
+        this@UIContainer.invalidateLayout()
     }
 
     /**
@@ -367,7 +367,7 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
         }
         children.remove(this)
         children.add(0, this)
-        invalidateLayout()
+        this@UIContainer.invalidateLayout()
     }
 
 
