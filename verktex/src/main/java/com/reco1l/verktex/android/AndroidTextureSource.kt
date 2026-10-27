@@ -4,6 +4,9 @@ import android.graphics.Bitmap
 import android.opengl.GLES32
 import android.opengl.GLUtils
 import com.reco1l.verktex.graphics.GraphicsTexture
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import kotlin.math.min
 
 class AndroidTextureSource(val bitmap: Bitmap) : GraphicsTexture.Source {
 
@@ -11,6 +14,65 @@ class AndroidTextureSource(val bitmap: Bitmap) : GraphicsTexture.Source {
     override val height = bitmap.height.toFloat()
 
     override fun uploadToHardware(texturePositionX: Float, texturePositionY: Float) {
-        GLUtils.texSubImage2D(GLES32.GL_TEXTURE_2D, 0, texturePositionX.toInt(), texturePositionY.toInt(), bitmap)
+        val x = texturePositionX.toInt()
+        val y = texturePositionY.toInt()
+
+        // Blending uses straight alpha, so premultiplied bitmaps are un-premultiplied first.
+        val isPremultipliedArgb = bitmap.isPremultiplied && bitmap.hasAlpha() &&
+            bitmap.config == Bitmap.Config.ARGB_8888 && bitmap.rowBytes == bitmap.width * 4
+
+        if (!isPremultipliedArgb) {
+            GLUtils.texSubImage2D(GLES32.GL_TEXTURE_2D, 0, x, y, bitmap)
+            return
+        }
+
+        val buffer = ByteBuffer.allocateDirect(bitmap.byteCount).order(ByteOrder.LITTLE_ENDIAN)
+
+        // Raw premultiplied pixels in RGBA byte order, getPixels() would already un-premultiply them.
+        bitmap.copyPixelsToBuffer(buffer)
+        buffer.rewind()
+
+        // Read as little-endian ints the pixels are ABGR, alpha stays in the top byte as unpremultiply() expects
+        // and the colour channels are converted the same way regardless of their order.
+        val pixels = buffer.asIntBuffer()
+        val row = IntArray(bitmap.width)
+
+        for (rowIndex in 0 until bitmap.height) {
+            val offset = rowIndex * bitmap.width
+
+            pixels.position(offset)
+            pixels.get(row)
+
+            for (i in row.indices) {
+                row[i] = unpremultiply(row[i])
+            }
+
+            pixels.position(offset)
+            pixels.put(row)
+        }
+
+        buffer.rewind()
+        GLES32.glTexSubImage2D(GLES32.GL_TEXTURE_2D, 0, x, y, bitmap.width, bitmap.height, GLES32.GL_RGBA, GLES32.GL_UNSIGNED_BYTE, buffer)
+    }
+
+    companion object {
+
+        /**
+         * Converts a premultiplied ARGB pixel to straight alpha.
+         */
+        fun unpremultiply(argb: Int): Int {
+            val alpha = argb ushr 24
+
+            if (alpha == 0) return 0
+            if (alpha == 255) return argb
+
+            fun channel(value: Int) = min(255, (value * 255 + alpha / 2) / alpha)
+
+            val red = channel((argb ushr 16) and 0xFF)
+            val green = channel((argb ushr 8) and 0xFF)
+            val blue = channel(argb and 0xFF)
+
+            return (alpha shl 24) or (red shl 16) or (green shl 8) or blue
+        }
     }
 }
