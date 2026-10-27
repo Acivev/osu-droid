@@ -43,7 +43,7 @@ object VerktexBridge {
 
 
     @JvmStatic
-    fun initialize(host: GameHost, context: Context) {
+    fun initialize(host: GameHost, context: Context, updateThread: Thread) {
         platform = HostedPlatform(context)
         window = HostedWindow()
 
@@ -68,6 +68,8 @@ object VerktexBridge {
         host.onEngineInitialized()
 
         Verktex.start()
+        // Runnables posted to the update thread can run before the update worker is first pumped.
+        platform.worker(UPDATE_WORKER).bindThread(updateThread)
         isInitialized = true
         host.onEngineStarted()
     }
@@ -133,11 +135,11 @@ object VerktexBridge {
     }
 
     /**
-     * True when the current thread is the one that last pumped the update worker.
+     * True when the current thread is AndEngine's update thread, which pumps the update worker.
      */
     @JvmStatic
     val isUpdateThread: Boolean
-        get() = isInitialized && platform.workers[UPDATE_WORKER]?.pumpingThread == Thread.currentThread()
+        get() = isInitialized && platform.workers[UPDATE_WORKER]?.isCurrentThread == true
 
     @JvmStatic
     fun checkUpdateThread() {

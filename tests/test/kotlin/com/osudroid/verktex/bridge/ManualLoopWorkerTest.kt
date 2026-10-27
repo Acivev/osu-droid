@@ -82,6 +82,29 @@ class ManualLoopWorkerTest {
     }
 
     @Test
+    fun updateThreadIsKnownBeforeTheFirstPump() {
+        val w = ManualLoopWorker("w") {}
+        w.start()
+        w.bindThread(Thread.currentThread())
+        assertTrue(w.isCurrentThread)
+        w.check()
+        var onOther = true
+        var thrown: Throwable? = null
+        val t = Thread {
+            onOther = w.isCurrentThread
+            try {
+                w.check()
+            } catch (e: IllegalStateException) {
+                thrown = e
+            }
+        }
+        t.start()
+        t.join()
+        assertFalse(onOther)
+        assertNotNull(thrown)
+    }
+
+    @Test
     fun isLoopingIsTrueInsideLoop() {
         var inside = false
         lateinit var w: ManualLoopWorker

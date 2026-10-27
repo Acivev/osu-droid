@@ -195,6 +195,10 @@ public class Engine implements SensorEventListener, OnTouchListener, ITouchEvent
 	// Getter & Setter
 	// ===========================================================
 
+	public UpdateThread getUpdateThread() {
+		return this.mUpdateThread;
+	}
+
 	public synchronized boolean isRunning() {
 		return this.mRunning;
 	}

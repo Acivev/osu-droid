@@ -15,8 +15,14 @@ class ManualLoopWorker(override val name: String, private val loop: () -> Unit) 
     @Volatile private var stopped = false
     @Volatile private var looping = false
 
+    /**
+     * The thread [check] accepts, set by [bindThread] or by the last [pump].
+     */
     @Volatile var pumpingThread: Thread? = null
         private set
+
+    val isCurrentThread: Boolean
+        get() = pumpingThread == Thread.currentThread()
 
     private val taskQueue = ConcurrentLinkedQueue<LoopWorker.TaskState>()
 
@@ -43,6 +49,13 @@ class ManualLoopWorker(override val name: String, private val loop: () -> Unit) 
         }
     }
 
+    /**
+     * Sets the thread [check] accepts before the first [pump], for hosts that know it in advance.
+     */
+    fun bindThread(thread: Thread) {
+        pumpingThread = thread
+    }
+
     override fun start() {
         started = true
     }
@@ -60,7 +73,7 @@ class ManualLoopWorker(override val name: String, private val loop: () -> Unit) 
     }
 
     override fun check() {
-        if (Thread.currentThread() != pumpingThread) {
+        if (!isCurrentThread) {
             throw IllegalStateException("This method must be called from the $name thread.")
         }
     }

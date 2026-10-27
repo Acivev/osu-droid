@@ -220,7 +220,7 @@ public class MainActivity extends BaseGameActivity implements
 
         // Finishing means onCreateEngineOptions returned a stub, the game never starts.
         if (!isFinishing()) {
-            VerktexBridge.initialize(this, this);
+            VerktexBridge.initialize(this, this, engine.getUpdateThread());
         }
         return GlobalManager.getInstance().getEngine();
     }
