@@ -245,6 +245,23 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
     }
 
     /**
+     * Adds a child to this container at the specified index and attaches it.
+     */
+    @RunOnDrawWorker
+    fun add(index: Int, child: UIComponent) {
+        children.add(index, child)
+        child.parent = this
+        child.onAttached()
+        invalidateMeasure()
+    }
+
+    /**
+     * Adds a child behind every other child of this container and attaches it.
+     */
+    @RunOnDrawWorker
+    fun addToBack(child: UIComponent) = add(0, child)
+
+    /**
      * Removes a child from this container and detaches it.
      */
     @RunOnDrawWorker
