@@ -38,6 +38,8 @@ import com.osudroid.ui.v2.game.SliderTickSprite;
 import com.osudroid.ui.v2.hud.elements.HUDLeaderboard;
 import com.osudroid.ui.v2.modmenu.ModIcon;
 import com.osudroid.utils.Execution;
+import com.osudroid.verktex.bridge.Destination;
+import com.osudroid.verktex.bridge.EngineRouter;
 import com.reco1l.andengine.Cameras;
 import com.reco1l.andengine.UIEngine;
 import com.reco1l.andengine.component.ComponentsKt;
@@ -153,7 +155,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     public String audioFilePath = null;
     private GameUIScene scene;
     private UIScene bgScene, mgScene, fgScene;
-    private Scene oldScene;
+    private Destination oldScene;
     private UIBox sceneBorder;
     private RectangularShape beatmapBackground;
     private Beatmap parsedBeatmap;
@@ -356,7 +358,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         scoringScene = sc;
     }
 
-    public void setOldScene(final Scene oscene) {
+    public void setOldScene(final Destination oscene) {
         oldScene = oscene;
     }
 
@@ -2114,7 +2116,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                 GlobalManager.getInstance().getSongService().setVolume(0.2f);
                 engine.setScene(scoringScene.getScene());
             } else {
-                engine.setScene(oldScene);
+                EngineRouter.show(oldScene);
             }
 
             // Resume difficulty calculation.
@@ -2358,7 +2360,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             return;
         }
         ResourceManager.getInstance().getSound("failsound").stop();
-        engine.setScene(oldScene);
+        EngineRouter.show(oldScene);
         releaseVideo();
 
         // Resume difficulty calculation.

@@ -58,6 +58,7 @@ import com.reco1l.framework.android.topMargin
 import com.osudroid.mods.ModAutoplay
 import com.osudroid.replay.ReplayImporter
 import com.osudroid.utils.ModHashMap
+import com.osudroid.verktex.bridge.Destination
 import com.reco1l.framework.android.bottomMargin
 import java.io.File
 import kotlin.math.max
@@ -415,7 +416,7 @@ class SettingsFragment : SettingsFragment() {
                         put(ModAutoplay::class)
                     }
 
-                    global.gameScene.setOldScene(global.mainMenuV2)
+                    global.gameScene.setOldScene(Destination.Verktex(global.mainMenuV2))
                     global.gameScene.startGame(selectedBeatmap, null, modMap, true)
                 }
                 true

@@ -50,7 +50,12 @@ import com.osudroid.debug.DebugPlaygroundScene;
 import com.osudroid.resources.R;
 import com.osudroid.ui.FPSCounter;
 import com.osudroid.ui.v2.GameLoaderScene;
+import com.osudroid.ui.v2.menu.main.MainMenuV2;
 import com.osudroid.utils.Execution;
+import com.osudroid.verktex.bridge.EngineRouter;
+import com.osudroid.verktex.bridge.HostedTextInput;
+import com.osudroid.verktex.bridge.InputRouter;
+import com.osudroid.verktex.bridge.VerktexBridge;
 import com.reco1l.andengine.UIEngine;
 import com.osudroid.multiplayer.api.LobbyAPI;
 import com.osudroid.multiplayer.api.RoomAPI;
@@ -60,8 +65,10 @@ import com.osudroid.multiplayer.Multiplayer;
 import com.osudroid.UpdateManager;
 import com.osudroid.ui.v2.multi.LobbyScene;
 
-import com.osudroid.ui.v2.modmenu.ModMenu;
 import com.reco1l.osu.ui.MessageDialog;
+import com.reco1l.verktex.GameHost;
+import com.reco1l.verktex.Verktex;
+import com.reco1l.verktex.ui.ITextInput;
 import com.osudroid.difficulty.BeatmapDifficultyCalculator;
 import net.lingala.zip4j.ZipFile;
 
@@ -100,13 +107,12 @@ import ru.nsu.ccfit.zuev.audio.serviceAudio.SaveServiceObject;
 import ru.nsu.ccfit.zuev.audio.serviceAudio.SongService;
 import ru.nsu.ccfit.zuev.osu.helper.FileUtils;
 import ru.nsu.ccfit.zuev.osu.helper.StringTable;
-import ru.nsu.ccfit.zuev.osu.menu.LoadingScreen;
 import ru.nsu.ccfit.zuev.osu.menu.SplashScene;
 import ru.nsu.ccfit.zuev.osu.online.OnlineManager;
 import ru.nsu.ccfit.zuev.osuplus.BuildConfig;
 
 public class MainActivity extends BaseGameActivity implements
-        IAccelerationListener {
+        IAccelerationListener, GameHost {
 
     public static String versionName;
     public static SongService songService;
@@ -126,11 +132,12 @@ public class MainActivity extends BaseGameActivity implements
     private float maxRefreshRate = 60;
     private int maxRefreshRateModeId = 0;
     private MessageDialog multiWindowAlert;
+    private HostedTextInput hostedTextInput;
 
     // Multiplayer
     private Uri roomInviteLink;
 
-    // Set to true by MainScene.exit() before calling finish(), so that onDestroy() kills the
+    // Set to true by MainMenuV2.exit() before calling finish(), so that onDestroy() kills the
     // process after the full Activity lifecycle has run (Firebase, SongService, SharedPrefs, etc.).
     public volatile boolean killOnDestroy = false;
 
@@ -212,6 +219,11 @@ public class MainActivity extends BaseGameActivity implements
         engine.setTouchController(new MultiTouchController());
 
         GlobalManager.getInstance().setEngine(engine);
+
+        // Finishing means onCreateEngineOptions returned a stub, the game never starts.
+        if (!isFinishing()) {
+            VerktexBridge.initialize(this, this);
+        }
         return GlobalManager.getInstance().getEngine();
     }
 
@@ -308,10 +320,13 @@ public class MainActivity extends BaseGameActivity implements
         // this just creates the entities for the first time (the SplashScene constructor no
         // longer does so).  On subsequent launches within the same process this safely
         // replaces stale GL references with fresh ones.
-        SplashScene.INSTANCE.initialize();
+        Verktex.INSTANCE.withTreeLock(() -> {
+            SplashScene.INSTANCE.initialize();
+            return null;
+        });
 
         // Setting the scene as fast as we can
-        getEngine().setScene(SplashScene.INSTANCE.getScene());
+        EngineRouter.showVerktex(SplashScene.INSTANCE.getScene());
 
         ResourceManager.getInstance().loadHighQualityAsset("logo", "logo.png");
         ResourceManager.getInstance().loadHighQualityAsset("play", "play.png");
@@ -369,7 +384,7 @@ public class MainActivity extends BaseGameActivity implements
             return DebugPlaygroundScene.INSTANCE;
         }
 
-        return SplashScene.INSTANCE.getScene();
+        return EngineRouter.getEmptyAndEngineScene();
     }
 
     @Override
@@ -404,24 +419,19 @@ public class MainActivity extends BaseGameActivity implements
                 GlobalManager.getInstance().setLoadingProgress(100);
                 ResourceManager.getInstance().loadFont("font", null, 28, Color.WHITE);
 
-                // IMPORTANT: RunnableHandler processes queued runnable's in REVERSE (LIFO) order.
-                // Never enqueue a bare setScene() and a follow-up action as two separate
-                // Execution.updateThread() calls, the follow-up would run first (LIFO) and then
-                // setScene would overwrite whatever scene the follow-up set.
+                // Keep the scene switch and its follow-up in one runnable so they run together.
                 if (!BuildSettings.DEBUG_PLAYGROUND) {
                     if (willReplay) {
                         final String replayFile = fileToAdd;
                         fileToAdd = null;
                         willReplay = false;
                         Execution.updateThread(() -> {
-                            GlobalManager.getInstance().getEngine().setScene(
-                                    GlobalManager.getInstance().getMainMenuV2());
+                            EngineRouter.showVerktex(GlobalManager.getInstance().getMainMenuV2());
                             GlobalManager.getInstance().getMainMenuV2().watchReplay(replayFile);
                         });
                     } else {
                         Execution.updateThread(() -> {
-                            GlobalManager.getInstance().getEngine().setScene(
-                                    GlobalManager.getInstance().getMainMenuV2());
+                            EngineRouter.showVerktex(GlobalManager.getInstance().getMainMenuV2());
                             GlobalManager.getInstance().getMainMenuV2().loadBeatmap();
                         });
                     }
@@ -472,6 +482,9 @@ public class MainActivity extends BaseGameActivity implements
         this.mRenderSurfaceView.setEGLConfigChooser(8, 8, 8, 8, 24, 0);
         this.mRenderSurfaceView.getHolder().setFormat(PixelFormat.RGB_888);
         this.mRenderSurfaceView.setRenderer(this.mEngine, this);
+        if (VerktexBridge.isInitialized()) {
+            VerktexBridge.attachSurfaceView(mRenderSurfaceView, mEngine);
+        }
 
         RelativeLayout mainLayout = new RelativeLayout(this);
         mainLayout.setBackgroundColor(Color.BLACK);
@@ -802,8 +815,7 @@ public class MainActivity extends BaseGameActivity implements
         final String lower = new File(path).getName().toLowerCase();
 
         if (lower.endsWith(".odr")) {
-            final com.osudroid.ui.v2.menu.main.MainMenuV2 menu =
-                    GlobalManager.getInstance().getMainMenuV2();
+            final MainMenuV2 menu = GlobalManager.getInstance().getMainMenuV2();
             if (menu != null) {
                 Execution.updateThread(() -> menu.watchReplay(path));
             } else {
@@ -894,6 +906,10 @@ public class MainActivity extends BaseGameActivity implements
         super.onResume();
         activityVisible = true;
 
+        if (VerktexBridge.isInitialized()) {
+            VerktexBridge.resume();
+        }
+
         // Cancel any previously scheduled flush task before scheduling a new one.
         // Without this, every resume stacks another periodic task that can no longer be cancelled.
         if (logFlushFuture != null && !logFlushFuture.isCancelled()) {
@@ -934,13 +950,28 @@ public class MainActivity extends BaseGameActivity implements
         // Note: the storyboard shader (StoryboardShaderProgram) and ExternalOESShaderProgram
         // extend ShaderProgram and are reset by ShaderProgram.resetAllForContextLoss() called
         // in EngineRenderer.onSurfaceCreated.
+        if (VerktexBridge.isInitialized()) {
+            VerktexBridge.onSurfaceCreated();
+        }
         super.onSurfaceCreated(pGLState);
+    }
+
+    @Override
+    public synchronized void onSurfaceChanged(final GLState pGLState, final int pWidth, final int pHeight) {
+        super.onSurfaceChanged(pGLState, pWidth, pHeight);
+        if (VerktexBridge.isInitialized()) {
+            VerktexBridge.onSurfaceChanged(pWidth, pHeight);
+        }
     }
 
     @Override
     public void onPause() {
         super.onPause();
         activityVisible = false;
+
+        if (VerktexBridge.isInitialized()) {
+            VerktexBridge.pause();
+        }
 
         if (logFlushFuture != null && !logFlushFuture.isCancelled()) {
             logFlushFuture.cancel(false);
@@ -986,6 +1017,10 @@ public class MainActivity extends BaseGameActivity implements
     protected void onDestroy() {
         super.onDestroy();
 
+        if (VerktexBridge.isInitialized()) {
+            VerktexBridge.dispose();
+        }
+
         // Safety net: if the Activity is destroyed while the user is still in a room (e.g.
         // swiped away from the task switcher, or system-killed), teardownSession() may never
         // have been called. Disconnect the socket here so the server knows the client is gone.
@@ -1009,7 +1044,7 @@ public class MainActivity extends BaseGameActivity implements
             // Firebase Analytics and Crashlytics have had a chance to flush/close their
             // sessions, SongService has been unbound, and SharedPreferences writes have been
             // committed.  Killing the process here ensures that all static singletons
-            // (SplashScene.INSTANCE, ResourceManager, UIEngine.current, etc.) are fully reset
+            // (the Verktex bridge, ResourceManager, UIEngine.current, etc.) are fully reset
             // on the next launch, preventing stale GL resource references (black fonts,
             // broken textures) if the user re-launches from the task switcher.
             android.os.Process.killProcess(android.os.Process.myPid());
@@ -1020,6 +1055,9 @@ public class MainActivity extends BaseGameActivity implements
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
         super.onWindowFocusChanged(hasFocus);
+        if (VerktexBridge.isInitialized()) {
+            VerktexBridge.onWindowFocusChanged(hasFocus);
+        }
         if (this.mEngine == null) {
             return;
         }
@@ -1033,7 +1071,7 @@ public class MainActivity extends BaseGameActivity implements
 
             if (Multiplayer.isConnected()
                     && (getEngine().getScene() == Multiplayer.roomScene
-                    || getEngine().getScene() == GlobalManager.getInstance().getSongMenu().getScene())) {
+                    || GlobalManager.getInstance().getSongMenu().isShown())) {
                 Execution.async(() -> Execution.runSafe(Multiplayer.roomScene::invalidateStatus));
             }
         }
@@ -1121,9 +1159,18 @@ public class MainActivity extends BaseGameActivity implements
             return super.onKeyDown(keyCode, event);
         }
 
+        // A key the shown overlay step left unconsumed is not offered to Verktex again by the steps below.
+        var verktexKey = new InputRouter.KeyOffer(() -> VerktexBridge.dispatchKey(event));
+
+        if (InputRouter.INSTANCE.routeKey(EngineRouter.getHasShownOverlay(), verktexKey::dispatch, () -> false)) {
+            return true;
+        }
+
         if (UIEngine.getCurrent().onKeyPress(keyCode, event)) {
             return true;
         }
+
+        if (EngineRouter.isVerktexActive() && keyCode != KeyEvent.KEYCODE_BACK && verktexKey.dispatch()) return true;
 
         if (event.getAction() != KeyEvent.ACTION_DOWN) {
             return super.onKeyDown(keyCode, event);
@@ -1135,6 +1182,8 @@ public class MainActivity extends BaseGameActivity implements
         if (keyCode == KeyEvent.KEYCODE_BACK && ActivityOverlay.onBackPress()) {
             return true;
         }
+
+        if (EngineRouter.isVerktexActive() && keyCode == KeyEvent.KEYCODE_BACK) { verktexKey.dispatch(); return true; }
 
         var gameScene = GlobalManager.getInstance().getGameScene();
 
@@ -1151,71 +1200,72 @@ public class MainActivity extends BaseGameActivity implements
         var scoringScene = GlobalManager.getInstance().getScoring();
 
         if (scoringScene != null && keyCode == KeyEvent.KEYCODE_BACK && currentScene == scoringScene.getScene()) {
-            scoringScene.back();
+            // It shows the song menu, which is changed on the update thread only. The scene check
+            // keeps a quick second Back from running back() twice.
+            Execution.updateThread(() -> {
+                if (GlobalManager.getInstance().getEngine().getScene() == scoringScene.getScene()) {
+                    scoringScene.back();
+                }
+            });
             return true;
         }
 
         var songMenu = GlobalManager.getInstance().getSongMenu();
 
-        if ((keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_ENTER)
-                && songMenu != null && currentScene == songMenu.getScene() && songMenu.getScene().hasChildScene()) {
-            var searchBar = songMenu.getSearchBar();
-
-            if (searchBar != null && songMenu.getScene().getChildScene() == searchBar.getScene()) {
-                searchBar.hideMenu();
-            }
-
-            if (songMenu.getScene().getChildScene() == ModMenu.INSTANCE) {
-                ModMenu.INSTANCE.back();
-            }
-
-            return true;
-        }
-
-        if (songMenu != null && keyCode == KeyEvent.KEYCODE_MENU
-                && currentScene == songMenu.getScene() && !songMenu.getScene().hasChildScene()) {
-            songMenu.stopScroll(0);
-            songMenu.showPropertiesMenu(null);
-            return true;
-        }
-
         if (keyCode == KeyEvent.KEYCODE_BACK && songMenu != null) {
-            if (currentScene == songMenu.getScene()) {
-                //SongMenu 界面按返回按钮（系统按钮）
-                songMenu.back();
-            } else {
-                if (currentScene instanceof LoadingScreen.LoadingScene) {
+            if (Multiplayer.isMultiplayer) {
+                if (currentScene instanceof LobbyScene lobbyScene) {
+                    lobbyScene.back();
                     return true;
                 }
 
-                if (Multiplayer.isMultiplayer) {
-                    if (currentScene instanceof LobbyScene lobbyScene) {
-                        lobbyScene.back();
-                        return true;
-                    }
+                if (currentScene == Multiplayer.roomScene) {
 
-                    if (currentScene == Multiplayer.roomScene) {
-
-                        if (Multiplayer.roomScene.hasChildScene() && Multiplayer.roomScene.getChildScene() == ModMenu.INSTANCE) {
-                            ModMenu.INSTANCE.back();
-                            return true;
-                        }
-                        runOnUiThread(Multiplayer.roomScene.getLeaveDialog()::show);
-                        return true;
-                    }
-                }
-
-                if (currentScene instanceof GameLoaderScene loaderScene) {
-                    loaderScene.cancel();
+                    runOnUiThread(Multiplayer.roomScene.getLeaveDialog()::show);
                     return true;
                 }
+            }
 
-                GlobalManager.getInstance().getMainMenuV2().showExitDialog();
+            if (currentScene instanceof GameLoaderScene loaderScene) {
+                loaderScene.cancel();
+                return true;
             }
             return true;
         }
 
         return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public boolean onKeyUp(final int keyCode, final KeyEvent event) {
+        if (EngineRouter.isVerktexActive()) {
+            return VerktexBridge.dispatchKey(event) || super.onKeyUp(keyCode, event);
+        }
+
+        return super.onKeyUp(keyCode, event);
+    }
+
+    @Override
+    public void onEngineInitialized() {}
+
+    @Override
+    public void onEngineStarted() {}
+
+    @Override
+    public void attachTextInput(@NonNull ITextInput textInput) {
+        getHostedTextInput().attach(textInput);
+    }
+
+    @Override
+    public void detachTextInput() {
+        getHostedTextInput().detach();
+    }
+
+    private HostedTextInput getHostedTextInput() {
+        if (hostedTextInput == null) {
+            hostedTextInput = new HostedTextInput(this);
+        }
+        return hostedTextInput;
     }
 
     @Override

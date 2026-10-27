@@ -1,9 +1,12 @@
 package ru.nsu.ccfit.zuev.osu;
 
 import com.osudroid.ui.v2.menu.main.MainMenuV2;
+import com.osudroid.verktex.bridge.Destination;
 import com.osudroid.data.BeatmapInfo;
 import com.osudroid.data.DatabaseManager;
+import com.osudroid.utils.Execution;
 import com.reco1l.andengine.UIEngine;
+import com.reco1l.verktex.Verktex;
 
 import org.andengine.engine.camera.Camera;
 
@@ -52,19 +55,24 @@ public class GlobalManager {
         songService = saveServiceObject.getSongService();
         SongService.initBASS();
         setLoadingProgress(10);
-        setMainMenuV2(new MainMenuV2());
+        // Built under the tree lock: the components' constructors read engine state (fonts, theme).
+        setMainMenuV2(Verktex.INSTANCE.withTreeLock(MainMenuV2::new));
         setInfo("Loading skin...");
         ResourceManager.getInstance().loadSkin(Config.getSkinPath());
         setLoadingProgress(30);
         setGameScene(new GameScene(getEngine()));
-        setSongMenu(new SongMenu());
+        setSongMenu(Verktex.INSTANCE.withTreeLock(SongMenu::new));
         setLoadingProgress(40);
-        getSongMenu().init(mainActivity, getEngine(), getGameScene());
-        getSongMenu().load();
-        setScoring(new ScoringScene(getEngine(), getGameScene(), getSongMenu()));
-        getSongMenu().setScoringScene(getScoring());
+        var songMenu = getSongMenu();
+        // The song menu's init() and load() both assert the update thread; this init() runs on an async thread.
+        Execution.updateThread(() -> {
+            songMenu.init(mainActivity, getEngine(), getGameScene());
+            songMenu.load();
+        });
+        setScoring(new ScoringScene(getEngine(), getGameScene(), songMenu));
+        songMenu.setScoringScene(getScoring());
         getGameScene().setScoringScene(getScoring());
-        getGameScene().setOldScene(getSongMenu().getScene());
+        getGameScene().setOldScene(new Destination.Verktex(songMenu));
         if (songService != null) {
             songService.stop();
         }

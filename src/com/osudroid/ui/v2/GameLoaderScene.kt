@@ -208,7 +208,7 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
         val songMenu = global.songMenu
         val selectedBeatmap = songMenu.selectedBeatmap
 
-        global.engine.scene = songMenu.scene
+        songMenu.show()
 
         if (selectedBeatmap != null) {
             songMenu.playMusic(selectedBeatmap.audioPath, selectedBeatmap.previewTime)

@@ -127,7 +127,7 @@ object Multiplayer {
         async {
 
             try {
-                LoadingScreen().show()
+                LoadingScreen.show()
 
                 GlobalManager.getInstance().mainActivity.checkNewSkins()
                 GlobalManager.getInstance().mainActivity.loadBeatmapLibrary()
@@ -184,7 +184,7 @@ object Multiplayer {
         finalData = null
 
         // Avoiding data parsing if user left from ScoringScene
-        if (GlobalManager.getInstance().engine.scene == roomScene || GlobalManager.getInstance().engine.scene == GlobalManager.getInstance().songMenu.scene) {
+        if (GlobalManager.getInstance().engine.scene == roomScene || GlobalManager.getInstance().songMenu.isShown) {
             return
         }
 

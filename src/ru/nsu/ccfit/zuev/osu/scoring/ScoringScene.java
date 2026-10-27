@@ -276,7 +276,7 @@ public class ScoringScene {
                     }
                     if (pSceneTouchEvent.isActionUp()) {
                         ResourceManager.getInstance().getSound("applause").stop();
-                        engine.setScene(menu.getScene());
+                        menu.show();
                         game.startGame(null, null, null);
                         scene = null;
                         stopMusic();
@@ -307,7 +307,7 @@ public class ScoringScene {
                     if (pSceneTouchEvent.isActionUp()) {
                         ResourceManager.getInstance().getSound("applause").stop();
                         SongMenu.stopMusicStatic();
-                        engine.setScene(menu.getScene());
+                        menu.show();
                         game.startGame(beatmapToReplay, replayPath, mods);
 
                         scene = null;
@@ -639,7 +639,7 @@ public class ScoringScene {
             return;
         }
         replayMusic();
-        GlobalManager.getInstance().getEngine().setScene(GlobalManager.getInstance().getSongMenu().getScene());
+        GlobalManager.getInstance().getSongMenu().show();
         GlobalManager.getInstance().getSongMenu().updateScore();
         setReplayID(-1);
     }
