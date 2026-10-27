@@ -3,6 +3,7 @@ package ru.nsu.ccfit.zuev.osu;
 import static kotlin.collections.ArraysKt.any;
 
 import android.content.Context;
+import android.graphics.Bitmap;
 import android.graphics.Color;
 import android.util.Log;
 
@@ -23,6 +24,8 @@ import org.andengine.opengl.font.Font;
 import org.andengine.opengl.font.StrokeFont;
 import org.andengine.opengl.texture.TextureOptions;
 import org.andengine.opengl.texture.atlas.bitmap.BitmapTextureAtlas;
+import org.andengine.opengl.texture.atlas.bitmap.source.IBitmapTextureAtlasSource;
+import org.andengine.opengl.texture.atlas.source.BaseTextureAtlasSource;
 import org.andengine.opengl.texture.region.TextureRegion;
 import org.andengine.opengl.texture.region.TextureRegionFactory;
 import org.andengine.util.debug.Debug;
@@ -380,6 +383,33 @@ public class ResourceManager {
         return region;
     }
 
+    /**
+     * {@link #loadBackground(String)} with the background already decoded, as the song menu hands it
+     * over. The bitmap is copied for the atlas, which recycles what it uploads.
+     */
+    public TextureRegion loadBackground(final String file, final Bitmap bitmap) {
+        if (textureStore.containsKey("::background")) {
+            // Only the GL texture, see loadBackground(String).
+            engine.getTextureManager().unloadTexture(Objects.requireNonNull(textureStore.get("::background")).getTexture());
+        }
+        if (file == null) {
+            return textureStore.get("menu-background");
+        }
+
+        if (bitmap == null) {
+            TextureRegion fallback = textureStore.get("menu-background");
+            textureStore.put("::background", fallback);
+            return fallback;
+        }
+
+        final BitmapCopySource source = new BitmapCopySource(bitmap, 0, 0);
+        final BitmapTextureAtlas tex = new BitmapTextureAtlas(engine.getTextureManager(), bitmap.getWidth(), bitmap.getHeight(), TextureOptions.BILINEAR);
+        TextureRegion region = TextureRegionFactory.createFromSource(tex, source, 0, 0, false);
+        engine.getTextureManager().loadTexture(tex);
+        textureStore.put("::background", region);
+        return region;
+    }
+
     public TextureRegion loadHighQualityAsset(final String resname,
                                               final String file) {
         return textureStore.loadHighQualityAsset(resname, file);
@@ -648,4 +678,22 @@ public class ResourceManager {
         }
     }
 
+    private static final class BitmapCopySource extends BaseTextureAtlasSource implements IBitmapTextureAtlasSource {
+        private final Bitmap bitmap;
+
+        BitmapCopySource(final Bitmap bitmap, final int textureX, final int textureY) {
+            super(textureX, textureY, bitmap.getWidth(), bitmap.getHeight());
+            this.bitmap = bitmap;
+        }
+
+        @Override
+        public BitmapCopySource deepCopy() {
+            return new BitmapCopySource(bitmap, mTextureX, mTextureY);
+        }
+
+        @Override
+        public Bitmap onLoadBitmap(final Bitmap.Config pBitmapConfig) {
+            return bitmap.copy(Bitmap.Config.ARGB_8888, false);
+        }
+    }
 }
