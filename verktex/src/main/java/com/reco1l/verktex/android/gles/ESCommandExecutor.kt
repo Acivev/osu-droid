@@ -12,6 +12,13 @@ import com.reco1l.verktex.graphics.GraphicsShader
  */
 object ESCommandExecutor {
 
+    private val IDENTITY_MAT4 = floatArrayOf(
+        1f, 0f, 0f, 0f,
+        0f, 1f, 0f, 0f,
+        0f, 0f, 1f, 0f,
+        0f, 0f, 0f, 1f
+    )
+
     fun execute(command: DrawCommand, viewportWidth: Int, viewportHeight: Int) {
 
         if (command.clearDepth) {
@@ -77,6 +84,7 @@ object ESCommandExecutor {
             set("uBorderWidth", 0f)
             set("uBorderColor", Color4.Transparent)
             set("uSize", viewportSize)
+            set("uTransform", IDENTITY_MAT4)
         })
         command.shader.applyUniforms(command.uniformSet)
 

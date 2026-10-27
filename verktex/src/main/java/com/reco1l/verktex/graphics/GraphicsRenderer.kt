@@ -74,6 +74,10 @@ abstract class GraphicsRenderer {
     private var activeScissor: Vec4? = null
     private var activeUniformSet: GraphicsShader.UniformSet = EMPTY_UNIFORMS
 
+    // The uniforms of the last drawn external texture, reused so consecutive draws of it merge.
+    private var externalUniformsTexture: GraphicsTexture? = null
+    private var externalUniforms: GraphicsShader.UniformSet = EMPTY_UNIFORMS
+
     // Transformed positions are written here instead of allocating a Vec2 per vertex. It is only
     // used within one draw helper call at a time, the renderer is driven by a single thread.
     private val points = FloatArray(8)
@@ -666,9 +670,19 @@ abstract class GraphicsRenderer {
         radius: Float = 0f,
         uv: Vec4 = Vec4(region.u0, region.v0, region.u1, region.v1)
     ) {
+        val externalTransform = texture.transform
+
         // The texture shader only reads the uniforms for rounded corners, so plain textures share
         // an empty set and consecutive ones from the same texture end up in one draw call.
-        val uniformSet = if (radius > 0f) {
+        val uniformSet = if (texture.isExternal && externalTransform != null) {
+            // External textures are sampled through their transform, which the draw reads by reference
+            // after the bind latched the latest frame. Rounded corners are not supported for them.
+            if (externalUniformsTexture !== texture) {
+                externalUniformsTexture = texture
+                externalUniforms = GraphicsShader.UniformSet().apply { set("uTransform", externalTransform) }
+            }
+            externalUniforms
+        } else if (radius > 0f) {
             GraphicsShader.UniformSet().apply {
                 set("uRadius", radius)
                 set("uSize", Vec2(width, height))
@@ -678,7 +692,7 @@ abstract class GraphicsRenderer {
         }
 
         setState(
-            shader = BuiltIn.Shaders.TextureQuad,
+            shader = if (texture.isExternal) BuiltIn.Shaders.Video else BuiltIn.Shaders.TextureQuad,
             uniformSet = uniformSet,
             texture = texture
         )

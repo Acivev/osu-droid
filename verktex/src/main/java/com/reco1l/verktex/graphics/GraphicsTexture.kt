@@ -25,6 +25,18 @@ abstract class GraphicsTexture : GraphicsResource() {
      */
     open val packingAlgorithm: TexturePackingAlgorithm = TexturePackingAlgorithm.MaxRects
 
+    /**
+     * Whether the texture is an external image (such as video frames) that must be sampled with
+     * [com.reco1l.verktex.BuiltIn.Shaders.Video] instead of the regular texture shader.
+     */
+    open val isExternal: Boolean get() = false
+
+    /**
+     * The column-major 4x4 matrix applied to texture coordinates when sampling an external texture,
+     * null for regular textures.
+     */
+    open val transform: FloatArray? get() = null
+
 
     private val freeRegions = mutableListOf<Vec4>()
 
