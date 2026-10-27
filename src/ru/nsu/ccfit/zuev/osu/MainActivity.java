@@ -1197,19 +1197,6 @@ public class MainActivity extends BaseGameActivity implements
             return true;
         }
 
-        var scoringScene = GlobalManager.getInstance().getScoring();
-
-        if (scoringScene != null && keyCode == KeyEvent.KEYCODE_BACK && currentScene == scoringScene.getScene()) {
-            // It shows the song menu, which is changed on the update thread only. The scene check
-            // keeps a quick second Back from running back() twice.
-            Execution.updateThread(() -> {
-                if (GlobalManager.getInstance().getEngine().getScene() == scoringScene.getScene()) {
-                    scoringScene.back();
-                }
-            });
-            return true;
-        }
-
         var songMenu = GlobalManager.getInstance().getSongMenu();
 
         if (keyCode == KeyEvent.KEYCODE_BACK && songMenu != null) {

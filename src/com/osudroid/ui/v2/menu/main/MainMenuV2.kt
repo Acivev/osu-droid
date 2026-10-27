@@ -1166,7 +1166,7 @@ class MainMenuV2 : UIScene(), ISkinnable, RoutedScene {
         val scoring = GlobalManager.getInstance().scoring
         scoring.load(stat, null, songService, replayFile, null, beatmap)
 
-        GlobalManager.getInstance().engine.setScene(scoring.scene)
+        scoring.show()
         Log.d("MainMenuV2", "watchReplay: navigated to scoring scene")
     }
 

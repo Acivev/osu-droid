@@ -1,51 +1,64 @@
 package com.osudroid.ui
 
-import org.andengine.entity.modifier.MoveYModifier
-import org.andengine.entity.primitive.Rectangle
-import org.andengine.entity.scene.ITouchArea
-import org.andengine.entity.sprite.Sprite
-import org.andengine.entity.text.Text
-import org.andengine.entity.text.TextOptions
-import org.andengine.input.touch.TouchEvent
-import org.andengine.util.HorizontalAlign
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.SkinTextures
+import com.osudroid.utils.updateThread
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.Dimension
+import com.reco1l.verktex.data.LayoutConstraints
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.GraphicsTexture
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.math.Easing
+import com.reco1l.verktex.math.FloatAnimation
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UIComponent
+import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.text.UIText
 import ru.nsu.ccfit.zuev.osu.Config
-import ru.nsu.ccfit.zuev.osu.GlobalManager
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.round
-import ru.nsu.ccfit.zuev.osu.ResourceManager.getInstance as getResources
 
 class SendingPanel(
     private val overallRank: Long,
     private val score: Long,
     private val accuracy: Float,
     private val pp: Float
-) : Rectangle(0f, -200f, 800f, 200f, GlobalManager.getInstance().engine.vertexBufferObjectManager) {
-    val dismissTouchArea: ITouchArea
-        get() = dismissButton
+) : UIContainer() {
+    // The 800x200 panel. The container also holds the button below it, so its touches reach the button.
+    private val background = LegacyRectangle(0f, 0f, 800f, 200f).also { this += it }
+    private var legacyWidth by background::legacyWidth
+    private var legacyHeight by background::legacyHeight
 
-    private val overallCaptionText = Text(0f, 0f, getResources().getFont("CaptionFont"), "Overall Ranking", GlobalManager.getInstance().engine.vertexBufferObjectManager).also {
-        it.setPosition((width - it.width) / 2, height / 5)
-        attachChild(it)
+    private val overallCaptionText = legacyText("CaptionFont", "Overall Ranking").also {
+        it.setPosition((legacyWidth - it.legacyWidth) / 2, legacyHeight / 5)
+        this += it
     }
 
-    private val minWidth = width
-    private val minHeight = height
+    private val minWidth = legacyWidth
+    private val minHeight = legacyHeight
     private val columnGap = 10
 
-    private var moveModifier: MoveYModifier? = null
+    private var moveModifier: FloatAnimation? = null
 
     private val dismissButton = object : DismissButton() {
-        override fun onAreaTouched(touchEvent: TouchEvent, localX: Float, localY: Float): Boolean {
+        override fun onInputEvent(event: InputEvent): Boolean {
+            // Only touches inside the button count.
+            if (event !is PointerEvent || !containsScenePoint(event.x, event.y)) {
+                return false
+            }
+
             if (canBeDismissed) {
                 this@SendingPanel.let {
-                    if (moveModifier != null) {
-                        it.unregisterEntityModifier(moveModifier)
-                    }
-
-                    val offset = it.height + height
-                    moveModifier = MoveYModifier(0.5f * (it.y + offset) / offset, it.y, -offset)
-                    it.registerEntityModifier(moveModifier)
+                    val offset = it.legacyHeight + legacyHeight
+                    moveModifier = moveYModifier(0.5f * (it.legacyY + offset) / offset, it.legacyY, -offset)
                 }
 
                 canBeDismissed = false
@@ -55,28 +68,44 @@ class SendingPanel(
             return false
         }
     }.also {
-        attachChild(it)
-        it.setPosition((width - it.width) / 2, height)
+        this += it
+        it.setPosition((legacyWidth - it.legacyWidth) / 2, legacyHeight)
         it.setText("Sending...")
     }
 
-    private val rowContainer = Rectangle(0f, 0f, width, height * 0.8f, GlobalManager.getInstance().engine.vertexBufferObjectManager).also {
+    private val rowContainer = LegacyRectangle(0f, 0f, legacyWidth, legacyHeight * 0.8f).also {
         it.setColor(0f, 0f, 0f, 0f)
-        attachChild(it)
+        this += it
     }
 
-    private val mapRankColumn = Column("Map Rank").also { rowContainer.attachChild(it) }
-    private val overallRankColumn = Column("Overall Rank").also { rowContainer.attachChild(it) }
-    private val accuracyColumn = Column("Accuracy").also { rowContainer.attachChild(it) }
-    private val scoreColumn = Column("Score").also { rowContainer.attachChild(it) }
-    private val ppColumn = Column("Performance").also { rowContainer.attachChild(it) }
+    private val mapRankColumn = Column("Map Rank").also { rowContainer += it }
+    private val overallRankColumn = Column("Overall Rank").also { rowContainer += it }
+    private val accuracyColumn = Column("Accuracy").also { rowContainer += it }
+    private val scoreColumn = Column("Score").also { rowContainer += it }
+    private val ppColumn = Column("Performance").also { rowContainer += it }
 
     init {
-        setColor(0f, 0f, 0f, 0.7f)
+        background.setColor(0f, 0f, 0f, 0.7f)
         resetPosition()
     }
 
+    override fun onUpdate(clock: TickingClock) {
+        moveModifier?.let { setPosition(legacyX, it.update(clock)) }
+
+        super.onUpdate(clock)
+    }
+
+    // Called from the submission thread. Nothing to do once the results screen dropped the panel.
     fun show(newMapRank: Long, newOverallRank: Long, newScore: Long, newAccuracy: Float, newPP: Float) {
+        if (parent == null) {
+            return
+        }
+
+        updateThread { Verktex.withTreeLock {
+        if (parent == null) {
+            return@withTreeLock
+        }
+
         dismissButton.canBeDismissed = true
 
         // Map rank column is special, as its color is different when ranking up
@@ -132,51 +161,62 @@ class SendingPanel(
 
         // Obtain the maximum height of all columns
         val columnMaxHeight = maxOf(
-            mapRankColumn.height,
-            overallRankColumn.height,
-            accuracyColumn.height,
-            scoreColumn.height,
-            ppColumn.height
+            mapRankColumn.legacyHeight,
+            overallRankColumn.legacyHeight,
+            accuracyColumn.legacyHeight,
+            scoreColumn.legacyHeight,
+            ppColumn.legacyHeight
         )
 
         // Update the height of all columns to the maximum height
-        mapRankColumn.height = columnMaxHeight
-        overallRankColumn.height = columnMaxHeight
-        accuracyColumn.height = columnMaxHeight
-        scoreColumn.height = columnMaxHeight
-        ppColumn.height = columnMaxHeight
+        mapRankColumn.legacyHeight = columnMaxHeight
+        overallRankColumn.legacyHeight = columnMaxHeight
+        accuracyColumn.legacyHeight = columnMaxHeight
+        scoreColumn.legacyHeight = columnMaxHeight
+        ppColumn.legacyHeight = columnMaxHeight
 
         rowContainer.let {
-            it.width = ppColumn.x + ppColumn.width - mapRankColumn.x
-            it.height = columnMaxHeight
+            it.legacyWidth = ppColumn.legacyX + ppColumn.legacyWidth - mapRankColumn.legacyX
+            it.legacyHeight = columnMaxHeight
         }
 
-        width = max(minWidth, max(overallCaptionText.width, rowContainer.width) + 20)
-        height = max(minHeight, minHeight / 5 + overallCaptionText.height + rowContainer.height + 10)
+        legacyWidth = max(minWidth, max(overallCaptionText.legacyWidth, rowContainer.legacyWidth) + 20)
+        legacyHeight = max(minHeight, minHeight / 5 + overallCaptionText.legacyHeight + rowContainer.legacyHeight + 10)
 
         rowContainer.let {
-            it.setPosition((width - it.width) / 2, height - it.height - 10)
+            it.setPosition((legacyWidth - it.legacyWidth) / 2, legacyHeight - it.legacyHeight - 10)
         }
 
         resetPosition()
 
-        overallCaptionText.setPosition((width - overallCaptionText.width) / 2, (height - overallCaptionText.height) / 5)
+        overallCaptionText.setPosition((legacyWidth - overallCaptionText.legacyWidth) / 2, (legacyHeight - overallCaptionText.legacyHeight) / 5)
 
         dismissButton.let {
             it.setText("Dismiss")
-            it.setPosition((width - it.width) / 2, height)
+            it.setPosition((legacyWidth - it.legacyWidth) / 2, legacyHeight)
         }
 
-        moveModifier = MoveYModifier(0.5f, -height, 0f)
-        registerEntityModifier(moveModifier)
+        moveModifier = moveYModifier(0.5f, -legacyHeight, 0f)
+        } }
     }
 
+    // Called from the submission thread, see show().
     fun setFail() {
+        if (parent == null) {
+            return
+        }
+
+        updateThread { Verktex.withTreeLock {
+        if (parent == null) {
+            return@withTreeLock
+        }
+
         dismissButton.setText("Failed")
+        } }
     }
 
     private fun resetPosition() {
-        setPosition((Config.getRES_WIDTH() - width) / 2f, -height)
+        setPosition((Config.getRES_WIDTH() - legacyWidth) / 2f, -legacyHeight)
     }
 
     private fun updateColumn(column: Column, value: String, difference: Float, prevColumn: Column? = null) = column.apply {
@@ -188,25 +228,36 @@ class SendingPanel(
             else -> setValueRectColor(0.4f, 0.4f, 0.4f, 0.8f)
         }
 
-        setPosition(if (prevColumn != null) prevColumn.x + prevColumn.width + columnGap else 0f, 0f)
+        setPosition(if (prevColumn != null) prevColumn.legacyX + prevColumn.legacyWidth + columnGap else 0f, 0f)
     }
 
-    private fun formatScore(score: Long) = score
-        .toString()
-        // Reverse the order
-        .reversed()
-        // Split into 3 characters each
-        .chunked(3)
-        // Join them
-        .joinToString(" ") { it }
-        // Reverse back to maintain original order
-        .reversed()
+    companion object {
+        internal fun formatScore(score: Long) = score
+            .toString()
+            // Reverse the order
+            .reversed()
+            // Split into 3 characters each
+            .chunked(3)
+            // Join them
+            .joinToString(" ") { it }
+            // Reverse back to maintain original order
+            .reversed()
+    }
 
-    private open class DismissButton : Sprite(0f, 0f, getResources().getTexture("ranking_button"), GlobalManager.getInstance().engine.vertexBufferObjectManager) {
+    private open class DismissButton(
+        texture: GraphicsTexture.Region? = SkinTextures.getAsset("ranking_button", "ranking_button.png")
+    ) : LegacyRectangle(0f, 0f, texture?.width ?: 0f, texture?.height ?: 0f) {
         var canBeDismissed = false
 
-        private val text = Text(0f, 0f, getResources().getFont("font"), "", 10, GlobalManager.getInstance().engine.vertexBufferObjectManager).also {
-            attachChild(it)
+        private val sprite = UISprite(texture).also {
+            it.scaleType = UISprite.ScaleType.Stretch
+            it.width = fill()
+            it.height = fill()
+            this += it
+        }
+
+        private val text = legacyText("font", "").also {
+            this += it
         }
 
         fun setText(text: String) {
@@ -217,29 +268,30 @@ class SendingPanel(
 
         private fun updateTextPosition() = text.let {
             it.setPosition(
-                (width - it.width) / 2,
+                (legacyWidth - it.legacyWidth) / 2,
                 // For whatever reason, the text is not centered vertically,
                 // so we need to manually adjust it by subtracting 10...
-                (height - it.height) / 2 - 10
+                (legacyHeight - it.legacyHeight) / 2 - 10
             )
         }
     }
 
-    private class Column(caption: String) : Rectangle(0f, 0f, 100f, 80f, GlobalManager.getInstance().engine.vertexBufferObjectManager) {
-        private val minWidth = width
-        private val minHeight = height
+    private class Column(caption: String) : LegacyRectangle(0f, 0f, 100f, 80f) {
+        private val minWidth = legacyWidth
+        private val minHeight = legacyHeight
 
-        private val captionText = Text(0f, 0f, getResources().getFont("font"), caption, GlobalManager.getInstance().engine.vertexBufferObjectManager).also {
-            attachChild(it)
+        private val captionText = legacyText("font", caption).also {
+            this += it
         }
 
-        private val valueRect = Rectangle(0f, 80f, width, 0f, GlobalManager.getInstance().engine.vertexBufferObjectManager).also {
+        private val valueRect = LegacyRectangle(0f, 80f, legacyWidth, 0f).also {
             it.setColor(0.4f, 0.4f, 0.4f, 0.8f)
-            attachChild(it)
+            this += it
         }
 
-        private val valueText = Text(0f, 0f, getResources().getFont("font"), "", 100, TextOptions(HorizontalAlign.CENTER), GlobalManager.getInstance().engine.vertexBufferObjectManager).also {
-            valueRect.attachChild(it)
+        private val valueText = legacyText("font", "").also {
+            it.alignment = Anchor.TopCenter
+            valueRect += it
         }
 
         init { setColor(0f, 0f, 0f, 0f) }
@@ -254,42 +306,107 @@ class SendingPanel(
             valueRect.setColor(pRed, pGreen, pBlue, pAlpha)
         }
 
-        override fun setWidth(pWidth: Float) {
-            super.setWidth(pWidth)
+        override var legacyWidth: Float
+            get() = super.legacyWidth
+            set(pWidth) {
+            super.legacyWidth = pWidth
 
             // Center the caption text
-            captionText.let { it.setPosition((width - it.width) / 2, 0f) }
+            captionText.let { it.setPosition((legacyWidth - it.legacyWidth) / 2, 0f) }
 
             // Update the value rectangle width
             valueRect.let {
-                it.width = width
-                it.setPosition(0f, height - it.height)
+                it.legacyWidth = legacyWidth
+                it.setPosition(0f, legacyHeight - it.legacyHeight)
             }
 
             // Center the value text
             valueText.let {
-                it.setPosition((valueRect.width - it.width) / 2, (valueRect.height - it.height) / 2)
+                it.setPosition((valueRect.legacyWidth - it.legacyWidth) / 2, (valueRect.legacyHeight - it.legacyHeight) / 2)
             }
         }
 
-        override fun setHeight(pHeight: Float) {
-            super.setHeight(pHeight)
+        override var legacyHeight: Float
+            get() = super.legacyHeight
+            set(pHeight) {
+            super.legacyHeight = pHeight
 
             // Update the value rectangle height
             valueRect.let {
-                it.height = height - captionText.y - captionText.height
-                it.setPosition(0f, height - it.height)
+                it.legacyHeight = legacyHeight - captionText.legacyY - captionText.legacyHeight
+                it.setPosition(0f, legacyHeight - it.legacyHeight)
             }
 
             // Center the value text
             valueText.let {
-                it.setPosition((valueRect.width - it.width) / 2, (valueRect.height - it.height) / 2)
+                it.setPosition((valueRect.legacyWidth - it.legacyWidth) / 2, (valueRect.legacyHeight - it.legacyHeight) / 2)
             }
         }
 
         private fun updateSizes() {
-            width = max(minWidth, max(captionText.width + 10, valueText.width + 20))
-            height = max(minHeight, captionText.height + valueText.height)
+            legacyWidth = max(minWidth, max(captionText.legacyWidth + 10, valueText.legacyWidth + 20))
+            legacyHeight = max(minHeight, captionText.legacyHeight + valueText.legacyHeight)
         }
     }
+}
+
+
+/**
+ * A rectangle placed and sized in virtual units, applied in window pixels,
+ * its colour being the background colour.
+ */
+private open class LegacyRectangle(x: Float, y: Float, width: Float, height: Float) : UIContainer() {
+    open var legacyWidth = width
+        set(value) {
+            field = value
+            this.width = value.vu.px
+        }
+
+    open var legacyHeight = height
+        set(value) {
+            field = value
+            this.height = value.vu.px
+        }
+
+    init {
+        setPosition(x, y)
+        this.width = width.vu.px
+        this.height = height.vu.px
+    }
+
+    fun setColor(red: Float, green: Float, blue: Float, alpha: Float = 1f) {
+        backgroundColor = Color4(red, green, blue, alpha)
+    }
+}
+
+// The size of a text, measured on demand.
+private val unbounded = LayoutConstraints(0f, Float.POSITIVE_INFINITY, 0f, Float.POSITIVE_INFINITY)
+
+private val UIText.legacyWidth: Float
+    get() = measure(unbounded).x / LegacyUnits.scale
+
+private val UIText.legacyHeight: Float
+    get() = measure(unbounded).y / LegacyUnits.scale
+
+private fun legacyText(fontName: String, text: String) = UIText().also {
+    it.fontSize = LegacyUnits.fontSize(fontName).vu.px
+    it.wrapText = false
+    it.color = Color4.White
+    it.text = text
+}
+
+private val UIComponent.legacyX: Float
+    get() = (x as Dimension.Fixed).toPixels() / LegacyUnits.scale
+
+private val UIComponent.legacyY: Float
+    get() = (y as Dimension.Fixed).toPixels() / LegacyUnits.scale
+
+private fun UIComponent.setPosition(x: Float, y: Float) {
+    this.x = x.vu.px
+    this.y = y.vu.px
+}
+
+// A linear move of the y position from fromY to toY over duration seconds, applied in onUpdate.
+private fun moveYModifier(duration: Float, fromY: Float, toY: Float) = FloatAnimation(fromY, 0f, Easing.None).also {
+    it.animateTo(toY, duration, Easing.None)
 }

@@ -69,7 +69,7 @@ public class GlobalManager {
             songMenu.init(mainActivity, getEngine(), getGameScene());
             songMenu.load();
         });
-        setScoring(new ScoringScene(getEngine(), getGameScene(), songMenu));
+        setScoring(Verktex.INSTANCE.withTreeLock(() -> new ScoringScene(getEngine(), getGameScene(), songMenu)));
         songMenu.setScoringScene(getScoring());
         getGameScene().setScoringScene(getScoring());
         getGameScene().setOldScene(new Destination.Verktex(songMenu));

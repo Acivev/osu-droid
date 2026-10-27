@@ -1464,7 +1464,7 @@ public class SongMenu extends UIScene implements ISkinnable, RoutedScene, MenuIt
                         try {
                             handOverBackground();
                             scoreScene.load(stat, null, null, hasReplay ? OnlineManager.getReplayURL(id) : null, null, selectedBeatmap);
-                            engine.setScene(scoreScene.getScene());
+                            scoreScene.show();
                         } catch (Exception e) {
                             Debug.e("Cannot load play info: " + e.getMessage(), e);
                             show();
@@ -1532,7 +1532,7 @@ public class SongMenu extends UIScene implements ISkinnable, RoutedScene, MenuIt
             DatabaseManager.getScoreInfoTable().updateScore(score);
         }
 
-        engine.setScene(scoreScene.getScene());
+        scoreScene.show();
     }
 
 

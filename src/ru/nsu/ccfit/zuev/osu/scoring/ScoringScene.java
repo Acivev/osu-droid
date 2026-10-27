@@ -6,25 +6,43 @@ import com.edlplan.framework.utils.functionality.SmartIterator;
 import com.osudroid.beatmaps.BeatmapCache;
 import com.osudroid.data.DatabaseManager;
 import com.osudroid.multiplayer.Multiplayer;
-import com.osudroid.ui.v2.modmenu.ModIcon;
+import com.osudroid.ui.verktex.IPressable;
+import com.osudroid.ui.verktex.ISkinnable;
+import com.osudroid.ui.verktex.LegacyUnits;
+import com.osudroid.ui.verktex.ModIcon;
+import com.osudroid.ui.verktex.ScoreNumber;
+import com.osudroid.ui.verktex.SkinTextures;
 import com.osudroid.ui.v2.multi.LobbyScene;
 import com.osudroid.utils.Execution;
+import com.osudroid.verktex.bridge.EngineRouter;
+import com.osudroid.verktex.bridge.RoutedScene;
+import com.osudroid.verktex.bridge.VerktexBridge;
 import com.reco1l.andengine.UIEngine;
-import com.reco1l.andengine.UIScene;
-import com.reco1l.andengine.container.UIContainer;
+import com.reco1l.verktex.Verktex;
+import com.reco1l.verktex.data.Anchor;
+import com.reco1l.verktex.data.Color4;
+import com.reco1l.verktex.data.Dimension;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.data.LayoutConstraints;
+import com.reco1l.verktex.data.Vec4;
+import com.reco1l.verktex.graphics.GraphicsRenderer;
+import com.reco1l.verktex.graphics.GraphicsTexture;
+import com.reco1l.verktex.input.InputEvent;
+import com.reco1l.verktex.input.KeyboardEvent;
+import com.reco1l.verktex.input.PointerEvent;
+import com.reco1l.verktex.math.Easing;
+import com.reco1l.verktex.math.FloatAnimation;
+import com.reco1l.verktex.texture.Textures;
+import com.reco1l.verktex.time.TickingClock;
+import com.reco1l.verktex.ui.UIComponent;
+import com.reco1l.verktex.ui.UIScene;
+import com.reco1l.verktex.ui.UISprite;
+import com.reco1l.verktex.ui.container.UIContainer;
+import com.reco1l.verktex.ui.shape.UIBox;
+import com.reco1l.verktex.ui.text.UIText;
 import com.reco1l.osu.ui.entity.StatisticSelector;
 
 import org.andengine.engine.Engine;
-import org.andengine.entity.modifier.FadeInModifier;
-import org.andengine.entity.modifier.ParallelEntityModifier;
-import org.andengine.entity.modifier.ScaleModifier;
-import org.andengine.entity.primitive.Rectangle;
-import org.andengine.entity.scene.Scene;
-import org.andengine.entity.scene.background.SpriteBackground;
-import org.andengine.entity.sprite.Sprite;
-import org.andengine.entity.text.Text;
-import org.andengine.input.touch.TouchEvent;
-import org.andengine.opengl.texture.region.TextureRegion;
 import org.andengine.util.debug.Debug;
 
 import com.osudroid.GameMode;
@@ -44,9 +62,15 @@ import com.osudroid.ui.SendingPanel;
 
 import org.apache.commons.io.FilenameUtils;
 
+import java.io.File;
 import java.text.SimpleDateFormat;
+import java.util.ArrayList;
 import java.util.Date;
+import java.util.HashMap;
+import java.util.List;
 import java.util.Locale;
+
+import kotlin.Unit;
 
 import ru.nsu.ccfit.zuev.audio.serviceAudio.SongService;
 import ru.nsu.ccfit.zuev.osu.Config;
@@ -63,11 +87,12 @@ import ru.nsu.ccfit.zuev.osu.online.OnlineManager;
 import ru.nsu.ccfit.zuev.osu.online.OnlineScoring;
 import ru.nsu.ccfit.zuev.osuplus.BuildConfig;
 
-public class ScoringScene {
+public class ScoringScene extends UIScene implements RoutedScene, ISkinnable {
+    public static final String BACKGROUND_KEY = "::background#results";
+
     private final Engine engine;
     private final GameScene game;
     private final SongMenu menu;
-    private UIScene scene;
     private SongService songService;
     private StatisticV2 replayStat;
     private int replayID = -1;
@@ -78,6 +103,8 @@ public class ScoringScene {
 
     private StatisticSelector selector;
 
+    // Each pointer's events go to the child that consumed its press, until it is lifted.
+    private final HashMap<Integer, UIComponent> touchAreaBindings = new HashMap<>();
 
     public ScoringScene(final Engine pEngine, final GameScene pGame,
                         final SongMenu pMenu) {
@@ -89,27 +116,30 @@ public class ScoringScene {
     public void load(final StatisticV2 stat, final BeatmapInfo beatmap,
                      final SongService player, final String replayPath, final String mapMD5,
                      final BeatmapInfo beatmapToReplay) {
-        scene = new UIScene();
-        final var vbo = engine.getVertexBufferObjectManager();
+        VerktexBridge.checkUpdateThread();
+
+        Verktex.INSTANCE.withTreeLock(() -> {
+        clearChildren();
+        touchAreaBindings.clear();
+        final float vu = LegacyUnits.getScale();
         songService = player;
         currentStatistic = stat;
         if (replayPath != null && beatmap == null) {
             replayStat = stat;
         }
-        TextureRegion tex = ResourceManager.getInstance()
-                .getTextureIfLoaded("::background");
+        GraphicsTexture.Region tex = loadResultsBackground(ResourceManager.getInstance().getBackgroundFile());
         if (tex == null) {
-            tex = ResourceManager.getInstance().getTexture("menu-background");
+            tex = SkinTextures.get("menu-background");
         }
         float height = tex.getHeight();
         height *= Config.getRES_WIDTH() / (float) tex.getWidth();
-        final Sprite bg = new Sprite(0, (Config.getRES_HEIGHT() - height) / 2,
-                Config.getRES_WIDTH(), height, tex, vbo);
-        scene.setBackground(new SpriteBackground(bg));
+        final LegacySprite bg = new LegacySprite(0, (Config.getRES_HEIGHT() - height) / 2,
+                Config.getRES_WIDTH(), height, tex, vu);
+        setBackground(bg);
 
-        final Rectangle bgTopRect = new Rectangle(0, 0, Config.getRES_WIDTH(), Utils.toRes(100), vbo);
+        final LegacyRectangle bgTopRect = new LegacyRectangle(0, 0, Config.getRES_WIDTH(), Utils.toRes(100), vu);
         bgTopRect.setColor(0, 0, 0, 0.8f);
-        scene.attachChild(bgTopRect);
+        plusAssign(bgTopRect);
 
         beatmapInfo = beatmapToReplay;
         if (beatmapToReplay == null && beatmap != null) {
@@ -120,60 +150,63 @@ public class ScoringScene {
                 ? Multiplayer.roomScene.getChat().getButtonHeight()
                 : 0f;
 
+        // Its children are in virtual units, its scale makes them window pixels.
         UIContainer scaledContainer = new UIContainer() {{
-            setSize(Config.getRES_WIDTH(), Config.getRES_HEIGHT());
-            setPosition(0f, 100f);
-            setScale((Config.getRES_HEIGHT() - paddingButtom) / Config.getRES_HEIGHT());
+            setWidth(DimensionKt.getPx(Config.getRES_WIDTH()));
+            setHeight(DimensionKt.getPx(Config.getRES_HEIGHT()));
+            setY(DimensionKt.getPx(100f * vu));
+            setScaleOrigin(Anchor.TopLeft);
+            setScale((Config.getRES_HEIGHT() - paddingButtom) / Config.getRES_HEIGHT() * vu);
         }};
-        scene.attachChild(scaledContainer);
+        plusAssign(scaledContainer);
 
         final int x = 0, y = 0;
-        final TextureRegion panelr = ResourceManager.getInstance().getTexture(
+        final GraphicsTexture.Region panelr = SkinTextures.get(
                 "ranking-panel");
-        final Sprite panel = new Sprite(x, y, Utils.toRes(panelr.getWidth() * 0.9f),
-                Utils.toRes(panelr.getHeight() * 0.9f), panelr, vbo);
-        scaledContainer.attachChild(panel);
+        final LegacySprite panel = new LegacySprite(x, y, Utils.toRes(panelr.getWidth() * 0.9f),
+                Utils.toRes(panelr.getHeight() * 0.9f), "ranking-panel", 1f);
+        scaledContainer.plusAssign(panel);
 
-        final TextureRegion hit300sr = ResourceManager.getInstance().getTexture("hit300");
-        final Sprite hit300s = new Sprite(Utils.toRes(10), Utils.toRes(130),
-                Utils.toRes(hit300sr.getWidth()), Utils.toRes(hit300sr.getHeight()), hit300sr, vbo);
-        hit300s.setPosition(Utils.toRes(70 - hit300s.getWidth() / 2 + x), Utils.toRes(130 - hit300s.getHeight() / 2 + y));
-        scaledContainer.attachChild(hit300s);
+        final GraphicsTexture.Region hit300sr = SkinTextures.get("hit300");
+        final LegacySprite hit300s = new LegacySprite(Utils.toRes(10), Utils.toRes(130),
+                Utils.toRes(hit300sr.getWidth()), Utils.toRes(hit300sr.getHeight()), "hit300", 1f);
+        hit300s.setPosition(Utils.toRes(70 - hit300s.getLegacyWidth() / 2 + x), Utils.toRes(130 - hit300s.getLegacyHeight() / 2 + y));
+        scaledContainer.plusAssign(hit300s);
 
-        final TextureRegion hit100sr = ResourceManager.getInstance().getTexture("hit100");
-        final Sprite hit100s = new Sprite(Utils.toRes(10), Utils.toRes(130 + 92),
-                Utils.toRes(hit100sr.getWidth()), Utils.toRes(hit100sr.getHeight()), hit100sr, vbo);
-        hit100s.setPosition(Utils.toRes(70 - hit100s.getWidth() / 2 + x), Utils.toRes(130 + 92 - hit100s.getHeight() / 2 + y));
-        scaledContainer.attachChild(hit100s);
+        final GraphicsTexture.Region hit100sr = SkinTextures.get("hit100");
+        final LegacySprite hit100s = new LegacySprite(Utils.toRes(10), Utils.toRes(130 + 92),
+                Utils.toRes(hit100sr.getWidth()), Utils.toRes(hit100sr.getHeight()), "hit100", 1f);
+        hit100s.setPosition(Utils.toRes(70 - hit100s.getLegacyWidth() / 2 + x), Utils.toRes(130 + 92 - hit100s.getLegacyHeight() / 2 + y));
+        scaledContainer.plusAssign(hit100s);
 
-        final TextureRegion hit50sr = ResourceManager.getInstance().getTexture("hit50");
-        final Sprite hit50s = new Sprite(0, Utils.toRes(120 + 92 * 2),
-                Utils.toRes(hit50sr.getWidth()), Utils.toRes(hit50sr.getHeight()), hit50sr, vbo);
-        hit50s.setPosition(Utils.toRes(70 - hit50s.getWidth() / 2 + x), Utils.toRes(130 + 92 * 2 - hit50s.getHeight() / 2 + y));
-        scaledContainer.attachChild(hit50s);
+        final GraphicsTexture.Region hit50sr = SkinTextures.get("hit50");
+        final LegacySprite hit50s = new LegacySprite(0, Utils.toRes(120 + 92 * 2),
+                Utils.toRes(hit50sr.getWidth()), Utils.toRes(hit50sr.getHeight()), "hit50", 1f);
+        hit50s.setPosition(Utils.toRes(70 - hit50s.getLegacyWidth() / 2 + x), Utils.toRes(130 + 92 * 2 - hit50s.getLegacyHeight() / 2 + y));
+        scaledContainer.plusAssign(hit50s);
 
-        final TextureRegion hit300ksr = ResourceManager.getInstance().getTexture("hit300g");
-        final Sprite hit300ks = new Sprite(Utils.toRes(300), Utils.toRes(100),
-                Utils.toRes(hit300ksr.getWidth()), Utils.toRes(hit300ksr.getHeight()), hit300ksr, vbo);
-        hit300ks.setPosition(Utils.toRes(340 - hit300ks.getWidth() / 2 + x), Utils.toRes(130 - hit300ks.getHeight() / 2 + y));
-        scaledContainer.attachChild(hit300ks);
+        final GraphicsTexture.Region hit300ksr = SkinTextures.get("hit300g");
+        final LegacySprite hit300ks = new LegacySprite(Utils.toRes(300), Utils.toRes(100),
+                Utils.toRes(hit300ksr.getWidth()), Utils.toRes(hit300ksr.getHeight()), "hit300g", 1f);
+        hit300ks.setPosition(Utils.toRes(340 - hit300ks.getLegacyWidth() / 2 + x), Utils.toRes(130 - hit300ks.getLegacyHeight() / 2 + y));
+        scaledContainer.plusAssign(hit300ks);
 
-        final TextureRegion hit100ksr = ResourceManager.getInstance().getTexture("hit100k");
-        final Sprite hit100ks = new Sprite(Utils.toRes(300), Utils.toRes(120 + 92),
-                Utils.toRes(hit100ksr.getWidth()), Utils.toRes(hit100ksr.getHeight()), hit100ksr, vbo);
-        hit100ks.setPosition(Utils.toRes(340 - hit100ks.getWidth() / 2 + x), Utils.toRes(130 + 92 - hit100ks.getHeight() / 2 + y));
-        scaledContainer.attachChild(hit100ks);
+        final GraphicsTexture.Region hit100ksr = SkinTextures.get("hit100k");
+        final LegacySprite hit100ks = new LegacySprite(Utils.toRes(300), Utils.toRes(120 + 92),
+                Utils.toRes(hit100ksr.getWidth()), Utils.toRes(hit100ksr.getHeight()), "hit100k", 1f);
+        hit100ks.setPosition(Utils.toRes(340 - hit100ks.getLegacyWidth() / 2 + x), Utils.toRes(130 + 92 - hit100ks.getLegacyHeight() / 2 + y));
+        scaledContainer.plusAssign(hit100ks);
 
-        final TextureRegion hit0sr = ResourceManager.getInstance().getTexture("hit0");
-        final Sprite hit0s = new Sprite(Utils.toRes(300), Utils.toRes(120 + 92 * 2),
-                Utils.toRes(hit0sr.getWidth()), Utils.toRes(hit0sr.getHeight()), hit0sr, vbo);
-        hit0s.setPosition(Utils.toRes(340 - hit0s.getWidth() / 2 + x), Utils.toRes(130 + 92 * 2 - hit0s.getHeight() / 2 + y));
-        scaledContainer.attachChild(hit0s);
+        final GraphicsTexture.Region hit0sr = SkinTextures.get("hit0");
+        final LegacySprite hit0s = new LegacySprite(Utils.toRes(300), Utils.toRes(120 + 92 * 2),
+                Utils.toRes(hit0sr.getWidth()), Utils.toRes(hit0sr.getHeight()), "hit0", 1f);
+        hit0s.setPosition(Utils.toRes(340 - hit0s.getLegacyWidth() / 2 + x), Utils.toRes(130 + 92 * 2 - hit0s.getLegacyHeight() / 2 + y));
+        scaledContainer.plusAssign(hit0s);
 
-        final Sprite rankingText = new Sprite(Utils.toRes(580), 0,
-                ResourceManager.getInstance().getTexture("ranking-title"), vbo);
-        rankingText.setPosition((float) (Config.getRES_WIDTH() * 5) / 6 - rankingText.getWidth() / 2, 0);
-        scene.attachChild(rankingText);
+        final LegacySprite rankingText = new LegacySprite(Utils.toRes(580), 0,
+                "ranking-title", vu);
+        rankingText.setPosition((float) (Config.getRES_WIDTH() * 5) / 6 - rankingText.getLegacyWidth() / 2, 0);
+        plusAssign(rankingText);
 
         StringBuilder scoreStr = new StringBuilder(String.valueOf(stat.getTotalScoreWithMultiplier()));
         while (scoreStr.length() < 8) {
@@ -181,75 +214,90 @@ public class ScoringScene {
         }
         final ScoreNumber scoreNum = new ScoreNumber(Utils.toRes(220 + x),
                 Utils.toRes(18 + y), scoreStr.toString(), 1, false);
-        scoreNum.attachToScene(scaledContainer);
+        scaledContainer.plusAssign(scoreNum);
 
         final ScoreNumber hit300num = new ScoreNumber(Utils.toRes(138 + x),
                 Utils.toRes(110 + y), stat.getHit300() + "x", 1,
                 false);
-        hit300num.attachToScene(scaledContainer);
+        scaledContainer.plusAssign(hit300num);
         final ScoreNumber hit100num = new ScoreNumber(Utils.toRes(138 + x),
                 Utils.toRes(110 + 85 + y), stat.getHit100() + "x",
                 1, false);
-        hit100num.attachToScene(scaledContainer);
+        scaledContainer.plusAssign(hit100num);
         final ScoreNumber hit50num = new ScoreNumber(Utils.toRes(138 + x),
                 Utils.toRes(110 + 85 * 2 + y), stat.getHit50() + "x",
                 1, false);
-        hit50num.attachToScene(scaledContainer);
+        scaledContainer.plusAssign(hit50num);
 
         final ScoreNumber hit300knum = new ScoreNumber(Utils.toRes(400 + x),
                 Utils.toRes(110 + y), stat.getHit300k() + "x", 1,
                 false);
-        hit300knum.attachToScene(scaledContainer);
+        scaledContainer.plusAssign(hit300knum);
         final ScoreNumber hit100knum = new ScoreNumber(Utils.toRes(400 + x),
                 Utils.toRes(110 + 85 + y), stat.getHit100k() + "x",
                 1, false);
-        hit100knum.attachToScene(scaledContainer);
+        scaledContainer.plusAssign(hit100knum);
         final ScoreNumber hit0num = new ScoreNumber(Utils.toRes(400 + x),
                 Utils.toRes(110 + 85 * 2 + y), stat.getMisses() + "x",
                 1, false);
-        hit0num.attachToScene(scaledContainer);
+        scaledContainer.plusAssign(hit0num);
 
-        final Sprite maxComboText = new Sprite(Utils.toRes(20 + x),
-                Utils.toRes(332 + y), ResourceManager.getInstance().getTexture(
-                "ranking-maxcombo"), vbo);
-        scaledContainer.attachChild(maxComboText);
-        final Sprite accText = new Sprite(Utils.toRes(260 + x), Utils.toRes(332 + y),
-                ResourceManager.getInstance().getTexture("ranking-accuracy"), vbo);
-        scaledContainer.attachChild(accText);
+        final LegacySprite maxComboText = new LegacySprite(Utils.toRes(20 + x),
+                Utils.toRes(332 + y),
+                "ranking-maxcombo", 1f);
+        scaledContainer.plusAssign(maxComboText);
+        final LegacySprite accText = new LegacySprite(Utils.toRes(260 + x), Utils.toRes(332 + y),
+                "ranking-accuracy", 1f);
+        scaledContainer.plusAssign(accText);
         final ScoreNumber maxCombo = new ScoreNumber(Utils.toRes(20 + x),
-                Utils.toRes(maxComboText.getY() + 38), stat.getScoreMaxCombo() + "x", 1,
+                Utils.toRes(maxComboText.getLegacyY() + 38), stat.getScoreMaxCombo() + "x", 1,
                 false);
-        maxCombo.attachToScene(scaledContainer);
+        scaledContainer.plusAssign(maxCombo);
         final String accStr = String
                 .format(Locale.ENGLISH, "%2.2f%%", stat.getAccuracy() * 100);
         final ScoreNumber accuracy = new ScoreNumber(Utils.toRes(260 + x),
-                Utils.toRes(accText.getY() + 38), accStr, 1, false);
-        accuracy.attachToScene(scaledContainer);
+                Utils.toRes(accText.getLegacyY() + 38), accStr, 1, false);
+        scaledContainer.plusAssign(accuracy);
 
-        final Sprite mark = new Sprite(Utils.toRes(610), 0, ResourceManager
-                .getInstance().getTexture("ranking-" + stat.getMark()), vbo);
+        final FloatAnimation markModifier = new FloatAnimation(1f, 0f, Easing.Companion.getNone());
+        final LegacySprite mark = new LegacySprite(Utils.toRes(610), 0,
+                "ranking-" + stat.getMark(), vu) {
+
+            @Override
+            protected void onUpdate(final TickingClock clock) {
+                // Fades in while shrinking from 2 to 1 around the centre, over 2 seconds.
+                final float progress = markModifier.update(clock);
+                setAlpha(progress);
+                setScaleX(2 - progress);
+                setScaleY(2 - progress);
+                super.onUpdate(clock);
+            }
+
+        };
         if (beatmap != null) {
             mark.setAlpha(0);
             mark.setScale(1.5f);
-            mark.registerEntityModifier(new ParallelEntityModifier(
-                    new FadeInModifier(2), new ScaleModifier(2, 2, 1)));
+            markModifier.jumpTo(0f);
+            markModifier.animateTo(1f, 2f, Easing.Companion.getNone());
         }
-        mark.setPosition((float) (Config.getRES_WIDTH() * 5) / 6 - mark.getWidth() / 2, 80);
-        scene.attachChild(mark);
+        mark.setPosition((float) (Config.getRES_WIDTH() * 5) / 6 - mark.getLegacyWidth() / 2, 80);
+        plusAssign(mark);
 
-        final Sprite backBtn = new Sprite(Utils.toRes(580), Utils.toRes(490),
-                ResourceManager.getInstance().getTexture("ranking-back"), vbo) {
+        final LegacySprite backBtn = new LegacySprite(Utils.toRes(580), Utils.toRes(490),
+                "ranking-back", vu) {
 
 
             @Override
-            public boolean onAreaTouched(final TouchEvent pSceneTouchEvent,
-                                         final float pTouchAreaLocalX, final float pTouchAreaLocalY) {
-                if (pSceneTouchEvent.isActionDown()) {
+            public boolean onInputEvent(final InputEvent event) {
+                if (!(event instanceof PointerEvent pSceneTouchEvent)) {
+                    return false;
+                }
+                if (pSceneTouchEvent.getAction() == PointerEvent.Action.Down) {
                     setColor(0.7f, 0.7f, 0.7f);
                     ResourceManager.getInstance().getSound("menuback").play();
                     return true;
                 }
-                if (pSceneTouchEvent.isActionUp()) {
+                if (pSceneTouchEvent.getAction() == PointerEvent.Action.Up) {
                     back();
                     return true;
                 }
@@ -257,28 +305,29 @@ public class ScoringScene {
             }
 
         };
-        backBtn.setPosition(Config.getRES_WIDTH() - backBtn.getWidth() - 10, Config.getRES_HEIGHT() - backBtn.getHeight() - 10 - paddingButtom);
-        scene.attachChild(backBtn);
+        backBtn.setPosition(Config.getRES_WIDTH() - backBtn.getLegacyWidth() - 10, Config.getRES_HEIGHT() - backBtn.getLegacyHeight() - 10 - paddingButtom);
+        plusAssign(backBtn);
 
-        Sprite retryBtn = null;
+        LegacySprite retryBtn = null;
 
         if (!Multiplayer.isMultiplayer)
         {
-            retryBtn = new Sprite(Utils.toRes(580), Utils.toRes(400), ResourceManager.getInstance().getTexture("ranking-retry"), vbo) {
+            retryBtn = new LegacySprite(Utils.toRes(580), Utils.toRes(400), "ranking-retry", vu) {
 
                 @Override
-                public boolean onAreaTouched(final TouchEvent pSceneTouchEvent,
-                                             final float pTouchAreaLocalX, final float pTouchAreaLocalY) {
-                    if (pSceneTouchEvent.isActionDown()) {
+                public boolean onInputEvent(final InputEvent event) {
+                    if (!(event instanceof PointerEvent pSceneTouchEvent)) {
+                        return false;
+                    }
+                    if (pSceneTouchEvent.getAction() == PointerEvent.Action.Down) {
                         setColor(0.7f, 0.7f, 0.7f);
                         ResourceManager.getInstance().getSound("menuback").play();
                         return true;
                     }
-                    if (pSceneTouchEvent.isActionUp()) {
+                    if (pSceneTouchEvent.getAction() == PointerEvent.Action.Up) {
                         ResourceManager.getInstance().getSound("applause").stop();
                         menu.show();
                         game.startGame(null, null, null);
-                        scene = null;
                         stopMusic();
                         return true;
                     }
@@ -288,29 +337,30 @@ public class ScoringScene {
             };
         }
 
-        Sprite replayBtn = null;
+        LegacySprite replayBtn = null;
         var mods = stat.getMod();
 
         if (!Multiplayer.isMultiplayer && replayPath != null)
         {
-            replayBtn = new Sprite(Utils.toRes(580), Utils.toRes(400),
-                                                ResourceManager.getInstance().getTexture("ranking-replay"), vbo) {
+            replayBtn = new LegacySprite(Utils.toRes(580), Utils.toRes(400),
+                                                "ranking-replay", vu) {
 
                 @Override
-                public boolean onAreaTouched(final TouchEvent pSceneTouchEvent,
-                                             final float pTouchAreaLocalX, final float pTouchAreaLocalY) {
-                    if (pSceneTouchEvent.isActionDown()) {
+                public boolean onInputEvent(final InputEvent event) {
+                    if (!(event instanceof PointerEvent pSceneTouchEvent)) {
+                        return false;
+                    }
+                    if (pSceneTouchEvent.getAction() == PointerEvent.Action.Down) {
                         setColor(0.7f, 0.7f, 0.7f);
                         ResourceManager.getInstance().getSound("menuback").play();
                         return true;
                     }
-                    if (pSceneTouchEvent.isActionUp()) {
+                    if (pSceneTouchEvent.getAction() == PointerEvent.Action.Up) {
                         ResourceManager.getInstance().getSound("applause").stop();
                         SongMenu.stopMusicStatic();
                         menu.show();
                         game.startGame(beatmapToReplay, replayPath, mods);
 
-                        scene = null;
                         stopMusic();
                         return true;
                     }
@@ -321,39 +371,34 @@ public class ScoringScene {
         }
 
         if (stat.isPerfect()) {
-            final Sprite perfect = new Sprite(0, 0, ResourceManager.getInstance().getTexture("ranking-perfect"), vbo);
-            perfect.setPosition(0, accuracy.getY() + accuracy.getHeight() + 10);
-            scaledContainer.attachChild(perfect);
+            final LegacySprite perfect = new LegacySprite(0, 0, "ranking-perfect", 1f);
+            // Bug 1: the legacy accuracy.getHeight() was still 0 here, the ScoreNumber was built on the next tick.
+            perfect.setPosition(0, ((Dimension.Fixed) accuracy.getY()).toPixels() + 10);
+            scaledContainer.plusAssign(perfect);
         }
-
-        scene.setTouchAreaBindingOnActionDownEnabled(true);
-        if (beatmap != null && retryBtn != null) {
-            scene.registerTouchArea(retryBtn);
-        } else if (replayPath != null && replayBtn != null) {
-            scene.registerTouchArea(replayBtn);
-        }
-        scene.registerTouchArea(backBtn);
 
         if (beatmap != null && retryBtn != null) {
-            retryBtn.setPosition(Config.getRES_WIDTH() - backBtn.getWidth() - 10, backBtn.getY() - retryBtn.getHeight() - 10);
-            scene.attachChild(retryBtn);
+            retryBtn.setPosition(Config.getRES_WIDTH() - backBtn.getLegacyWidth() - 10, backBtn.getLegacyY() - retryBtn.getLegacyHeight() - 10);
+            plusAssign(retryBtn);
         } else if (replayPath != null && replayBtn != null) {
-            replayBtn.setPosition(Config.getRES_WIDTH() - backBtn.getWidth() - 10, backBtn.getY() - replayBtn.getHeight() - 10);
-            scene.attachChild(replayBtn);
+            replayBtn.setPosition(Config.getRES_WIDTH() - backBtn.getLegacyWidth() - 10, backBtn.getLegacyY() - replayBtn.getLegacyHeight() - 10);
+            plusAssign(replayBtn);
         }
 
-        var modX = mark.getX() - 30;
-        var modY = mark.getY() + mark.getHeight() * 2 / 3;
+        var modX = mark.getLegacyX() - 30;
+        var modY = mark.getLegacyY() + mark.getLegacyHeight() * 2 / 3;
         for (var mod : mods.values()) {
             if (!mod.isUserPlayable()) {
                 continue;
             }
 
             var modIcon = new ModIcon(mod);
-            modIcon.setPosition(modX, modY);
-            modIcon.setSize(68, 66);
+            modIcon.setX(DimensionKt.getPx(modX * vu));
+            modIcon.setY(DimensionKt.getPx(modY * vu));
+            modIcon.setWidth(DimensionKt.getPx(68 * vu));
+            modIcon.setHeight(DimensionKt.getPx(66 * vu));
             modX -= 30;
-            scene.attachChild(modIcon);
+            plusAssign(modIcon);
         }
 
         String infoStr = beatmapInfo.getArtistText() + " - " + beatmapInfo.getTitleText() + " [" + beatmapInfo.getVersion() + "]";
@@ -410,12 +455,12 @@ public class ScoringScene {
             mapperStr += "]";
         }
         Debug.i("playedtime " + stat.getTime());
-        final Text beatmapInfoText = new Text(Utils.toRes(4), Utils.toRes(2),
-                ResourceManager.getInstance().getFont("font"), infoStr, vbo);
-        final Text mapperInfo = new Text(Utils.toRes(4), beatmapInfoText.getY() + beatmapInfoText.getHeight() + Utils.toRes(2),
-                ResourceManager.getInstance().getFont("smallFont"), mapperStr, vbo);
-        final Text playerInfo = new Text(Utils.toRes(4), mapperInfo.getY() + mapperInfo.getHeight() + Utils.toRes(2),
-                ResourceManager.getInstance().getFont("smallFont"), playerStr, vbo);
+        final LegacyText beatmapInfoText = new LegacyText(Utils.toRes(4), Utils.toRes(2),
+                "font", infoStr, vu);
+        final LegacyText mapperInfo = new LegacyText(Utils.toRes(4), beatmapInfoText.getLegacyY() + beatmapInfoText.getLegacyHeight() + Utils.toRes(2),
+                "smallFont", mapperStr, vu);
+        final LegacyText playerInfo = new LegacyText(Utils.toRes(4), mapperInfo.getLegacyY() + mapperInfo.getLegacyHeight() + Utils.toRes(2),
+                "smallFont", playerStr, vu);
 
         if (Config.isDisplayScoreStatistics() && !currentStatistic.isTeamStatistic()) {
 
@@ -535,17 +580,17 @@ public class ScoringScene {
                 ppinfo.append(String.format(Locale.ENGLISH, "Unstable Rate: %.2f", stat.getUnstableRate()));
             }
 
-            final Text ppInfo = new Text(Utils.toRes(4), Config.getRES_HEIGHT() - playerInfo.getHeight() - Utils.toRes(2),
-                    ResourceManager.getInstance().getFont("smallFont"), ppinfo.toString(), vbo);
-            ppInfo.setPosition(Utils.toRes(244), Config.getRES_HEIGHT() - ppInfo.getHeight() - Utils.toRes(2) - paddingButtom);
-            final Rectangle statisticRectangle = new Rectangle(Utils.toRes(240), Config.getRES_HEIGHT() - ppInfo.getHeight() - Utils.toRes(4) - paddingButtom, ppInfo.getWidth() + Utils.toRes(12), ppInfo.getHeight() + Utils.toRes(4), vbo);
+            final LegacyText ppInfo = new LegacyText(Utils.toRes(4), Config.getRES_HEIGHT() - playerInfo.getLegacyHeight() - Utils.toRes(2),
+                    "smallFont", ppinfo.toString(), vu);
+            ppInfo.setPosition(Utils.toRes(244), Config.getRES_HEIGHT() - ppInfo.getLegacyHeight() - Utils.toRes(2) - paddingButtom);
+            final LegacyRectangle statisticRectangle = new LegacyRectangle(Utils.toRes(240), Config.getRES_HEIGHT() - ppInfo.getLegacyHeight() - Utils.toRes(4) - paddingButtom, ppInfo.getLegacyWidth() + Utils.toRes(12), ppInfo.getLegacyHeight() + Utils.toRes(4), vu);
             statisticRectangle.setColor(0, 0, 0, 0.5f);
-            scene.attachChild(statisticRectangle);
-            scene.attachChild(ppInfo);
+            plusAssign(statisticRectangle);
+            plusAssign(ppInfo);
         }
-        scene.attachChild(beatmapInfoText);
-        scene.attachChild(mapperInfo);
-        scene.attachChild(playerInfo);
+        plusAssign(beatmapInfoText);
+        plusAssign(mapperInfo);
+        plusAssign(playerInfo);
 
         // In case the scene was reloaded
         if (Multiplayer.isMultiplayer) {
@@ -559,7 +604,7 @@ public class ScoringScene {
             if (stat.getTotalScoreWithMultiplier() <= 0 || mods.contains(ModAutoplay.class) ||
                     (Multiplayer.isMultiplayer &&
                         ((Multiplayer.room != null && Multiplayer.room.isTeamVersus()) || game.hasFailed))) {
-                return;
+                return null;
             }
 
             int totalNotes = stat.getHit300() + stat.getHit100() + stat.getHit50() + stat.getMisses();
@@ -568,7 +613,7 @@ public class ScoringScene {
             // (potentially from bugging the gameplay by any unnecessary means).
             if (totalNotes != beatmap.getTotalHitObjectCount()) {
                 ToastLogger.showText(com.osudroid.resources.R.string.replay_corrupted, true);
-                return;
+                return null;
             }
 
             stat.setReplayFilename(FilenameUtils.getName(replayPath));
@@ -583,44 +628,45 @@ public class ScoringScene {
             // Upload score
             if (!OnlineManager.getInstance().isStayOnline() ||
                     (Multiplayer.isMultiplayer && !Config.isSubmitScoreOnMultiplayer())) {
-                return;
+                return null;
             }
 
             boolean hasUnrankedMod = SmartIterator.wrap(mods.values().iterator()).applyFilter(m -> !m.isRanked()).hasNext();
 
             if (hasUnrankedMod || Config.isRemoveSliderLock()) {
-                return;
+                return null;
             }
 
             var sendingPanel = new SendingPanel(OnlineManager.getInstance().getRank(),
                     OnlineManager.getInstance().getScore(), OnlineManager.getInstance().getAccuracy(),
                     OnlineManager.getInstance().getPP());
 
-            scene.registerTouchArea(sendingPanel.getDismissTouchArea());
-            scene.attachChild(sendingPanel);
+            plusAssign(sendingPanel);
 
             OnlineScoring.getInstance().sendRecord(beatmap, stat, sendingPanel, replayPath);
         }
+        return null;
+        });
     }
 
     public void updateLeaderboard() {
+        // Called from the socket thread.
+        Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
 
         if (Multiplayer.finalData != null) {
 
             if (selector != null) {
                 var oldSelector = selector;
-                Execution.updateThread(() -> {
-                    oldSelector.detachSelf();
-                    oldSelector.detachChildren();
-                });
+                oldSelector.removeSelf();
+                oldSelector.clearChildren();
             }
 
             selector = new StatisticSelector(Multiplayer.finalData);
 
-            if (scene != null) {
-                scene.attachChild(selector);
-            }
+            plusAssign(selector);
         }
+        return null;
+        }));
     }
 
     public void back() {
@@ -644,8 +690,123 @@ public class ScoringScene {
         setReplayID(-1);
     }
 
-    public Scene getScene() {
-        return scene;
+    public boolean isShown() {
+        return Verktex.INSTANCE.getScene() == this;
+    }
+
+    public void show() {
+        EngineRouter.showVerktex(this);
+    }
+
+    @Override
+    public void onShown() {
+        // Skin changes only reach the shown Verktex scene, so the regions are looked up again in
+        // case the skin changed while this scene was not shown.
+        propagate(child -> {
+            if (child instanceof ISkinnable skinnable) {
+                skinnable.onSkinChanged();
+            }
+            return Unit.INSTANCE;
+        });
+
+        // A release that went to AndEngine while this scene was not shown left its press behind.
+        propagate(child -> {
+            if (child instanceof IPressable pressable) {
+                pressable.cancelPress();
+            }
+            return Unit.INSTANCE;
+        });
+        touchAreaBindings.clear();
+    }
+
+    @Override
+    public void onSkinChanged() {
+        // The background is not a child.
+        if (getBackground() instanceof ISkinnable skinnable) {
+            skinnable.onSkinChanged();
+        }
+    }
+
+    @Override
+    protected void onDraw(final GraphicsRenderer renderer) {
+        // UIScene.onDraw without the safe-area padding: the legacy scene covers the whole window.
+        onPerformLayout();
+
+        final UIComponent background = getBackground();
+        if (background != null) {
+            background.draw(renderer);
+        }
+
+        final Vec4 clip = renderer.getClipBounds();
+        for (final UIComponent child : getChildren()) {
+            if (child.intersectsSceneRect(clip.getX(), clip.getY(), clip.getZ(), clip.getW())) {
+                onDrawChild(renderer, child);
+            }
+        }
+    }
+
+    @Override
+    public boolean onInputEvent(final InputEvent event) {
+        // Keys arrive on the UI thread. The isShown() check keeps a quick second Back from running back() twice.
+        if (event instanceof KeyboardEvent keyboardEvent && keyboardEvent.getAction() == KeyboardEvent.Action.Down
+                && keyboardEvent.getKey() == KeyboardEvent.Key.Back) {
+            Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
+                if (isShown()) {
+                    back();
+                }
+                return null;
+            }));
+            return true;
+        }
+
+        if (!(event instanceof PointerEvent pointerEvent)) {
+            return super.onInputEvent(event);
+        }
+
+        // The bound touch area gets the pointer's events wherever they are.
+        if (pointerEvent.getAction() != PointerEvent.Action.Down) {
+            final UIComponent bound = touchAreaBindings.get(pointerEvent.getPointerId());
+
+            if (pointerEvent.getAction() == PointerEvent.Action.Up || pointerEvent.getAction() == PointerEvent.Action.Unknown) {
+                touchAreaBindings.remove(pointerEvent.getPointerId());
+            }
+
+            if (bound != null && bound.getParent() == this && bound.onInputEvent(event)) {
+                return true;
+            }
+        }
+
+        // Front to back and inside their bounds. A child may rebuild the scene while it handles the event.
+        final List<UIComponent> children = new ArrayList<>(getChildren());
+        for (int i = children.size() - 1; i >= 0; i--) {
+            final UIComponent child = children.get(i);
+
+            if (child.containsScenePoint(pointerEvent.getX(), pointerEvent.getY()) && child.onInputEvent(event)) {
+                if (pointerEvent.getAction() == PointerEvent.Action.Down) {
+                    touchAreaBindings.put(pointerEvent.getPointerId(), child);
+                }
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Decodes the results background from {@code file} into {@link #BACKGROUND_KEY}, releasing the
+     * previous one. Null for a null, missing or undecodable file. Update thread only.
+     */
+    public static GraphicsTexture.Region loadResultsBackground(final String file) {
+        Textures.INSTANCE.unload(BACKGROUND_KEY);
+
+        if (file == null) {
+            return null;
+        }
+
+        final GraphicsTexture.Source source = SkinTextures.decode(new File(file));
+        if (source == null) {
+            return null;
+        }
+        return SkinTextures.register(BACKGROUND_KEY, source, true);
     }
 
     public void stopMusic() {
@@ -678,5 +839,149 @@ public class ScoringScene {
 
     public void setReplayID(int id) {
         this.replayID = id;
+    }
+
+    /**
+     * A sprite placed and sized in virtual units, which are {@code units} window pixels. A skin
+     * texture is looked up again after a skin change.
+     */
+    private static class LegacySprite extends UISprite implements ISkinnable {
+        private final String textureName;
+        private final float units;
+        private final float legacyWidth;
+        private final float legacyHeight;
+        private float legacyX;
+        private float legacyY;
+
+        LegacySprite(final float x, final float y, final String textureName, final float units) {
+            this(x, y, Float.NaN, Float.NaN, SkinTextures.get(textureName, assetPath(textureName)), textureName, units);
+        }
+
+        LegacySprite(final float x, final float y, final float width, final float height, final String textureName, final float units) {
+            this(x, y, width, height, SkinTextures.get(textureName, assetPath(textureName)), textureName, units);
+        }
+
+        LegacySprite(final float x, final float y, final float width, final float height, final GraphicsTexture.Region region, final float units) {
+            this(x, y, width, height, region, null, units);
+        }
+
+        private LegacySprite(final float x, final float y, final float width, final float height,
+                             final GraphicsTexture.Region region, final String textureName, final float units) {
+            super(region);
+            this.textureName = textureName;
+            this.units = units;
+            // Without a given size the sprite takes the size of its texture.
+            legacyWidth = Float.isNaN(width) ? (region != null ? region.getWidth() : 0) : width;
+            legacyHeight = Float.isNaN(height) ? (region != null ? region.getHeight() : 0) : height;
+
+            setScaleType(ScaleType.Stretch);
+
+            // A child is measured at most as large as the window, so a larger sprite is measured at a
+            // fraction of its size and stretched back by its scale.
+            final float stretchX = Math.max(1f, (float) Math.ceil(legacyWidth / Config.getRES_WIDTH()));
+            final float stretchY = Math.max(1f, (float) Math.ceil(legacyHeight / Config.getRES_HEIGHT()));
+            if (stretchX > 1f || stretchY > 1f) {
+                setScaleOrigin(Anchor.TopLeft);
+                setScaleX(stretchX);
+                setScaleY(stretchY);
+            }
+            setWidth(DimensionKt.getPx(legacyWidth / stretchX * units));
+            setHeight(DimensionKt.getPx(legacyHeight / stretchY * units));
+            setPosition(x, y);
+        }
+
+        // The bundled ranking-SH has an upper-case extension.
+        private static String assetPath(final String textureName) {
+            return "ranking-SH".equals(textureName) ? "gfx/ranking-SH.PNG" : "gfx/" + textureName + ".png";
+        }
+
+        void setPosition(final float x, final float y) {
+            legacyX = x;
+            legacyY = y;
+            setX(DimensionKt.getPx(x * units));
+            setY(DimensionKt.getPx(y * units));
+        }
+
+        void setColor(final float red, final float green, final float blue) {
+            setColor(new Color4(red, green, blue, getAlpha()));
+        }
+
+        float getLegacyX() {
+            return legacyX;
+        }
+
+        float getLegacyY() {
+            return legacyY;
+        }
+
+        float getLegacyWidth() {
+            return legacyWidth;
+        }
+
+        float getLegacyHeight() {
+            return legacyHeight;
+        }
+
+        @Override
+        public void onSkinChanged() {
+            if (textureName != null) {
+                setTextureRegion(SkinTextures.get(textureName, assetPath(textureName)));
+            }
+        }
+    }
+
+    /**
+     * A text placed in virtual units, which are {@code units} window pixels, in a ResourceManager
+     * font's size. Its size is measured, an empty text has none.
+     */
+    private static class LegacyText extends UIText {
+        private static final LayoutConstraints UNBOUNDED = new LayoutConstraints(0f, Float.POSITIVE_INFINITY, 0f, Float.POSITIVE_INFINITY);
+
+        private final float units;
+        private float legacyY;
+
+        LegacyText(final float x, final float y, final String fontName, final String text, final float units) {
+            this.units = units;
+            setFontSize(DimensionKt.getPx(LegacyUnits.fontSize(fontName) * units));
+            setWrapText(false);
+            setColor(Color4.Companion.getWhite());
+            setText(text);
+            setPosition(x, y);
+        }
+
+        void setPosition(final float x, final float y) {
+            legacyY = y;
+            setX(DimensionKt.getPx(x * units));
+            setY(DimensionKt.getPx(y * units));
+        }
+
+        float getLegacyY() {
+            return legacyY;
+        }
+
+        float getLegacyWidth() {
+            return getText().isEmpty() ? 0 : measure(UNBOUNDED).getX() / units;
+        }
+
+        float getLegacyHeight() {
+            return getText().isEmpty() ? 0 : measure(UNBOUNDED).getY() / units;
+        }
+    }
+
+    /**
+     * A rectangle placed and sized in virtual units, which are {@code units}
+     * window pixels.
+     */
+    private static class LegacyRectangle extends UIBox {
+        LegacyRectangle(final float x, final float y, final float width, final float height, final float units) {
+            setX(DimensionKt.getPx(x * units));
+            setY(DimensionKt.getPx(y * units));
+            setWidth(DimensionKt.getPx(width * units));
+            setHeight(DimensionKt.getPx(height * units));
+        }
+
+        void setColor(final float red, final float green, final float blue, final float alpha) {
+            setBackgroundColor(new Color4(red, green, blue, alpha));
+        }
     }
 }

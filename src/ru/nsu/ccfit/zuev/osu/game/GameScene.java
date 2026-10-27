@@ -2114,7 +2114,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                     scoringScene.load(stat, lastBeatmapInfo, GlobalManager.getInstance().getSongService(), replayPath, parsedBeatmap.getMd5(), null);
                 }
                 GlobalManager.getInstance().getSongService().setVolume(0.2f);
-                engine.setScene(scoringScene.getScene());
+                scoringScene.show();
             } else {
                 EngineRouter.show(oldScene);
             }

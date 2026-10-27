@@ -1,24 +1,34 @@
 package com.reco1l.osu.ui.entity
 
-import com.reco1l.andengine.component.UIComponent
-import org.andengine.entity.shape.RectangularShape
-import org.andengine.input.touch.TouchEvent
-import org.andengine.input.touch.detector.ScrollDetector
-import org.andengine.input.touch.detector.ScrollDetector.IScrollDetectorListener
-import org.andengine.input.touch.detector.SurfaceScrollDetector
+import com.osudroid.ui.verktex.LegacyUnits
+import com.reco1l.verktex.data.Dimension
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UIComponent
+import com.reco1l.verktex.ui.container.UIContainer
 import ru.nsu.ccfit.zuev.osu.Config
 import ru.nsu.ccfit.zuev.osu.Utils
 import kotlin.math.abs
 import kotlin.math.sign
 
 @Deprecated("Use ScrollableContainer instead.")
-abstract class ScrollableList : UIComponent(), IScrollDetectorListener
+abstract class ScrollableList : UIContainer()
 {
 
     var isScroll = false
         private set
 
-    private val scrollDetector = SurfaceScrollDetector(this)
+    // Scroll detection state, in window pixels.
+    private var scrollDetectorPointerId = -1
+    private var scrollDetectorTriggering = false
+    private var scrollDetectorLastX = 0f
+    private var scrollDetectorLastY = 0f
+
+    // The child that consumed a press gets every event of its pointer until it is lifted.
+    private val inputBindings = arrayOfNulls<UIComponent>(10)
 
     private var percentShow = -1f
     private var maxY = 100500f
@@ -32,33 +42,121 @@ abstract class ScrollableList : UIComponent(), IScrollDetectorListener
     protected var itemHeight = 0f
 
     init {
-        width = FillParent
-        height = FillParent
+        width = fill()
+        height = fill()
     }
 
-    fun handleScrolling(event: TouchEvent)
+    override fun onInputEvent(event: InputEvent): Boolean
     {
-        scrollDetector.onTouchEvent(event)
-        scrollDetector.isEnabled = true
+        if (event !is PointerEvent)
+            return false
+
+        val touchX = event.x
+        val touchY = event.y
+
+        when (event.action)
+        {
+            PointerEvent.Action.Down -> prepareScroll(event.pointerId, touchX, touchY)
+
+            PointerEvent.Action.Move ->
+                if (scrollDetectorPointerId == -1)
+                    prepareScroll(event.pointerId, touchX, touchY)
+                else if (scrollDetectorPointerId == event.pointerId)
+                {
+                    val distanceX = touchX - scrollDetectorLastX
+                    val distanceY = touchY - scrollDetectorLastY
+
+                    if (scrollDetectorTriggering || abs(distanceX) > TRIGGER_SCROLL_MINIMUM_DISTANCE || abs(distanceY) > TRIGGER_SCROLL_MINIMUM_DISTANCE)
+                    {
+                        if (!scrollDetectorTriggering)
+                            onScrollStarted(scrollDetectorPointerId, distanceX, distanceY)
+                        else
+                            onScroll(scrollDetectorPointerId, distanceX, distanceY)
+
+                        scrollDetectorLastX = touchX
+                        scrollDetectorLastY = touchY
+                        scrollDetectorTriggering = true
+                    }
+                }
+
+            PointerEvent.Action.Up, PointerEvent.Action.Unknown ->
+                if (scrollDetectorPointerId == event.pointerId)
+                {
+                    if (scrollDetectorTriggering)
+                    {
+                        scrollDetectorTriggering = false
+                        onScrollFinished(scrollDetectorPointerId, touchX - scrollDetectorLastX, touchY - scrollDetectorLastY)
+                    }
+
+                    scrollDetectorPointerId = -1
+                }
+        }
+
+        return dispatchToChildren(event)
     }
 
-    override fun onManagedUpdate(secondsElapsed: Float)
+    private fun prepareScroll(pointerID: Int, touchX: Float, touchY: Float)
     {
-        super.onManagedUpdate(secondsElapsed)
+        scrollDetectorLastX = touchX
+        scrollDetectorLastY = touchY
+        scrollDetectorTriggering = false
+        scrollDetectorPointerId = pointerID
+    }
 
-        if (childCount == 0)
+    private fun dispatchToChildren(event: PointerEvent): Boolean
+    {
+        val inputBinding = inputBindings.getOrNull(event.pointerId)
+
+        if (inputBinding != null && inputBinding.parent == this && event.action != PointerEvent.Action.Down)
+        {
+            inputBinding.onInputEvent(event)
+
+            if (event.action == PointerEvent.Action.Up || event.action == PointerEvent.Action.Unknown)
+                inputBindings[event.pointerId] = null
+
+            return true
+        }
+        else if (event.pointerId in inputBindings.indices)
+            inputBindings[event.pointerId] = null
+
+        for (child in children.asReversed())
+        {
+            if (child.containsScenePoint(event.x, event.y) && child.onInputEvent(event))
+            {
+                if (event.pointerId in inputBindings.indices)
+                    inputBindings[event.pointerId] = child
+
+                return true
+            }
+        }
+
+        return false
+    }
+
+    /**
+     * Whether a child consumed a press of [pointerId] that is not lifted yet.
+     */
+    protected fun isBound(pointerId: Int) = inputBindings.getOrNull(pointerId)?.parent == this
+
+    override fun onUpdate(clock: TickingClock)
+    {
+        super.onUpdate(clock)
+
+        val secondsElapsed = clock.elapsedTickTime
+
+        if (children.isEmpty())
             return
 
         if (percentShow == -1f)
         {
             var y = -camY
 
-            for (i in 0 until childCount)
+            for (sprite in children)
             {
-                val sprite = getChildByIndex(i) as? RectangularShape ?: continue
+                val height = (sprite.height as? Dimension.Fixed ?: continue).toPixels() / LegacyUnits.scale
 
-                sprite.setPosition(sprite.x, y)
-                y += sprite.height + 5f
+                sprite.y = (y * LegacyUnits.scale).px
+                y += height + 5f
             }
 
             y += camY
@@ -86,10 +184,12 @@ abstract class ScrollableList : UIComponent(), IScrollDetectorListener
             if (percentShow > 1)
                 percentShow = 1f
 
-            for (i in 0 until childCount)
+            for ((i, sprite) in children.withIndex())
             {
-                val sprite = getChildByIndex(i) as? RectangularShape ?: continue
-                sprite.setPosition(-160f, 146 + 0.8f * percentShow * i * (sprite.height + 5f))
+                val height = (sprite.height as? Dimension.Fixed ?: continue).toPixels() / LegacyUnits.scale
+
+                sprite.x = (-160f * LegacyUnits.scale).px
+                sprite.y = ((146 + 0.8f * percentShow * i * (height + 5f)) * LegacyUnits.scale).px
             }
 
             if (percentShow == 1f)
@@ -97,7 +197,7 @@ abstract class ScrollableList : UIComponent(), IScrollDetectorListener
         }
     }
 
-    override fun onScrollStarted(scrollDetector: ScrollDetector?, pointerID: Int, distanceX: Float, distanceY: Float)
+    private fun onScrollStarted(pointerID: Int, distanceX: Float, distanceY: Float)
     {
         velocityY = 0f
         pointerId = pointerID
@@ -107,7 +207,7 @@ abstract class ScrollableList : UIComponent(), IScrollDetectorListener
         isScroll = true
     }
 
-    override fun onScroll(scrollDetector: ScrollDetector?, pointerID: Int, distanceX: Float, distanceY: Float)
+    private fun onScroll(pointerID: Int, distanceX: Float, distanceY: Float)
     {
         if (pointerId == -1 || pointerId == pointerID)
         {
@@ -128,7 +228,7 @@ abstract class ScrollableList : UIComponent(), IScrollDetectorListener
         }
     }
 
-    override fun onScrollFinished(scrollDetector: ScrollDetector?, pointerID: Int, distanceX: Float, distanceY: Float)
+    private fun onScrollFinished(pointerID: Int, distanceX: Float, distanceY: Float)
     {
         if (pointerId == -1 || pointerId == pointerID)
         {
@@ -138,5 +238,11 @@ abstract class ScrollableList : UIComponent(), IScrollDetectorListener
             isScroll = velocityY != 0f
             pointerId = -1
         }
+    }
+
+    private companion object
+    {
+        // How far a pointer must move before a scroll starts.
+        const val TRIGGER_SCROLL_MINIMUM_DISTANCE = 10f
     }
 }

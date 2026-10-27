@@ -72,6 +72,7 @@ public class ResourceManager {
 
     private Engine engine;
     private Context context;
+    private String backgroundFile;
 
     private ResourceManager() {
     }
@@ -356,6 +357,7 @@ public class ResourceManager {
     }
 
     public TextureRegion loadBackground(final String file) {
+        backgroundFile = file;
         if (textureStore.containsKey("::background")) {
             // Deliberately not textureStore.unload(name) here, which would also remove the map
             // entry - the original code only unloads the GL texture at this point and leaves the
@@ -388,6 +390,7 @@ public class ResourceManager {
      * over. The bitmap is copied for the atlas, which recycles what it uploads.
      */
     public TextureRegion loadBackground(final String file, final Bitmap bitmap) {
+        backgroundFile = file;
         if (textureStore.containsKey("::background")) {
             // Only the GL texture, see loadBackground(String).
             engine.getTextureManager().unloadTexture(Objects.requireNonNull(textureStore.get("::background")).getTexture());
@@ -408,6 +411,13 @@ public class ResourceManager {
         engine.getTextureManager().loadTexture(tex);
         textureStore.put("::background", region);
         return region;
+    }
+
+    /**
+     * The file of the last {@link #loadBackground} call, null before any.
+     */
+    public String getBackgroundFile() {
+        return backgroundFile;
     }
 
     public TextureRegion loadHighQualityAsset(final String resname,
