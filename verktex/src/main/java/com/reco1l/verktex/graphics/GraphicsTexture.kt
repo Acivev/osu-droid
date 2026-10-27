@@ -87,15 +87,21 @@ abstract class GraphicsTexture : GraphicsResource() {
      * Removes the specified [region] from the texture.
      *
      * The remaining regions are repacked right away, so the freed space can be used immediately.
-     * They are uploaded again at their new positions on the next bind.
+     * They are uploaded again at their new positions on the next bind. When they do not repack, they
+     * keep their positions and the region's space is returned to the free space instead.
      */
     fun removeRegion(region: Region) = synchronized(lock) {
         if (regions.remove(region)) {
             freeRegionsInitialized = true
-            packingAlgorithm.pack(regions, freeRegions, width, height)
 
-            pendingUploads.clear()
-            pendingUploads += regions
+            if (packingAlgorithm.pack(regions, freeRegions, width, height)) {
+                pendingUploads.clear()
+                pendingUploads += regions
+            } else {
+                pendingUploads.remove(region)
+                // The removed rectangle was a used one, and MaxRects keeps free rectangles disjoint from used ones, so giving it back cannot create overlaps.
+                freeRegions += Vec4(region.x, region.y, region.x + region.width, region.y + region.height)
+            }
         }
     }
 
