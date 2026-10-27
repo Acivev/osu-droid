@@ -1,24 +1,36 @@
 package com.osudroid.ui.v2.menu.main
 
-import com.osudroid.utils.updateThread
-import com.rian.andengine.modifier.ModifierType
-import com.reco1l.andengine.*
-import com.reco1l.andengine.Axes
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.container.Orientation
-import com.reco1l.andengine.container.UILinearContainer
-import com.reco1l.andengine.container.UIContainer
-import com.reco1l.andengine.shape.UIBox
-import com.reco1l.andengine.shape.UITriangle
-import com.reco1l.andengine.text.UIText
-import com.reco1l.andengine.ui.UIIconButton
-import com.reco1l.andengine.ui.UISlider
-import com.reco1l.framework.Color4
-import com.reco1l.framework.math.Vec4
-import org.andengine.input.touch.TouchEvent
+import com.osudroid.ui.verktex.ISkinnable
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.SkinTextures
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Axis
+import com.reco1l.verktex.data.ClipMode
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.LayoutConstraints
+import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.Vec2
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.data.wrap
+import com.reco1l.verktex.graphics.GraphicsTexture
+import com.reco1l.verktex.math.Easing
+import com.reco1l.verktex.math.FloatAnimation
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UIButton
+import com.reco1l.verktex.ui.UIComponent
+import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.container.UIClickableContainer
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.container
+import com.reco1l.verktex.ui.control.UISlider
+import com.reco1l.verktex.ui.shape.UIBox
+import com.reco1l.verktex.ui.shape.UITriangle
+import com.reco1l.verktex.ui.text.UIText
 import ru.nsu.ccfit.zuev.audio.Status
 import ru.nsu.ccfit.zuev.osu.GlobalManager
-import ru.nsu.ccfit.zuev.osu.ResourceManager
 
 /**
  * Collapsible now-playing panel, top-right.
@@ -26,22 +38,26 @@ import ru.nsu.ccfit.zuev.osu.ResourceManager
  * Collapsed → header only: song title + thin read-only progress strip.
  * Expanded  → header + full interactive slider + time labels + prev/play/next.
  *
+ * Sizes are virtual units, applied in window pixels by [performLayout].
  */
-class MusicPlayerPanel : UILinearContainer() {
+class MusicPlayerPanel : UILinearContainer(), ISkinnable {
 
     var isDraggingSeek = false
         private set
     private var isExpanded = false
 
     /**
-     * Cached texture refs, loaded once at construction, reused every frame.
+     * Cached texture refs, looked up on the update thread, reused every frame.
      */
-    private val pauseTex = ResourceManager.getInstance().getTexture("music_pause")
-    private val playTex2 = ResourceManager.getInstance().getTexture("music_play")
+    private var pauseTex: GraphicsTexture.Region? = null
+    private var playTex2: GraphicsTexture.Region? = null
+
+    /** Set when the skin regions must be looked up again on the next update. */
+    private var texturesInvalid = true
 
     /**
      * Last-seen values, updated only when something changes, preventing
-     * redundant string allocations and ResourceManager lookups every frame.
+     * redundant string allocations and texture lookups every frame.
      */
     private var lastTitle = ""
     private var lastStatus: Status? = null
@@ -62,50 +78,60 @@ class MusicPlayerPanel : UILinearContainer() {
     /** Called after the user seeks to a new position so the parent scene can resync timing. */
     var onSeek: (() -> Unit)? = null
 
+    // Animations, in virtual units
+    private val panelWidth = FloatAnimation(COLLAPSED_WIDTH, 0.15f, Easing.None)
+    private val arrowRotation = FloatAnimation(180f, 0.15f, Easing.None)  // starts collapsed → pointing up
+    private val expandProgress = FloatAnimation(0f, 0.15f, Easing.None)
+
     // Mini progress fill
     private val miniProgressFill = UIBox().apply {
-        relativeSizeAxes = Axes.X
-        width = 0f
-        height = 4f
-        cornerRadius = 2f
-        color = Color4.White
-        inheritAncestorsColor = false
+        width = fill(0f)
+        height = fill()
+        backgroundColor = Color4.White
     }
 
-    private val seekSlider = object : UISlider(0f) {
-        override fun onValueChanged() {
-            super.onValueChanged()
+    private val miniProgressStrip = UIContainer().apply {
+        width = fill()
+        +miniProgressFill
+    }
 
-            if (isDraggingSeek) {
-                val svc = GlobalManager.getInstance().songService ?: return
-                svc.seekTo((value * svc.getLength()).toInt())
-            }
-        }
-    }.apply {
-        width = FillParent
+    private val seekSlider = UISlider(0f).apply {
+        width = fill()
         min = 0f
         max = 1f
         onStartDragging = { isDraggingSeek = true }
+        onValueChange = { value ->
+            if (isDraggingSeek) {
+                GlobalManager.getInstance().songService?.let { svc ->
+                    svc.seekTo((value * svc.getLength()).toInt())
+                }
+            }
+        }
     }
 
     private val posText = UIText().apply {
-        font = ResourceManager.getInstance().getFont("smallFont")
         color = Color4.White
-        inheritAncestorsColor = false
+        wrapText = false
         text = "0:00"
     }
 
     private val totalText = UIText().apply {
-        font = ResourceManager.getInstance().getFont("smallFont")
         color = Color4.White
-        inheritAncestorsColor = false
+        wrapText = false
         anchor = Anchor.TopRight
         origin = Anchor.TopRight
         text = "0:00"
     }
 
-    private val playPauseBtn = UIIconButton().apply {
-        icon = ResourceManager.getInstance().getTexture("music_play")
+    private val prevBtn = MusicButton().apply {
+        onActionUp = {
+            lastInteractionTime = System.currentTimeMillis()
+            GlobalManager.getInstance().mainMenuV2?.musicControl(MusicOption.PREV)
+            onTrackChanged?.invoke()
+        }
+    }
+
+    private val playPauseBtn = MusicButton().apply {
         onActionUp = {
             lastInteractionTime = System.currentTimeMillis()
             val svc = GlobalManager.getInstance().songService
@@ -118,28 +144,34 @@ class MusicPlayerPanel : UILinearContainer() {
         }
     }
 
+    private val nextBtn = MusicButton().apply {
+        onActionUp = {
+            lastInteractionTime = System.currentTimeMillis()
+            GlobalManager.getInstance().mainMenuV2?.musicControl(MusicOption.NEXT)
+            onTrackChanged?.invoke()
+        }
+    }
+
     private val songTitleText = UIText().apply {
-        font = ResourceManager.getInstance().getFont("font")
         color = Color4.White
-        inheritAncestorsColor = false
-        width = FillParent
-        clipToBounds = true
-        autoScrollSpeed = 25f
+        wrapText = false
+        clipping = ClipMode.Bounds
+        autoScrollAxes = Axis.X
         text = ""
     }
 
     private val arrowTriangle = UITriangle().apply {
-        width = 14f
-        height = 10f
         anchor = Anchor.CenterRight
         origin = Anchor.CenterRight
-        rotationCenter = Anchor.Center
+        rotationOrigin = Anchor.Center
         color = Color4.White
-        inheritAncestorsColor = false
-        rotation = 180f  // starts collapsed → pointing up
     }
 
+    private val header: UIClickableContainer
+    private val titleColumn: UILinearContainer
+    private val controlsRow: UILinearContainer
     private val expandedContent: UILinearContainer
+    private val expandedSection: ExpandingSection
 
     init {
         seekSlider.onStopDragging = {
@@ -158,98 +190,137 @@ class MusicPlayerPanel : UILinearContainer() {
         anchor = Anchor.TopRight
         origin = Anchor.TopRight
         orientation = Orientation.Vertical
-        width = 550f
-        height = MatchContent
-        x = -10f
-        y = 10f
-
-        background = UIBox().apply {
-            color = Color4(0.1f, 0.12f, 0.16f, 0.88f)
-            cornerRadius = 20f
-        }
+        height = wrap()
+        backgroundColor = Color4(0.1f, 0.12f, 0.16f, 0.88f)
 
         // Header
-        val header = object : UIContainer() {
-            override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float): Boolean {
-                if (event.isActionUp) { lastInteractionTime = System.currentTimeMillis(); toggle() }
-                return true
-            }
-            // Keep title from overlapping the arrow as the panel width animates
-            override fun onSizeChanged() {
-                super.onSizeChanged()
-                songTitleText.maxWidth = (innerWidth - arrowTriangle.width - 16f).coerceAtLeast(0f)
-            }
-        }.apply {
-            width = FillParent
-            height = MatchContent
-            padding = Vec4(16f, 12f, 16f, 8f)
+        titleColumn = UILinearContainer().apply {
+            orientation = Orientation.Vertical
+            width = fill()
 
             +songTitleText
-            +arrowTriangle
+            +miniProgressStrip
+        }
 
-            // White fill bar anchored to the bottom
-            +UIContainer().apply {
-                anchor = Anchor.BottomLeft
-                origin = Anchor.BottomLeft
-                relativeSizeAxes = Axes.X
-                width = 1f
-                height = 4f
-                padding  = Vec4(0f, 4f, 12f, 0f)
-                +miniProgressFill
-            }
+        header = UIClickableContainer().apply {
+            width = fill()
+            onActionUp = { lastInteractionTime = System.currentTimeMillis(); toggle() }
+
+            +titleColumn
+            +arrowTriangle
         }
         +header
 
         // Expanded section
+        controlsRow = UILinearContainer().apply {
+            anchor = Anchor.TopCenter
+            origin = Anchor.TopCenter
+
+            +prevBtn
+            +playPauseBtn
+            +nextBtn
+        }
+
         expandedContent = UILinearContainer().apply {
             orientation = Orientation.Vertical
-            width = FillParent
-            height = 0f    // animated open/close
-            spacing = 10f
-            padding = Vec4(16f, 0f, 16f, 12f)
-            clipToBounds = true
-            isVisible = false
+            width = fill()
 
             +seekSlider
 
             // Time labels row
             container {
-                width = FillParent
-                height = MatchContent
+                width = fill()
                 +posText
                 +totalText
             }
 
-            // Controls row
-            linearContainer {
-                anchor = Anchor.TopCenter
-                origin = Anchor.TopCenter
-                spacing = 12f
-
-                iconButton {
-                    icon = ResourceManager.getInstance().getTexture("music_prev")
-                    onActionUp = {
-                        lastInteractionTime = System.currentTimeMillis()
-                        GlobalManager.getInstance().mainMenuV2?.musicControl(MusicOption.PREV)
-                        onTrackChanged?.invoke()
-                    }
-                }
-
-                +playPauseBtn
-
-                iconButton {
-                    icon = ResourceManager.getInstance().getTexture("music_next")
-                    onActionUp = {
-                        lastInteractionTime = System.currentTimeMillis()
-                        GlobalManager.getInstance().mainMenuV2?.musicControl(MusicOption.NEXT)
-                        onTrackChanged?.invoke()
-                    }
-                }
+            // Controls row, centred
+            container {
+                width = fill()
+                +controlsRow
             }
         }
 
-        +expandedContent
+        expandedSection = ExpandingSection(expandedContent).apply {
+            width = fill()
+            clipping = ClipMode.Bounds
+            isVisible = false
+        }
+        +expandedSection
     }
+
+
+    /**
+     * Applies the virtual-unit sizes in window pixels. Called by the host scene's onPerformLayout().
+     */
+    fun performLayout() {
+        val widthVu = panelWidth.value
+
+        width = widthVu.vu.px
+        x = (-10f).vu.px
+        y = 10f.vu.px
+        radius = 20f.vu.px
+
+        header.padding = Padding(left = 16f.vu.px, top = 12f.vu.px, right = 16f.vu.px, bottom = 8f.vu.px)
+
+        // Keep title from overlapping the arrow as the panel width animates
+        songTitleText.fontSize = LegacyUnits.fontSize("font").vu.px
+        songTitleText.width = (widthVu - 16f - 16f - ARROW_WIDTH - 16f).coerceAtLeast(0f).vu.px
+        songTitleText.autoScrollSpeed = 25f.vu
+
+        arrowTriangle.width = ARROW_WIDTH.vu.px
+        arrowTriangle.height = 10f.vu.px
+        arrowTriangle.rotationZ = arrowRotation.value
+
+        titleColumn.spacing = 4f.vu.px
+        miniProgressStrip.height = 4f.vu.px
+        miniProgressStrip.padding = Padding(right = 12f.vu.px)
+        miniProgressFill.radius = 2f.vu.px
+
+        expandedContent.spacing = 10f.vu.px
+        expandedContent.padding = Padding(left = 16f.vu.px, right = 16f.vu.px, bottom = 12f.vu.px)
+        expandedSection.progress = expandProgress.value
+
+        seekSlider.height = 48f.vu.px
+
+        val smallFont = LegacyUnits.fontSize("smallFont").vu.px
+        posText.fontSize = smallFont
+        totalText.fontSize = smallFont
+
+        controlsRow.spacing = 12f.vu.px
+        prevBtn.performLayout()
+        playPauseBtn.performLayout()
+        nextBtn.performLayout()
+    }
+
+    override fun onSkinChanged() {
+        texturesInvalid = true
+    }
+
+    override fun onUpdate(clock: TickingClock) {
+        if (texturesInvalid) {
+            texturesInvalid = false
+
+            pauseTex = SkinTextures.get("music_pause", "music_pause.png")
+            playTex2 = SkinTextures.get("music_play", "music_play.png")
+            prevBtn.icon = SkinTextures.get("music_prev", "music_prev.png")
+            nextBtn.icon = SkinTextures.get("music_next", "music_next.png")
+
+            // Looked up again on the next update().
+            lastStatus = null
+            playPauseBtn.icon = playTex2
+        }
+
+        panelWidth.update(clock)
+        arrowRotation.update(clock)
+        val progress = expandProgress.update(clock)
+
+        // The collapse animation finished.
+        if (!isExpanded && progress <= 0f) expandedSection.isVisible = false
+
+        super.onUpdate(clock)
+    }
+
 
     fun collapse() {
         if (isExpanded) toggle()
@@ -258,30 +329,15 @@ class MusicPlayerPanel : UILinearContainer() {
     private fun toggle() {
         if (isExpanded) {
             isExpanded = false
-            arrowTriangle.clearModifiers(ModifierType.Rotation)
-            arrowTriangle.rotateTo(180f, 0.15f)
-
-            clearModifiers(ModifierType.Width)
-            widthTo(550f, 0.15f)
-
-            expandedContent.clearModifiers(ModifierType.Height)
-            expandedContent.heightTo(0f, 0.15f).after {
-                updateThread {
-                    expandedContent.isVisible = false
-                    onContentChanged()
-                }
-            }
+            arrowRotation.animateTo(180f, 0.15f, Easing.None)
+            panelWidth.animateTo(COLLAPSED_WIDTH, 0.15f, Easing.None)
+            expandProgress.animateTo(0f, 0.15f, Easing.None)
         } else {
             isExpanded = true
-            arrowTriangle.clearModifiers(ModifierType.Rotation)
-            arrowTriangle.rotateTo(0f, 0.15f)
-
-            clearModifiers(ModifierType.Width)
-            widthTo(450f, 0.15f)
-
-            expandedContent.isVisible = true
-            expandedContent.clearModifiers(ModifierType.Height)
-            expandedContent.heightTo(expandedContent.contentHeight, 0.15f)
+            arrowRotation.animateTo(0f, 0.15f, Easing.None)
+            panelWidth.animateTo(EXPANDED_WIDTH, 0.15f, Easing.None)
+            expandedSection.isVisible = true
+            expandProgress.animateTo(1f, 0.15f, Easing.None)
         }
     }
 
@@ -299,7 +355,7 @@ class MusicPlayerPanel : UILinearContainer() {
         val len = songService.getLength()
         val progress = if (len > 0) (pos.toFloat() / len.toFloat()).coerceIn(0f, 1f) else 0f
 
-        miniProgressFill.width = progress
+        miniProgressFill.width = fill(progress)
 
         if (isExpanded) {
             if (lastInteractionTime > 0 &&
@@ -340,5 +396,66 @@ class MusicPlayerPanel : UILinearContainer() {
     private fun formatTime(ms: Int): String {
         val s = ms / 1000
         return "%d:%02d".format(s / 60, s % 60)
+    }
+
+
+    /**
+     * Shows [content] at its full height times [progress], clipping the rest, so the section can
+     * open and close without the content being squashed.
+     */
+    private class ExpandingSection(private val content: UIComponent) : UIContainer() {
+
+        var progress = 0f
+            set(value) {
+                if (field == value) return
+                field = value
+                invalidateMeasure()
+            }
+
+        init {
+            this += content
+        }
+
+        override fun onMeasure(parentConstraints: LayoutConstraints, contentConstraints: LayoutConstraints): Vec2 {
+            val contentSize = content.measure(contentConstraints.loosen().copy(maxHeight = Float.POSITIVE_INFINITY))
+            return parentConstraints.constrain(Vec2(contentSize.x, contentSize.y * progress))
+        }
+    }
+
+    /** A button showing a skin texture as its icon, as the AndEngine UIIconButton did. */
+    private class MusicButton : UIButton() {
+
+        private val sprite = UISprite().apply {
+            scaleType = UISprite.ScaleType.Fit
+            anchor = Anchor.Center
+            origin = Anchor.Center
+            // The AndEngine button tinted its icon with the theme accent.
+            style = Style { theme -> color = theme.palette.accent }
+        }
+
+        var icon by sprite::textureRegion
+
+        init {
+            // Only the colour comes from the theme, the sizes are virtual units.
+            style = Style { theme -> backgroundColor = theme.palette.buttonBackgroundSurface }
+            width = wrap()
+            height = wrap()
+
+            +sprite
+        }
+
+        fun performLayout() {
+            sprite.width = 28f.vu.px
+            sprite.height = 28f.vu.px
+            padding = Padding(horizontal = 12f.vu.px, vertical = 16f.vu.px)
+            radius = 12f.vu.px
+        }
+    }
+
+
+    companion object {
+        private const val COLLAPSED_WIDTH = 550f
+        private const val EXPANDED_WIDTH = 450f
+        private const val ARROW_WIDTH = 14f
     }
 }

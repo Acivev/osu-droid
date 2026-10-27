@@ -1,7 +1,12 @@
 package com.osudroid.ui.v2.menu.main
 
-import com.reco1l.andengine.component.BlendInfo
-import com.reco1l.andengine.buffered.*
+import com.reco1l.verktex.BuiltIn
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.BlendMode
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.graphics.GraphicsShader
+import com.reco1l.verktex.ui.UICanvas
 import ru.nsu.ccfit.zuev.osu.Config
 import ru.nsu.ccfit.zuev.osu.GlobalManager
 import kotlin.math.*
@@ -12,14 +17,12 @@ import kotlin.math.*
  * Quality levels (set via Settings → Graphics → Spectrum visualizer):
  *  - "full" : 3 rounds × 120 bars, FFT every 50 ms  — full visual fidelity.
  *  - "low"  : 1 round  × 120 bars, FFT every 100 ms — ~66 % less geometry, half the FFT reads.
- *  - "off"  : all bars zeroed, VBO flushed once then GPU upload skipped every frame.
+ *  - "off"  : hidden, nothing is drawn.
  *
- * Every active frame:
- *   1. CPU fills vertex data for activeRounds × 120 bars (degenerate for the rest).
- *   2. VBO uploaded once.
- *   3. Single glDrawArrays renders all bars.
+ * Every drawn frame the bars of the active rounds that are above the dead zone are added as two
+ * triangles each to a single additive draw command.
  */
-class Spectrum : UIBufferedComponent<Spectrum.SpectrumVBO>() {
+class Spectrum : UICanvas() {
 
     private val frequencyAmplitudes = FloatArray(BAR_COUNT)
     private val temporalAmplitudes = FloatArray(BAR_COUNT)
@@ -37,11 +40,21 @@ class Spectrum : UIBufferedComponent<Spectrum.SpectrumVBO>() {
     private var activeRounds = VISUALISER_ROUNDS
     private var updateInterval = TIME_BETWEEN_UPDATES_FULL
 
-    // Tracks whether any bar was above the dead-zone on the previous frame so we
-    // can flush the VBO once when the spectrum transitions from visible → silent.
-    private var wasVisible = false
 
-    fun configure(logoCX: Float, logoCY: Float, logoRadius: Float) {
+    init {
+        // Centred in the logo: the logo's own bounds are clamped to the window, the bars overflow them.
+        anchor = Anchor.Center
+        origin = Anchor.Center
+        blendMode = BlendMode.Additive
+        alpha = BAR_ALPHA
+    }
+
+
+    /**
+     * Places the bars around the centre of this component. Both values are in window pixels,
+     * [maxExtra] is [MAX_EXTRA] converted to pixels.
+     */
+    fun configure(logoRadius: Float, maxExtra: Float) {
         maxBarLen = BAR_LENGTH * logoRadius
         halfBarH  = (logoRadius * 2f *
                 sqrt(2.0 * (1.0 - cos(2.0 * PI / BAR_COUNT)))).toFloat() / 4f
@@ -61,90 +74,58 @@ class Spectrum : UIBufferedComponent<Spectrum.SpectrumVBO>() {
                 val sa = sin(angleRad).toFloat()
                 val startR = logoRadius * BAR_START_INSET
 
-                barStartX[idx] = logoCX + startR * ca
-                barStartY[idx] = logoCY + startR * sa
+                barStartX[idx] = startR * ca
+                barStartY[idx] = startR * sa
                 barCosA[idx] = ca
                 barSinA[idx] = sa
             }
         }
 
-        x = 0f
-        y = 0f
-        width = logoRadius * 2f + MAX_EXTRA * 2f
-        height = logoRadius * 2f + MAX_EXTRA * 2f
-        blendInfo = BlendInfo.Additive
-        alpha = BAR_ALPHA
-
-        requestNewBuffer()
+        width = (logoRadius * 2f + maxExtra * 2f).px
+        height = (logoRadius * 2f + maxExtra * 2f).px
     }
 
-    override fun onCreateBuffer(): SpectrumVBO? {
-        if (totalBars <= 0) return null
-        return SpectrumVBO(totalBars).also { it.sharingMode = BufferSharingMode.Dynamic }
-    }
+    override fun onDraw(renderer: GraphicsRenderer) {
+        val activeBars = min(BAR_COUNT * activeRounds, totalBars)
 
-    override fun onUpdateBuffer() {
-        val vbo = buffer ?: return
+        renderer.setState(
+            shader = BuiltIn.Shaders.SolidQuad,
+            texture = null,
+            blendMode = BlendMode.Additive,
+            uniformSet = GraphicsShader.UniformSet()
+        )
 
-        val anyVisible = frequencyAmplitudes.any { it >= AMPLITUDE_DEAD_ZONE }
+        renderer.drawGeometry { transform, _ ->
+            val color = renderer.transformColor(contentColor)
+            val hh = halfBarH
+            val ml = maxBarLen
+            val centreX = bounds.width / 2f
+            val centreY = bounds.height / 2f
 
-        // One-shot VBO flush when transitioning from visible → all-below-dead-zone
-        // (e.g. music paused/silenced during full/low mode). Without this the GPU
-        // keeps rendering the last non-degenerate frame indefinitely.
-        if (!anyVisible) {
-            if (wasVisible) {
-                for (total in barStartX.indices) {
-                    val sx = barStartX[total]; val sy = barStartY[total]
-                    for (j in 0..5) vbo.putVertex(total * 6 + j, sx, sy)
-                }
-                wasVisible = false
-            }
-            return
-        }
+            for (total in 0 until activeBars) {
+                val amp = frequencyAmplitudes[total % BAR_COUNT]
+                if (amp < AMPLITUDE_DEAD_ZONE) continue
 
-        wasVisible = true
-
-        val hh = halfBarH
-        val ml = maxBarLen
-        val activeBars = BAR_COUNT * activeRounds
-
-        for (total in barStartX.indices) {
-            val vBase = total * 6
-            val sx = barStartX[total]
-            val sy = barStartY[total]
-
-            if (total >= activeBars) {
-                // Rounds beyond activeRounds → degenerate (invisible, zero rasterization cost).
-                for (j in 0..5) vbo.putVertex(vBase + j, sx, sy)
-                continue
-            }
-
-            val amp = frequencyAmplitudes[total % BAR_COUNT]
-            if (amp < AMPLITUDE_DEAD_ZONE) {
-                for (j in 0..5) vbo.putVertex(vBase + j, sx, sy)
-            } else {
                 val len = amp * ml
+                val sx = centreX + barStartX[total]
+                val sy = centreY + barStartY[total]
                 val ca = barCosA[total]
                 val sa = barSinA[total]
 
-                val ax = sx - sa * hh
-                val ay = sy + ca * hh
+                val (ax, ay) = transform.transform(sx - sa * hh, sy + ca * hh)
+                val (bx, by) = transform.transform(sx + sa * hh, sy - ca * hh)
+                val (cx, cy) = transform.transform(sx + ca * len + sa * hh, sy + sa * len - ca * hh)
+                val (dx, dy) = transform.transform(sx + ca * len - sa * hh, sy + sa * len + ca * hh)
 
-                val bx = sx + sa * hh
-                val by = sy - ca * hh
-
-                val cx = sx + ca * len + sa * hh
-                val cy = sy + sa * len - ca * hh
-
-                val dx = sx + ca * len - sa * hh
-                val dy = sy + sa * len + ca * hh
-
-                vbo.putVertex(vBase + 0, ax, ay)
-                vbo.putVertex(vBase + 1, bx, by)
-                vbo.putVertex(vBase + 2, cx, cy)
-                vbo.putVertex(vBase + 3, ax, ay)
-                vbo.putVertex(vBase + 4, cx, cy)
-                vbo.putVertex(vBase + 5, dx, dy)
+                // The quad shader fades out at UV edges, so every vertex samples its centre.
+                with(renderer) {
+                    addVertex(ax, ay, 0.5f, 0.5f, color)
+                    addVertex(bx, by, 0.5f, 0.5f, color)
+                    addVertex(cx, cy, 0.5f, 0.5f, color)
+                    addVertex(ax, ay, 0.5f, 0.5f, color)
+                    addVertex(cx, cy, 0.5f, 0.5f, color)
+                    addVertex(dx, dy, 0.5f, 0.5f, color)
+                }
             }
         }
     }
@@ -152,9 +133,6 @@ class Spectrum : UIBufferedComponent<Spectrum.SpectrumVBO>() {
     fun update(dt: Float, kiaiActive: Boolean) {
         when (Config.getSpectrumQuality()) {
             "off" -> {
-                // Hide the component entirely so UIBufferedComponent never calls
-                // updateBuffer() / invalidateOnHardware(), avoiding the per-frame
-                // VBO re-upload that occurred even when onUpdateBuffer() returned early.
                 isVisible = false
                 frequencyAmplitudes.fill(0f)
                 return
@@ -226,16 +204,11 @@ class Spectrum : UIBufferedComponent<Spectrum.SpectrumVBO>() {
         indexOffset = (indexOffset + INDEX_CHANGE) % BAR_COUNT
     }
 
-    class SpectrumVBO(barCount: Int) : VertexBuffer(
-        drawTopology = GL_TRIANGLES,
-        vertexCount = barCount * 6,
-        vertexSize = VERTEX_2D,
-        bufferUsage = GL_DYNAMIC_DRAW
-    )
-
     companion object {
         const val BAR_COUNT = 120
         const val VISUALISER_ROUNDS = 3
+
+        /** Room for the bars around the logo on each side, in virtual units. */
         const val MAX_EXTRA = 300f
 
         private const val VISUALISER_ROUNDS_LOW = 1

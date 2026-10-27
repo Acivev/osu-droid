@@ -1,11 +1,15 @@
 package com.osudroid.ui.v2.menu.main
 
-import com.edlplan.framework.easing.Easing
-import com.reco1l.andengine.component.BlendInfo
-import com.reco1l.andengine.UIScene
-import com.reco1l.andengine.component.UIComponent
-import com.reco1l.andengine.ui.UIGradientBox
-import com.reco1l.framework.Color4
+import com.osudroid.ui.verktex.toVerktex
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.graphics.BlendMode
+import com.reco1l.verktex.math.Easing
+import com.reco1l.verktex.math.FloatAnimation
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UIGradientBox
+import com.reco1l.verktex.ui.UIScene
 import ru.nsu.ccfit.zuev.skins.OsuSkin
 
 /**
@@ -17,39 +21,38 @@ import ru.nsu.ccfit.zuev.skins.OsuSkin
  *  - Animation:     65 ms fade-in → beat-length Easing.In fade-out
  *
  * Usage:
- * 1. Create:   `val sideFlashes = SideFlashes(w, h)`
+ * 1. Create:   `val sideFlashes = SideFlashes()`
  * 2. Attach:   `sideFlashes.attachTo(scene)`
  * 3. Per beat: `sideFlashes.onNewBeat(beat, kiaiActive, bpmMs, fft, timeSignature)`
+ *
+ * Each flash is 15% of the window width.
  */
-class SideFlashes(screenWidth: Float) {
+class SideFlashes {
 
-    private val flashLeft = UIGradientBox(fromAlpha = 1f, toAlpha = 0f)
-    private val flashRight = UIGradientBox(fromAlpha = 0f, toAlpha = 1f)
+    private val flashLeft = Flash(fromAlpha = 1f, toAlpha = 0f)
+    private val flashRight = Flash(fromAlpha = 0f, toAlpha = 1f)
 
     init {
-        val flashW = screenWidth * 0.15f
         flashLeft.apply {
-            width = flashW
-            height = UIComponent.FillParent
-            x = 0f
+            width = fill(FLASH_WIDTH)
+            height = fill()
             alpha = 0f
-            color = DEFAULT_COLOR
-            blendInfo = BlendInfo.Additive
+            flashColor = DEFAULT_COLOR
         }
         flashRight.apply {
-            width = flashW
-            height = UIComponent.FillParent
-            x = screenWidth - flashW
+            width = fill(FLASH_WIDTH)
+            height = fill()
+            anchor = Anchor.TopRight
+            origin = Anchor.TopRight
             alpha = 0f
-            color = DEFAULT_COLOR
-            blendInfo = BlendInfo.Additive
+            flashColor = DEFAULT_COLOR
         }
     }
 
     /** Attach both flash boxes to [scene]. Call once during scene init. */
     fun attachTo(scene: UIScene) {
-        scene.attachChild(flashLeft)
-        scene.attachChild(flashRight)
+        scene += flashLeft
+        scene += flashRight
     }
 
     /**
@@ -98,12 +101,10 @@ class SideFlashes(screenWidth: Float) {
     }
 
 
-    private fun trigger(box: UIGradientBox, targetAlpha: Float, beatLenSec: Float) {
-        box.color = resolveColor()
-        box.clearEntityModifiers()
-        box.fadeTo(targetAlpha, 0.065f).after {
-            box.fadeTo(0f, beatLenSec, Easing.In)
-        }
+    private fun trigger(box: Flash, targetAlpha: Float, beatLenSec: Float) {
+        box.flashColor = resolveColor()
+        box.fadeTo(targetAlpha, FADE_IN_SEC, Easing.None)
+        box.queueFadeOut(beatLenSec)
     }
 
     /** Skin's first combo color, skipping near-white and near-black. Falls back to [DEFAULT_COLOR]. */
@@ -112,16 +113,71 @@ class SideFlashes(screenWidth: Float) {
             val isNearWhite = c.red > 0.9f && c.green > 0.9f && c.blue > 0.9f
             val isNearBlack = c.red < 0.1f && c.green < 0.1f && c.blue < 0.1f
             !isNearWhite && !isNearBlack
-        } ?: DEFAULT_COLOR
+        }?.toVerktex() ?: DEFAULT_COLOR
     }
 
     /** Immediately stop any in-flight animations and hide both flash boxes. */
     fun fadeOut(duration: Float = 0.064f, easing: Easing = Easing.OutQuint) {
-        flashLeft.clearEntityModifiers()
-        flashRight.clearEntityModifiers()
         flashLeft.fadeTo(0f, duration, easing)
         flashRight.fadeTo(0f, duration, easing)
     }
+
+
+    /**
+     * One additive gradient flash. Its alpha runs the fade-in then the fade-out queued after it, as the
+     * chained modifiers of the AndEngine version did.
+     */
+    private class Flash(private val fromAlpha: Float, private val toAlpha: Float) : UIGradientBox() {
+
+        private val fade = FloatAnimation(0f, 0f)
+
+        /** Seconds of the fade-in left before the queued fade-out starts, -1 when none is queued. */
+        private var fadeInRemaining = -1f
+
+        /** Duration of the queued fade-out. */
+        private var queuedFadeOut = 0f
+
+        /** The flash colour, its alpha is replaced by the gradient's. */
+        var flashColor: Color4 = DEFAULT_COLOR
+            set(value) {
+                field = value
+                colorStart = value.copy(alpha = fromAlpha)
+                colorEnd = value.copy(alpha = toAlpha)
+            }
+
+        init {
+            gradientAngle = 0f
+            blendMode = BlendMode.Additive
+        }
+
+        /** Replaces any running or queued fade, like clearEntityModifiers() followed by fadeTo(). */
+        fun fadeTo(target: Float, duration: Float, easing: Easing) {
+            fadeInRemaining = -1f
+            if (duration <= 0f) {
+                fade.jumpTo(target)
+            } else {
+                fade.jumpTo(fade.value)
+                fade.animateTo(target, duration, easing)
+            }
+        }
+
+        /** Fades out over [duration] once the running fade-in is done, as `.after { fadeTo(0f, …) }` did. */
+        fun queueFadeOut(duration: Float) {
+            fadeInRemaining = FADE_IN_SEC
+            queuedFadeOut = duration
+        }
+
+        override fun onUpdate(clock: TickingClock) {
+            alpha = fade.update(clock)
+
+            // The fade-in advanced by the same time, so it has reached its target here.
+            if (fadeInRemaining >= 0f) {
+                fadeInRemaining -= clock.elapsedTickTime
+                if (fadeInRemaining <= 0f) fadeTo(0f, queuedFadeOut, Easing.InQuad)
+            }
+        }
+    }
+
 
     companion object {
         /** Default blue*/
@@ -129,6 +185,11 @@ class SideFlashes(screenWidth: Float) {
 
         /** Scale applied to raw FFT values when computing flash amplitude. */
         private const val FFT_SCALE = 8f
+
+        /** Width of each flash as a fraction of the window width. */
+        private const val FLASH_WIDTH = 0.15f
+
+        private const val FADE_IN_SEC = 0.065f
     }
 }
 

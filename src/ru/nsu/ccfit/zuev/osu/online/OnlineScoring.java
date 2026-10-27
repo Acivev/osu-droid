@@ -23,7 +23,7 @@ public class OnlineScoring {
     private static OnlineScoring instance = null;
     private final Boolean onlineMutex = Boolean.FALSE;
     private OnlinePanel panel = null;
-    private OnlinePanel secondPanel = null;
+    private OnlinePanel songMenuPanel = null;
     private boolean avatarLoaded = false;
     private final Snackbar snackbar = Snackbar.make(
             GlobalManager.getInstance().getMainActivity().getWindow().getDecorView(),
@@ -45,38 +45,31 @@ public class OnlineScoring {
         return panel;
     }
 
-    public OnlinePanel createSecondPanel() {
-        if (!OnlineManager.getInstance().isStayOnline())
-            return null;
-        secondPanel = new OnlinePanel();
-        secondPanel.setInfo();
-        String avatarURL = OnlineManager.getInstance().getAvatarURL();
-        secondPanel.setProfile(avatarLoaded && !avatarURL.isEmpty() ? avatarURL : null);
-        return secondPanel;
-    }
-
-    public OnlinePanel getSecondPanel() {
-        return secondPanel;
+    /**
+     * Sets the panel the song menu shows, updated along with {@link #getPanel()}.
+     */
+    public void setSongMenuPanel(OnlinePanel songMenuPanel) {
+        this.songMenuPanel = songMenuPanel;
     }
 
     public void setPanelMessage(String message, String submessage) {
         panel.setMessage(message, submessage);
-        if (secondPanel != null)
-            secondPanel.setMessage(message, submessage);
+        if (songMenuPanel != null)
+            songMenuPanel.setMessage(message, submessage);
     }
 
     public void updatePanels() {
         panel.setInfo();
-        if (secondPanel != null)
-            secondPanel.setInfo();
+        if (songMenuPanel != null)
+            songMenuPanel.setInfo();
     }
 
     public void updatePanelProfiles() {
         final String avatarUrl = OnlineManager.getInstance().getAvatarURL();
         String avatarTexName = avatarLoaded && !avatarUrl.isEmpty() ? avatarUrl : null;
         panel.setProfile(avatarTexName);
-        if (secondPanel != null)
-            secondPanel.setProfile(avatarTexName);
+        if (songMenuPanel != null)
+            songMenuPanel.setProfile(avatarTexName);
     }
 
     public void login() {
@@ -211,8 +204,8 @@ public class OnlineScoring {
                 Execution.updateThread(() -> {
                     if (both)
                         updatePanelProfiles();
-                    else if (secondPanel != null)
-                        secondPanel.setProfile(avatarLoaded ? avatarUrl : null);
+                    else if (songMenuPanel != null)
+                        songMenuPanel.setProfile(avatarLoaded ? avatarUrl : null);
                 });
             }
         });

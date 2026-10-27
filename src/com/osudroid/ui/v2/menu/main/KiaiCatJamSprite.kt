@@ -1,14 +1,10 @@
 package com.osudroid.ui.v2.menu.main
 
-import android.opengl.GLES32
 import com.osudroid.ui.v2.menu.main.shader.CatJamCircleShader
-import com.reco1l.andengine.buffered.VertexBuffer
-import com.reco1l.andengine.component.BlendInfo
-import com.reco1l.andengine.sprite.ScaleType
-import com.reco1l.andengine.sprite.UISprite
-import org.andengine.opengl.shader.constants.ShaderProgramConstants
-import org.andengine.opengl.texture.region.TextureRegion
-import org.andengine.opengl.util.GLState
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.graphics.GraphicsTexture
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UIAnimatedSprite
 
 /**
  * A sprite that renders a catjam animation frame clipped to a circle.
@@ -19,8 +15,11 @@ import org.andengine.opengl.util.GLState
  *
  * The sprite should be sized to match the logo exactly (same width/height) so that
  * the UV-space circle radius of 0.5 coincides with the logo's circle boundary.
+ *
+ * The frame is picked by the host from the song position with [showFrame], the animation does not
+ * advance on its own.
  */
-class KiaiCatJamSprite(val frames: Array<TextureRegion>) : UISprite() {
+class KiaiCatJamSprite(frames: List<GraphicsTexture.Region> = emptyList()) : UIAnimatedSprite(frames) {
 
     /**
      * Circle clip radius in normalized quad-UV space [0..1].
@@ -29,81 +28,70 @@ class KiaiCatJamSprite(val frames: Array<TextureRegion>) : UISprite() {
      */
     var clipRadius: Float = 0.5f
 
-    /** Static full-quad position buffer bound at [com.osudroid.ui.v2.menu.main.shader.CatJamCircleShader.QUAD_POS_LOCATION]. */
-    private val quadPosBuffer = QuadPosBuffer()
+    /** The circle clip shader, created on the first update, on the renderer this sprite is drawn with. */
+    private val circleShader = CatJamCircleShader()
 
     init {
         scaleType = ScaleType.Stretch
-        if (frames.isNotEmpty()) textureRegion = frames[0]
         alpha = 0f
-    }
-
-    override fun onTextureRegionChanged() {
-        textureRegion ?: return
-        // CatJamCircleShader always outputs premultiplied alpha (rgb * a, a),
-        // so PreMultiply blending must be used unconditionally regardless of
-        // whether the underlying texture was uploaded as premultiplied.
-        blendInfo = BlendInfo.PreMultiply
-        uvBuffer.update(this)
-        requestBufferUpdate()
+        pause()
     }
 
 
-    override fun onBindShader(pGLState: GLState) {
-        val shader = CatJamCircleShader.INSTANCE
-        shader.bindProgram(pGLState)
-
-        if (shader.uniformMVP >= 0)
-            GLES32.glUniformMatrix4fv(shader.uniformMVP, 1, false, pGLState.modelViewProjectionGLMatrix, 0)
-        if (shader.uniformCatjam >= 0)
-            GLES32.glUniform1i(shader.uniformCatjam, 0)
-        if (shader.uniformColor >= 0)
-            GLES32.glUniform4f(shader.uniformColor, drawRed, drawGreen, drawBlue, drawAlpha)
-        if (shader.uniformRadius >= 0)
-            GLES32.glUniform1f(shader.uniformRadius, clipRadius)
-
-        // This shader does not use per-vertex color
-        GLES32.glDisableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_COLOR_LOCATION)
-
-        // Catjam atlas UVs at attribute 3
-        uvBuffer.beginDraw(pGLState)
-
-        // Normalised quad-position (0→1) at attribute 4
-        quadPosBuffer.bindAsQuadPosAttribute()
-    }
-
-    override fun onDrawBuffer(pGLState: GLState) {
-        textureRegion?.texture?.bind(pGLState)
-        super.onDrawBuffer(pGLState)
-        GLES32.glDisableVertexAttribArray(CatJamCircleShader.QUAD_POS_LOCATION)
+    /** Shows the frame at [index] until the next call. */
+    fun showFrame(index: Int) {
+        pause()
+        // Centred in the frame's time slot so the frame lookup does not round down to the previous one.
+        elapsedSec = (index + 0.5f) * frameTime
+        textureRegion = frames.getOrNull(index)
     }
 
 
-    /**
-     * Static 2D position buffer that maps (0,0)→(1,1) over the quad, bound at
-     * [CatJamCircleShader.Companion.QUAD_POS_LOCATION].
-     * Vertex order matches [SpriteVBO]: top-left, bottom-left, top-right, bottom-right.
-     */
-    private class QuadPosBuffer : VertexBuffer(
-        drawTopology = GLES32.GL_TRIANGLE_STRIP,
-        vertexCount = 4,
-        vertexSize = VERTEX_2D,
-        bufferUsage = GLES32.GL_STATIC_DRAW
-    ) {
-        init {
-            putVertex(0, 0f, 0f) // top-left
-            putVertex(1, 0f, 1f) // bottom-left
-            putVertex(2, 1f, 0f) // top-right
-            putVertex(3, 1f, 1f) // bottom-right
-            invalidateOnHardware()
-        }
+    override fun onUpdate(clock: TickingClock) {
+        circleShader.create()
 
-        fun bindAsQuadPosAttribute() {
-            bindAndUpload()
-            GLES32.glVertexAttribPointer(
-                CatJamCircleShader.QUAD_POS_LOCATION,
-                VERTEX_2D, GLES32.GL_FLOAT, false, 0, 0)
-            GLES32.glEnableVertexAttribArray(CatJamCircleShader.QUAD_POS_LOCATION)
+        super.onUpdate(clock)
+    }
+
+    override fun onDraw(renderer: GraphicsRenderer) {
+        val shader = circleShader.shader ?: return
+        if (alpha <= 0f) return
+        val region = textureRegion ?: return
+        if (region.width <= 0f || region.height <= 0f) return
+
+        val u0 = region.u0
+        val v0 = region.v0
+        val u1 = region.u1
+        val v1 = region.v1
+
+        // drawTexture() would replace the uniform set, so the quad is emitted directly.
+        renderer.setState(
+            shader = shader,
+            texture = region.texture,
+            uniformSet = circleShader.uniformSet(region, clipRadius)
+        )
+
+        val width = bounds.width
+        val height = bounds.height
+
+        renderer.drawGeometry { transform, _ ->
+            val color = renderer.transformColor(contentColor)
+
+            val (x0, y0) = transform.transform(0f, 0f)
+            val (x1, y1) = transform.transform(width, 0f)
+            val (x2, y2) = transform.transform(width, height)
+            val (x3, y3) = transform.transform(0f, height)
+
+            // addVertex is a member extension of the renderer, so it must be in scope.
+            with(renderer) {
+                addVertex(x0, y0, u0, v0, color)
+                addVertex(x1, y1, u1, v0, color)
+                addVertex(x2, y2, u1, v1, color)
+
+                addVertex(x0, y0, u0, v0, color)
+                addVertex(x2, y2, u1, v1, color)
+                addVertex(x3, y3, u0, v1, color)
+            }
         }
     }
 
