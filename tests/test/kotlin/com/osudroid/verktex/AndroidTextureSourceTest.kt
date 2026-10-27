@@ -8,6 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import java.nio.IntBuffer
 
 /**
  * Textures are stored with straight alpha, so premultiplied bitmaps are un-premultiplied on upload.
@@ -59,5 +60,25 @@ class AndroidTextureSourceTest {
         val after = IntArray(4)
         bitmap.getPixels(after, 0, 2, 0, 0, 2, 2)
         assertArrayEquals(before, after)
+    }
+
+    @Test
+    fun unpremultiplyRowsSkipsTheRowPadding() {
+        // Two rows of two pixels, padded to a stride of three, the padding holds a sentinel.
+        val padding = 0x40FFFFFF
+        val pixels = IntBuffer.wrap(intArrayOf(
+            0x80800000.toInt(), 0xFF102030.toInt(), padding,
+            0x00123456, 0x80008000.toInt(), padding,
+        ))
+
+        AndroidTextureSource.unpremultiplyRows(pixels, 2, 2, 3)
+
+        val result = pixels.array()
+        assertChannelsNear(0x80FF0000.toInt(), result[0])
+        assertEquals(0xFF102030.toInt(), result[1])
+        assertEquals(padding, result[2])
+        assertEquals(0, result[3])
+        assertChannelsNear(0x8000FF00.toInt(), result[4])
+        assertEquals(padding, result[5])
     }
 }

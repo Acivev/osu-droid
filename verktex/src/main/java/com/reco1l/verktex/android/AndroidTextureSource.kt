@@ -6,6 +6,7 @@ import android.opengl.GLUtils
 import com.reco1l.verktex.graphics.GraphicsTexture
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.IntBuffer
 import kotlin.math.min
 
 class AndroidTextureSource(val bitmap: Bitmap) : GraphicsTexture.Source {
@@ -19,43 +20,60 @@ class AndroidTextureSource(val bitmap: Bitmap) : GraphicsTexture.Source {
 
         // Blending uses straight alpha, so premultiplied bitmaps are un-premultiplied first.
         val isPremultipliedArgb = bitmap.isPremultiplied && bitmap.hasAlpha() &&
-            bitmap.config == Bitmap.Config.ARGB_8888 && bitmap.rowBytes == bitmap.width * 4
+            bitmap.config == Bitmap.Config.ARGB_8888
 
         if (!isPremultipliedArgb) {
             GLUtils.texSubImage2D(GLES32.GL_TEXTURE_2D, 0, x, y, bitmap)
             return
         }
 
-        val buffer = ByteBuffer.allocateDirect(bitmap.byteCount).order(ByteOrder.LITTLE_ENDIAN)
+        // Rows can be padded past width * 4 bytes. Skia keeps the row bytes a multiple of the
+        // pixel size, so the stride is a whole number of pixels.
+        val rowStride = bitmap.rowBytes / 4
+        val buffer = ByteBuffer.allocateDirect(bitmap.rowBytes * bitmap.height).order(ByteOrder.LITTLE_ENDIAN)
 
         // Raw premultiplied pixels in RGBA byte order, getPixels() would already un-premultiply them.
         bitmap.copyPixelsToBuffer(buffer)
         buffer.rewind()
 
-        // Read as little-endian ints the pixels are ABGR, alpha stays in the top byte as unpremultiply() expects
-        // and the colour channels are converted the same way regardless of their order.
-        val pixels = buffer.asIntBuffer()
-        val row = IntArray(bitmap.width)
-
-        for (rowIndex in 0 until bitmap.height) {
-            val offset = rowIndex * bitmap.width
-
-            pixels.position(offset)
-            pixels.get(row)
-
-            for (i in row.indices) {
-                row[i] = unpremultiply(row[i])
-            }
-
-            pixels.position(offset)
-            pixels.put(row)
-        }
+        unpremultiplyRows(buffer.asIntBuffer(), bitmap.width, bitmap.height, rowStride)
 
         buffer.rewind()
+
+        // The padded rows are uploaded as they are, the row length makes GL skip the padding.
+        GLES32.glPixelStorei(GLES32.GL_UNPACK_ROW_LENGTH, rowStride)
         GLES32.glTexSubImage2D(GLES32.GL_TEXTURE_2D, 0, x, y, bitmap.width, bitmap.height, GLES32.GL_RGBA, GLES32.GL_UNSIGNED_BYTE, buffer)
+        GLES32.glPixelStorei(GLES32.GL_UNPACK_ROW_LENGTH, 0)
     }
 
     companion object {
+
+        /**
+         * Un-premultiplies [height] rows of [width] pixels in place, each row starting [rowStride]
+         * pixels after the previous one. The padding past [width] in a row is left untouched.
+         *
+         * Read as little-endian ints the pixels are ABGR, alpha stays in the top byte as [unpremultiply]
+         * expects and the colour channels are converted the same way regardless of their order.
+         */
+        fun unpremultiplyRows(pixels: IntBuffer, width: Int, height: Int, rowStride: Int) {
+            require(rowStride >= width) { "The row stride $rowStride is smaller than the width $width." }
+
+            val row = IntArray(width)
+
+            for (rowIndex in 0 until height) {
+                val offset = rowIndex * rowStride
+
+                pixels.position(offset)
+                pixels.get(row)
+
+                for (i in row.indices) {
+                    row[i] = unpremultiply(row[i])
+                }
+
+                pixels.position(offset)
+                pixels.put(row)
+            }
+        }
 
         /**
          * Converts a premultiplied ARGB pixel to straight alpha.
