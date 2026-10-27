@@ -96,6 +96,13 @@ object Verktex {
         private set
 
 
+    /**
+     * The vertical offset of the content caused by the on-screen keyboard, in window pixels. It is
+     * zero while the keyboard is hidden and negative while it is shown (content moves up).
+     */
+    val imeOffset: Float
+        get() = graphics.window.insets.offsets.y
+
     private var isInitialized = false
 
 
