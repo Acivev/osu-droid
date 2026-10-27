@@ -9,17 +9,13 @@ import androidx.core.view.WindowInsetsCompat
 import com.reco1l.verktex.BuiltIn
 import com.reco1l.verktex.Logger
 import com.reco1l.verktex.Platform
+import com.reco1l.verktex.android.gles.ESCommandExecutor
 import com.reco1l.verktex.android.gles.ESDevice
-import com.reco1l.verktex.android.gles.toGLES
-import com.reco1l.verktex.android.gles.toGLESDestination
-import com.reco1l.verktex.android.gles.toGLESSource
-import com.reco1l.verktex.data.Color4
 import com.reco1l.verktex.data.Vec2
 import com.reco1l.verktex.data.Vec4
 import com.reco1l.verktex.graphics.DrawCommand
 import com.reco1l.verktex.graphics.GraphicsContext
 import com.reco1l.verktex.graphics.GraphicsRenderer
-import com.reco1l.verktex.graphics.GraphicsShader
 import com.reco1l.verktex.graphics.GraphicsWindow
 import kotlin.math.max
 
@@ -109,7 +105,7 @@ class HostedWindow : GraphicsWindow {
     }
 }
 
-// Twin of com.reco1l.verktex.android.gles.ESRenderer: keep draw/command code in sync; only context/window/clear/swap differ.
+// Twin of com.reco1l.verktex.android.gles.ESRenderer: draw commands run through ESCommandExecutor; only context/window/clear/swap differ.
 class HostedRenderer(
     override val context: HostedContext,
     override val device: ESDevice,
@@ -170,80 +166,6 @@ class HostedRenderer(
     }
 
     override fun drawCommand(command: DrawCommand) {
-
-        // Local copies, command properties from another module can't be smart cast.
-        val buffer = command.buffer
-        val shader = command.shader
-        val texture = command.texture
-
-        if (buffer == null || shader == null || buffer.isEmpty()) return
-
-        // Scissor test, the scissor is in window space (top-left origin) while GL expects bottom-left.
-        val scissor = command.scissor
-        if (scissor != null) {
-            GLES32.glEnable(GLES32.GL_SCISSOR_TEST)
-            GLES32.glScissor(
-                scissor.x.toInt(),
-                (window.windowHeight - scissor.y - scissor.w).toInt(),
-                scissor.z.toInt().coerceAtLeast(0),
-                scissor.w.toInt().coerceAtLeast(0)
-            )
-        } else {
-            GLES32.glDisable(GLES32.GL_SCISSOR_TEST)
-        }
-
-        GLES32.glDisable(GLES32.GL_CULL_FACE)
-
-        // Blend
-        GLES32.glEnable(GLES32.GL_BLEND)
-        GLES32.glBlendFunc(
-            command.blendMode.toGLESSource(),
-            command.blendMode.toGLESDestination()
-        )
-
-        // Depth testing
-        if (command.depthState.enabled) {
-            GLES32.glEnable(GLES32.GL_DEPTH_TEST)
-            GLES32.glDepthFunc(command.depthState.function.toGLES())
-            GLES32.glDepthMask(command.depthState.writeEnabled)
-        } else {
-            GLES32.glDisable(GLES32.GL_DEPTH_TEST)
-            GLES32.glDepthMask(false)
-        }
-
-        shader.bind()
-
-        if (texture != null) {
-            GLES32.glActiveTexture(GLES32.GL_TEXTURE0)
-            texture.bind()
-        }
-
-        shader.applyUniforms(GraphicsShader.UniformSet().apply {
-            // Uniform values persist per program, so reset them to defaults before every draw.
-            val viewportSize = Vec2(window.windowWidth.toFloat(), window.windowHeight.toFloat())
-            set("uViewportSize", viewportSize)
-            set("uColor", Color4.White)
-            set("uTexture", 0)
-            set("uRadius", 0f)
-            set("uBorderWidth", 0f)
-            set("uBorderColor", Color4.Transparent)
-            set("uSize", viewportSize)
-        })
-        shader.applyUniforms(command.uniformSet)
-
-        buffer.bind()
-        buffer.uploadDataToGPU()
-
-        // Vertex layout: position (2 floats), UV (2 floats), color (4 normalized unsigned bytes).
-        GLES32.glEnableVertexAttribArray(0)
-        GLES32.glVertexAttribPointer(0, 2, GLES32.GL_FLOAT, false, VERTEX_2D_STRIDE, 0)
-        GLES32.glEnableVertexAttribArray(1)
-        GLES32.glVertexAttribPointer(1, 2, GLES32.GL_FLOAT, false, VERTEX_2D_STRIDE, 8)
-        GLES32.glEnableVertexAttribArray(2)
-        GLES32.glVertexAttribPointer(2, 4, GLES32.GL_UNSIGNED_BYTE, true, VERTEX_2D_STRIDE, 16)
-
-        val vertexCount = buffer.position / VERTEX_2D_STRIDE
-
-        GLES32.glDrawArrays(GLES32.GL_TRIANGLES, 0, vertexCount)
+        ESCommandExecutor.execute(command, window.windowWidth, window.windowHeight)
     }
 }
