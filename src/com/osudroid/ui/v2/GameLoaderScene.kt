@@ -6,35 +6,61 @@ import com.osudroid.multiplayer.*
 import com.osudroid.multiplayer.api.RoomAPI
 import com.osudroid.multiplayer.api.data.PlayerStatus
 import com.osudroid.storyboard.parser.StoryboardParser
+import com.osudroid.ui.v2.modmenu.LegacyTextButton
+import com.osudroid.ui.verktex.*
+import com.osudroid.ui.verktex.ModsIndicator
+import com.osudroid.ui.verktex.LegacyUnits.vu
 import com.osudroid.utils.async
 import com.osudroid.utils.ModHashMap
-import com.reco1l.andengine.*
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.component.UIComponent.Companion.FillParent
-import com.reco1l.andengine.container.*
-import com.reco1l.andengine.shape.*
-import com.reco1l.andengine.sprite.*
-import com.reco1l.andengine.ui.*
-import com.reco1l.andengine.ui.form.*
-import com.reco1l.framework.*
-import com.reco1l.framework.math.*
-import com.rian.andengine.modifier.ModifierType
+import com.osudroid.utils.updateThread
+import com.osudroid.verktex.bridge.RoutedScene
+import com.reco1l.andengine.Anchor as LegacyAnchor
+import com.reco1l.andengine.component.scaleCenter
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.*
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.KeyboardEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.math.Easing as VerktexEasing
+import com.reco1l.verktex.math.FloatAnimation
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.*
+import com.reco1l.verktex.ui.container.*
+import com.reco1l.verktex.ui.container.UILinearContainer.Orientation
+import com.reco1l.verktex.ui.form.*
+import com.reco1l.verktex.ui.shape.*
+import com.reco1l.verktex.ui.text.*
 import java.io.File
 import java.io.IOException
 import kotlin.math.*
-import org.andengine.input.touch.*
 import ru.nsu.ccfit.zuev.osu.*
 import ru.nsu.ccfit.zuev.osu.game.GameScene
 import ru.nsu.ccfit.zuev.osu.helper.StringTable
 
-class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo: BeatmapInfo, mods: ModHashMap, private val isRestart: Boolean) : UIScene() {
+class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo: BeatmapInfo, mods: ModHashMap, private val isRestart: Boolean) : UIScene(), RoutedScene {
 
-    private var lastTimeTouched = System.currentTimeMillis()
-    private var isStarting = false
-    private var multiplayerLoadElapsed = 0f
+    private val loaderClock = LoaderClock(isRestart).also {
+        // A cancel or a scene change queued ahead of a posted body has replaced this loader.
+        it.runIfShown = { body ->
+            Verktex.withTreeLock {
+                if (current === this) {
+                    body.run()
+                }
+            }
+        }
+    }
+    private var isStarting by loaderClock::isStarting
 
+    private val backgroundSprite: UISprite
     private val dimBox: UIBox
     private val mainContainer: UIContainer
+    private lateinit var stepRow: UILinearContainer
+    private var shownStepsMask = SHOWN_STEPS_ALL
+
+    // Verktex has no entity modifiers, the fades and the scale are animated in onUpdate.
+    private val dimAlpha = FloatAnimation(0.7f, 0f, VerktexEasing.None)
+    private val mainAlpha = FloatAnimation(0f, 0f, VerktexEasing.None)
+    private val mainScale = FloatAnimation(0.9f, 0f, VerktexEasing.None)
 
     /**
      * Whether the beatmap has a storyboard. This is determined ahead of loading so that the storyboard
@@ -50,9 +76,6 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
     private val beatmapOptions = DatabaseManager.beatmapOptionsTable.getOptions(beatmapInfo.setDirectory)
         ?: BeatmapOptions(beatmapInfo.setDirectory)
 
-    private var fadeTimeout = if (isRestart) 500L else 2000L
-    private var minimumTimeout = if (isRestart) 500L else 2000L
-
     init {
         async {
             hasStoryboard = try {
@@ -62,51 +85,51 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
             }
         }
 
-        ResourceManager.getInstance().loadHighQualityAsset("back-arrow", "back-arrow.png")
-
-        // Background
-        sprite {
-            width = FillParent
-            height = FillParent
-            scaleType = ScaleType.Crop
-            textureRegion = ResourceManager.getInstance().getTexture(if (Config.isSafeBeatmapBg()) "menu-background" else "::background")
+        // Background, its texture is set in onShown.
+        backgroundSprite = sprite {
+            width = fill()
+            height = fill()
+            scaleType = UISprite.ScaleType.Crop
         }
 
         // Dim
         dimBox = box {
-            width = FillParent
-            height = FillParent
-            color = Color4.Black
+            width = fill()
+            height = fill()
+            backgroundColor = Color4.Black
             alpha = 0.7f
         }
 
         // Beatmap info
         mainContainer = container {
-            width = FillParent
-            height = FillParent
+            width = fill()
+            height = fill()
             alpha = 0f
             scaleX = 0.9f
             scaleY = 0.9f
-            scaleCenter = Anchor.Center
+            scaleOrigin = Anchor.Center
 
             if (beatmapInfo.epilepsyWarning) {
-                ResourceManager.getInstance().loadHighQualityAsset("warning", "warning.png")
+                // Verktex passes only the alpha down, so the children get the colour.
+                val warningColor = Color4(0xFFFFA726)
 
                 linearContainer {
-                    x = 60f
-                    y = 60f
-                    color = Color4(0xFFFFA726)
-                    spacing = 6f
+                    x = 60f.vu.px
+                    y = 60f.vu.px
+                    spacing = 6f.vu.px
 
                     sprite {
-                        width = 24f
-                        height = 24f
-                        y = 2f
-                        textureRegion = ResourceManager.getInstance().getTexture("warning")
+                        width = 24f.vu.px
+                        height = 24f.vu.px
+                        y = 2f.vu.px
+                        color = warningColor
+                        textureRegion = SkinTextures.get("warning", "warning.png")
                     }
 
                     text {
-                        font = ResourceManager.getInstance().getFont("smallFont")
+                        fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                        wrapText = false
+                        color = warningColor
                         text = StringTable.get(com.osudroid.resources.R.string.epilepsy_warning)
                     }
                 }
@@ -114,35 +137,42 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
 
             linearContainer {
                 orientation = Orientation.Vertical
-                spacing = 10f
+                spacing = 10f.vu.px
                 anchor = Anchor.CenterLeft
                 origin = Anchor.CenterLeft
-                x = 60f
+                x = 60f.vu.px
 
                 // Title
                 text {
-                    font = ResourceManager.getInstance().getFont("bigFont")
+                    fontSize = LegacyUnits.fontSize("bigFont").vu.px
                     text = beatmapInfo.titleText
-                    width = 700f
-                    clipToBounds = true
-                    autoScrollSpeed = 30f
-                    applyTheme = { color = it.accentColor }
+                    width = 700f.vu.px
+                    clipping = ClipMode.Bounds
+                    wrapText = false
+                    // The AndEngine UIText scrolled overflowing text horizontally by default.
+                    autoScrollAxes = Axis.X
+                    autoScrollSpeed = 30f.vu
+                    style = Style { theme -> color = theme.palette.accent }
                 }
 
                 // Difficulty
                 text {
-                    font = ResourceManager.getInstance().getFont("middleFont")
+                    fontSize = LegacyUnits.fontSize("middleFont").vu.px
                     text = beatmapInfo.version
-                    width = 700f
-                    clipToBounds = true
-                    applyTheme = { color = it.accentColor }
+                    width = 700f.vu.px
+                    clipping = ClipMode.Bounds
+                    wrapText = false
+                    autoScrollAxes = Axis.X
+                    autoScrollSpeed = 15f.vu
+                    style = Style { theme -> color = theme.palette.accent }
                 }
 
                 // Creator
                 text {
-                    font = ResourceManager.getInstance().getFont("middleFont")
+                    fontSize = LegacyUnits.fontSize("middleFont").vu.px
+                    wrapText = false
                     text = "by ${beatmapInfo.artistText}"
-                    applyTheme = { color = it.accentColor * 0.9f }
+                    style = Style { theme -> color = theme.palette.accent * 0.9f }
                 }
 
                 // Mods
@@ -155,29 +185,22 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                 orientation = Orientation.Vertical
                 anchor = Anchor.BottomLeft
                 origin = Anchor.BottomLeft
-                x = 60f
-                y = -30f
-                spacing = 30f
+                x = 60f.vu.px
+                y = (-30f).vu.px
+                spacing = 30f.vu.px
 
                 // One indicator per loading step. The storyboard and video steps are only shown if they
                 // apply to the beatmap.
-                linearContainer {
-                    spacing = 32f
+                stepRow = linearContainer {
+                    spacing = 32f.vu.px
 
                     +beatmapStep
                     +storyboardStep
                     +videoStep
                 }
 
-                +UITextButton().apply {
-                    text = "Back"
-
-                    leadingIcon = UISprite().apply {
-                        textureRegion = ResourceManager.getInstance().getTexture("back-arrow")
-                        width = 28f
-                        height = 28f
-                    }
-
+                // The leading icon is sized to the text height, as the AndEngine CompoundText did.
+                +LegacyTextButton("Back", "back-arrow", "back-arrow.png").apply {
                     onActionUp = {
                         ResourceManager.getInstance().getSound("click-short-confirm")?.play()
                         cancel()
@@ -216,18 +239,48 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
     }
 
 
-    override fun onAttached() {
-        super.onAttached()
+    override fun onShown() {
+        current = this
 
-        mainContainer.paddingBottom = if (Multiplayer.isConnected) Multiplayer.roomScene!!.chat.buttonHeight + 12f else 0f
+        // Textures are registered on the update thread, so the background is set here.
+        backgroundSprite.textureRegion = if (Config.isSafeBeatmapBg()) SkinTextures.get("menu-background") else SharedBackground.region()
+
+        mainContainer.paddingBottom = if (Multiplayer.isConnected) (Multiplayer.roomScene!!.chat.buttonHeight + 12f).vu.px else 0f.px
+
+        mainAlpha.animateTo(1f, 0.2f, VerktexEasing.OutCubic)
+        mainScale.animateTo(1f, 0.2f, VerktexEasing.OutCubic)
     }
 
-    override fun onLoadComplete() {
-        mainContainer.fadeIn(0.2f, Easing.OutCubic)
-        mainContainer.scaleTo(1f, 0.2f, Easing.OutCubic)
+    override fun onHidden() {
+        // Nothing to release, the background is shared.
+        if (current === this) {
+            current = null
+        }
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    override fun onPerformLayout() {
+        // The legacy scene covers the whole window, the safe area is not applied.
+        padding = Padding.Zero
+        super.onPerformLayout()
+    }
+
+    override fun onInputEvent(event: InputEvent): Boolean {
+        // Keys arrive on the UI thread. The isShown() check keeps a quick second Back from running cancel() twice.
+        if (event is KeyboardEvent && event.action == KeyboardEvent.Action.Down && event.key == KeyboardEvent.Key.Back) {
+            updateThread {
+                Verktex.withTreeLock {
+                    if (isShown()) {
+                        cancel()
+                    }
+                }
+            }
+            return true
+        }
+
+        return super.onInputEvent(event)
+    }
+
+    override fun onUpdate(clock: TickingClock) {
 
         val isBeatmapLoaded = gameScene.isBeatmapLoaded
         val isStoryboardLoading = gameScene.isStoryboardLoading
@@ -243,60 +296,71 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
         videoStep.isVisible = gameScene.isVideoLoading || gameScene.hasVideo()
         videoStep.isDone = !gameScene.isVideoLoading
 
-        if (!isStarting) {
+        updateStepRow()
 
-            if (Multiplayer.isMultiplayer && !gameScene.isReadyToStart) {
-                multiplayerLoadElapsed += deltaTimeSec
+        loaderClock.update(
+            clock.elapsedTickTime,
+            Multiplayer.isMultiplayer,
+            gameScene.isReadyToStart,
+            isStoryboardLoading,
+            System.currentTimeMillis(),
+            onStart = {
+                // This is used instead of getBackgroundBrightness to directly obtain the
+                // updated value from the brightness slider.
+                val backgroundBrightness = Config.getInt("bgbrightness", 25)
 
-                if (multiplayerLoadElapsed >= MULTIPLAYER_LOAD_TIMEOUT_SEC) {
-                    ToastLogger.showText(
-                        "You have been moved back as you took too long to load the beatmap.",
-                        true
-                    )
+                mainAlpha.animateTo(0f, 0.1f, VerktexEasing.OutExpo)
 
-                    cancel()
-                    return
-                }
+                dimAlpha.jumpTo(dimAlpha.value)
+                dimAlpha.animateTo(1f - backgroundBrightness / 100f, LoaderClock.DIM_FADE_DURATION, VerktexEasing.None)
+            },
+            onTimeout = {
+                ToastLogger.showText(
+                    "You have been moved back as you took too long to load the beatmap.",
+                    true
+                )
+
+                cancel()
+            }
+        )
+
+        // The end of the dim fade switches to the AndEngine gameplay scene, outside the Verktex update.
+        loaderClock.updateDimFade(clock.elapsedTickTime) {
+
+            gameScene.hud.apply {
+                alpha = 0f
+                scaleX = 0.9f
+                scaleY = 0.9f
+                scaleCenter = LegacyAnchor.Center
+
+                scaleTo(1f, 0.2f, Easing.OutCubic)
+                fadeIn(0.1f, Easing.OutExpo)
             }
 
-            if (gameScene.isReadyToStart) {
-
-                // Multiplayer will skip the minimum timeout if it's ready to start. It also does not wait for the
-                // storyboard, as all players must start at the same time.
-                val isTimeoutElapsed = System.currentTimeMillis() - lastTimeTouched > minimumTimeout
-
-                if (Multiplayer.isMultiplayer || (isTimeoutElapsed && !isStoryboardLoading)) {
-                    isStarting = true
-
-                    // This is used instead of getBackgroundBrightness to directly obtain the
-                    // updated value from the brightness slider.
-                    val backgroundBrightness = Config.getInt("bgbrightness", 25)
-
-                    mainContainer.fadeOut(0.1f, Easing.OutExpo)
-
-                    dimBox.clearModifiers(ModifierType.Alpha)
-                    dimBox.fadeTo(1f - backgroundBrightness / 100f, 0.2f).after {
-
-                        gameScene.hud.apply {
-                            alpha = 0f
-                            scaleX = 0.9f
-                            scaleY = 0.9f
-                            scaleCenter = Anchor.Center
-
-                            scaleTo(1f, 0.2f, Easing.OutCubic)
-                            fadeIn(0.1f, Easing.OutExpo)
-                        }
-
-                        gameScene.start()
-                    }
-                }
-
-            } else {
-                lastTimeTouched = System.currentTimeMillis()
-            }
+            gameScene.start()
         }
 
-        super.onManagedUpdate(deltaTimeSec)
+        dimBox.alpha = dimAlpha.update(clock)
+        mainContainer.alpha = mainAlpha.update(clock)
+        mainContainer.scale = mainScale.update(clock)
+
+        super.onUpdate(clock)
+    }
+
+    // Verktex lays out hidden components as well, so the row holds the shown steps only, in their order.
+    private fun updateStepRow() {
+        val mask = (if (beatmapStep.isVisible) 1 else 0) or
+            (if (storyboardStep.isVisible) 2 else 0) or
+            (if (videoStep.isVisible) 4 else 0)
+
+        if (mask != shownStepsMask) {
+            shownStepsMask = mask
+            stepRow.clearChildren()
+
+            if (beatmapStep.isVisible) stepRow += beatmapStep
+            if (storyboardStep.isVisible) stepRow += storyboardStep
+            if (videoStep.isVisible) stepRow += videoStep
+        }
     }
 
 
@@ -313,14 +377,13 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
     private class LoadingStep(name: String) : UILinearContainer() {
 
         private val spinner = CircularProgressBar().apply {
-            width = FillParent
-            height = FillParent
+            width = fill()
+            height = fill()
         }
 
-        private val doneCircle = UICircle().apply {
-            width = FillParent
-            height = FillParent
-            paintStyle = PaintStyle.Outline
+        private val doneCircle = OutlineCircle().apply {
+            width = fill()
+            height = fill()
             lineWidth = 4f
             color = Color4(0xFF9CFF5A)
             isVisible = false
@@ -335,23 +398,15 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                 }
             }
 
-        override fun setVisible(value: Boolean) {
-            if (isVisible != value) {
-                super.setVisible(value)
-
-                // A hidden component does not process its own invalidations, so the parent must be
-                // told to lay out its children again.
-                (parent as? UIComponent)?.invalidate(InvalidationFlag.Content)
-            }
-        }
-
         init {
             orientation = Orientation.Vertical
-            spacing = 8f
+            spacing = 8f.vu.px
 
-            container {
-                width = 32f
-                height = 32f
+            // Verktex linear containers ignore the anchor of their children, so the circle sits in a
+            // container as wide as the step.
+            container { width = fill() }.container {
+                width = 32f.vu.px
+                height = 32f.vu.px
                 anchor = Anchor.TopCenter
                 origin = Anchor.TopCenter
 
@@ -360,11 +415,12 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
             }
 
             text {
-                font = ResourceManager.getInstance().getFont("smallFont")
+                fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                wrapText = false
                 text = name
                 anchor = Anchor.TopCenter
                 origin = Anchor.TopCenter
-                applyTheme = { color = it.accentColor * 0.9f }
+                style = Style { theme -> color = theme.palette.accent * 0.9f }
             }
         }
     }
@@ -374,20 +430,20 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
         init {
             anchor = Anchor.CenterRight
             origin = Anchor.CenterRight
-            width = 460f
-            height = FillParent
-            x = -20f
-            scrollAxes = Axes.Y
+            width = 460f.vu.px
+            height = fill()
+            x = (-20f).vu.px
+            scrollAxes = Axis.Y
             alpha = 0.5f
 
             linearContainer {
-                width = FillParent
-                spacing = 20f
-                padding = Vec4(0f, 20f)
+                width = fill()
+                spacing = 20f.vu.px
+                padding = Padding(0f.px, 20f.vu.px)
                 orientation = Orientation.Vertical
 
                 collapsibleCard {
-                    width = FillParent
+                    width = fill()
                     title = "Beatmap"
 
                     content.apply {
@@ -406,25 +462,27 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                         }
                         +offsetSlider
 
-                        linearContainer {
-                            spacing = 10f
-                            padding = Vec4(0f, 16f)
+                        // Verktex linear containers ignore the anchor of their children, so the row sits in a
+                        // container as wide as the card.
+                        container { width = fill() }.linearContainer {
+                            spacing = 10f.vu.px
+                            padding = Padding(0f.px, 16f.vu.px)
                             anchor = Anchor.TopCenter
                             origin = Anchor.TopCenter
 
-                            fun StepButton(step: Int) = textButton {
-                                text = abs(step).toString()
-                                height = 42f
-                                spacing = 2f
-                                padding = Vec4(12f, 0f, 24f, 0f)
-
-                                leadingIcon = UISprite(ResourceManager.getInstance().getTexture(if (step < 0) "minus" else "plus"))
-                                leadingIcon!!.height = 20f
+                            // The leading icon is sized to the text height, as the AndEngine CompoundText did.
+                            fun StepButton(step: Int) = object : LegacyTextButton(abs(step).toString(), if (step < 0) "minus" else "plus", if (step < 0) "minus.png" else "plus.png") {
+                                override fun onApplyLegacySizes() {
+                                    super.onApplyLegacySizes()
+                                    height = 42f.vu.px
+                                    padding = Padding(12f.vu.px, 0f.px, 24f.vu.px, 0f.px)
+                                }
+                            }.apply {
 
                                 onActionUp = {
                                     offsetSlider.value += step
                                 }
-                            }
+                            }.also { +it }
 
                             StepButton(-5)
                             StepButton(-1)
@@ -443,7 +501,7 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                 }
 
                 collapsibleCard {
-                    width = FillParent
+                    width = fill()
                     title = "Settings"
 
                     content.apply {
@@ -454,7 +512,7 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                             control.max = 100f
                             control.onStopDragging = {
                                 if (!isStarting) {
-                                    dimBox.fadeTo(0.7f, 0.1f)
+                                    dimAlpha.animateTo(0.7f, 0.1f, VerktexEasing.None)
                                 }
                             }
                             valueFormatter = { "${it.roundToInt()}%" }
@@ -467,7 +525,7 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                                 gameScene.loadVideo(beatmapInfo)
 
                                 if (!isStarting) {
-                                    dimBox.alpha = 1f - it / 100f
+                                    dimAlpha.jumpTo(1f - it / 100f)
                                 }
                             }
                         }
@@ -502,9 +560,106 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
             }
         }
 
-        override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float): Boolean {
-            alpha = 1f
-            lastTimeTouched = System.currentTimeMillis()
+        override fun onInputEvent(event: InputEvent): Boolean {
+            // Only touches inside the panel count, as onAreaTouched was only called for those.
+            if (event is PointerEvent && containsScenePoint(event.x, event.y)) {
+                alpha = 1f
+                loaderClock.onPanelTouched(System.currentTimeMillis())
+            }
+
+            return super.onInputEvent(event)
+        }
+
+        override fun onUpdate(clock: TickingClock) {
+
+            alpha = loaderClock.fadePanel(alpha, clock.elapsedTickTime, System.currentTimeMillis())
+
+            super.onUpdate(clock)
+        }
+
+    }
+
+    /**
+     * The start decision of [onUpdate], the multiplayer timeout and the fade of the quick settings,
+     * apart from the scene so they can be tested without a [GameScene].
+     */
+    internal class LoaderClock(private val isRestart: Boolean) {
+
+        var lastTimeTouched = System.currentTimeMillis()
+        var isStarting = false
+        var multiplayerLoadElapsed = 0f
+
+        var fadeTimeout = if (isRestart) 500L else 2000L
+        var minimumTimeout = if (isRestart) 500L else 2000L
+
+        /**
+         * Runs the hand-over and the timeout cancel after the Verktex update: both change the
+         * scene, which the scene being updated must not do. Replaceable for tests.
+         */
+        var post: (Runnable) -> Unit = { updateThread(it) }
+
+        /**
+         * Runs a posted body only while the loader is still the shown one. Replaceable for tests.
+         */
+        var runIfShown: (Runnable) -> Unit = { it.run() }
+
+        private var hasTimedOut = false
+        private var dimFadeElapsed = 0f
+        private var isHandedOver = false
+
+        /**
+         * Starts the loader once it may, calling [onStart] right away, or posts [onTimeout] once
+         * the multiplayer load took too long.
+         */
+        fun update(deltaTimeSec: Float, isMultiplayer: Boolean, isReadyToStart: Boolean, isStoryboardLoading: Boolean, now: Long, onStart: () -> Unit, onTimeout: Runnable) {
+
+            if (!isStarting && !hasTimedOut) {
+
+                if (isMultiplayer && !isReadyToStart) {
+                    multiplayerLoadElapsed += deltaTimeSec
+
+                    if (multiplayerLoadElapsed >= MULTIPLAYER_LOAD_TIMEOUT_SEC) {
+                        hasTimedOut = true
+                        post(Runnable { runIfShown(onTimeout) })
+                        return
+                    }
+                }
+
+                if (isReadyToStart) {
+
+                    // Multiplayer will skip the minimum timeout if it's ready to start. It also does not wait for the
+                    // storyboard, as all players must start at the same time.
+                    val isTimeoutElapsed = now - lastTimeTouched > minimumTimeout
+
+                    if (isMultiplayer || (isTimeoutElapsed && !isStoryboardLoading)) {
+                        isStarting = true
+                        onStart()
+                    }
+
+                } else {
+                    lastTimeTouched = now
+                }
+            }
+        }
+
+        /**
+         * Counts the dim fade once started and posts [onFadeEnd] when it ends, as its after() did.
+         */
+        fun updateDimFade(deltaTimeSec: Float, onFadeEnd: Runnable) {
+            if (!isStarting || isHandedOver) {
+                return
+            }
+
+            dimFadeElapsed += deltaTimeSec
+
+            if (dimFadeElapsed >= DIM_FADE_DURATION) {
+                isHandedOver = true
+                post(Runnable { runIfShown(onFadeEnd) })
+            }
+        }
+
+        fun onPanelTouched(now: Long) {
+            lastTimeTouched = now
 
             // When the player is restarting, and they touch the layout, assume they want to change settings.
             // In that case, show this loading scene longer.
@@ -512,21 +667,25 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                 fadeTimeout = 1500L
                 minimumTimeout = 1500L
             }
-
-            return super.onAreaTouched(event, localX, localY)
         }
 
-        override fun onManagedUpdate(deltaTimeSec: Float) {
+        /**
+         * Returns the alpha of the quick settings after [deltaTimeSec].
+         */
+        fun fadePanel(alpha: Float, deltaTimeSec: Float, now: Long): Float {
 
-            val elapsed = System.currentTimeMillis() - lastTimeTouched
+            val elapsed = now - lastTimeTouched
 
             if (alpha > 0.5f && elapsed > fadeTimeout) {
-                alpha -= deltaTimeSec * 1.5f
+                return alpha - deltaTimeSec * 1.5f
             }
 
-            super.onManagedUpdate(deltaTimeSec)
+            return alpha
         }
 
+        companion object {
+            const val DIM_FADE_DURATION = 0.2f
+        }
     }
 
     companion object {
@@ -534,5 +693,18 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
         private var settingsCardCollapsed = false
 
         private const val MULTIPLAYER_LOAD_TIMEOUT_SEC = 60f
+
+        // The three steps are added to their row at build.
+        private const val SHOWN_STEPS_ALL = 0b111
+
+        // The loader Verktex shows, set while it is the shown scene.
+        @Volatile
+        private var current: GameLoaderScene? = null
+
+        /**
+         * Whether a loader is Verktex's scene.
+         */
+        @JvmStatic
+        fun isShown() = current != null
     }
 }

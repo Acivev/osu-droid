@@ -49,7 +49,6 @@ import com.osudroid.data.DatabaseManager;
 import com.osudroid.debug.DebugPlaygroundScene;
 import com.osudroid.resources.R;
 import com.osudroid.ui.FPSCounter;
-import com.osudroid.ui.v2.GameLoaderScene;
 import com.osudroid.ui.v2.menu.main.MainMenuV2;
 import com.osudroid.utils.Execution;
 import com.osudroid.verktex.bridge.EngineRouter;
@@ -1211,11 +1210,6 @@ public class MainActivity extends BaseGameActivity implements
                     runOnUiThread(Multiplayer.roomScene.getLeaveDialog()::show);
                     return true;
                 }
-            }
-
-            if (currentScene instanceof GameLoaderScene loaderScene) {
-                loaderScene.cancel();
-                return true;
             }
             return true;
         }

@@ -1095,7 +1095,7 @@ class RoomScene(
 
     override fun onRoomMatchStart() {
         updateThread {
-            if (GlobalManager.getInstance().engine.scene is GameLoaderScene) {
+            if (GameLoaderScene.isShown()) {
                 GlobalManager.getInstance().gameScene.isReadyToStart = true
             }
         }

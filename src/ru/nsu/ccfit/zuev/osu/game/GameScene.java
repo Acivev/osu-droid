@@ -40,6 +40,7 @@ import com.osudroid.ui.v2.modmenu.ModIcon;
 import com.osudroid.utils.Execution;
 import com.osudroid.verktex.bridge.Destination;
 import com.osudroid.verktex.bridge.EngineRouter;
+import com.osudroid.verktex.bridge.VerktexBridge;
 import com.reco1l.andengine.Cameras;
 import com.reco1l.andengine.UIEngine;
 import com.reco1l.andengine.component.ComponentsKt;
@@ -57,6 +58,7 @@ import com.osudroid.ui.v2.hud.elements.HUDPPCounter;
 import com.osudroid.multiplayer.Multiplayer;
 
 import com.reco1l.framework.Color4;
+import com.reco1l.verktex.Verktex;
 import com.osudroid.GameMode;
 import com.osudroid.beatmaps.Beatmap;
 import com.osudroid.beatmaps.ComboColor;
@@ -1084,8 +1086,17 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             modsToUse = mods != null ? mods.deepCopy() : lastMods;
         }
 
-        GameLoaderScene scene = new GameLoaderScene(this, beatmapToUse, modsToUse, isRestart);
-        engine.setScene(scene);
+        // A Verktex scene is built and shown on the update thread; the HUD editor starts from the main thread.
+        Runnable showLoader = () -> {
+            GameLoaderScene scene = Verktex.INSTANCE.withTreeLock(() -> new GameLoaderScene(this, beatmapToUse, modsToUse, isRestart));
+            EngineRouter.showVerktex(scene);
+        };
+
+        if (VerktexBridge.isUpdateThread()) {
+            showLoader.run();
+        } else {
+            Execution.updateThread(showLoader);
+        }
 
         ResourceManager.getInstance().getSound("failsound").stop();
 
