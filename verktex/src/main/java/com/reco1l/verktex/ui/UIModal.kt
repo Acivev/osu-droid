@@ -182,7 +182,7 @@ open class UIModal(
                     }
                 }
 
-                PointerEvent.Action.Unknown -> backdropPointerId = -1
+                PointerEvent.Action.Unknown, PointerEvent.Action.Cancel -> backdropPointerId = -1
                 PointerEvent.Action.Move -> Unit
             }
         }

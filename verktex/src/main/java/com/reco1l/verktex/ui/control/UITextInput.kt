@@ -210,7 +210,7 @@ open class UITextInput(initialValue: String = "") : UIControl<String>(initialVal
                 }
                 true
             }
-            PointerEvent.Action.Unknown -> {
+            PointerEvent.Action.Unknown, PointerEvent.Action.Cancel -> {
                 isPressed = false
                 false
             }

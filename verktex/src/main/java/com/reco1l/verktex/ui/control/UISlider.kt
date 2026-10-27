@@ -197,7 +197,7 @@ open class UISlider(initialValue: Float = 0f) : UIControl<Float>(initialValue) {
 
             PointerEvent.Action.Move -> updateValueFromPointer(event.x, event.y)
 
-            PointerEvent.Action.Up, PointerEvent.Action.Unknown -> {
+            PointerEvent.Action.Up, PointerEvent.Action.Unknown, PointerEvent.Action.Cancel -> {
                 pressPointerId = -1
                 setHierarchyScrollPrevention(false)
                 onStopDragging()

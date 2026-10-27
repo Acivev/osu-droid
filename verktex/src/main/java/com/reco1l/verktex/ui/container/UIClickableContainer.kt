@@ -86,7 +86,7 @@ open class UIClickableContainer : UIContainer() {
             PointerEvent.Action.Move -> true
 
             // Cancel events are dispatched to every component, so they must not be consumed.
-            PointerEvent.Action.Unknown -> {
+            PointerEvent.Action.Unknown, PointerEvent.Action.Cancel -> {
                 onActionCancel?.invoke()
                 isPressed = false
                 false

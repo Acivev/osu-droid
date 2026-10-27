@@ -494,7 +494,7 @@ open class UIScrollableContainer : UIContainer() {
                     dragStartTimeSec = Verktex.clock.time
                 }
 
-                PointerEvent.Action.Up, PointerEvent.Action.Unknown -> {
+                PointerEvent.Action.Up, PointerEvent.Action.Unknown, PointerEvent.Action.Cancel -> {
                     isUserScrolling = false
                     dragPointerId = -1
                 }

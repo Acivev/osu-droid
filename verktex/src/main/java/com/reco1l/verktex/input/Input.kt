@@ -34,6 +34,13 @@ object Input {
      */
     private val pointerState = mutableMapOf<Int, PointerEvent>()
 
+    /**
+     * Whether the game host dispatches the batched (historical) samples of a move as their own
+     * [PointerEvent.Action.Move] events before the current one, for high-precision input.
+     */
+    @JvmStatic
+    var dispatchHistoricalMoves = false
+
 
     //region Utils
 
@@ -96,14 +103,17 @@ object Input {
      * @param pointerId The ID of the pointer.
      * @param x The x-coordinate of the pointer.
      * @param y The y-coordinate of the pointer.
+     * @param time The time of the event in milliseconds, zero when unknown.
      * @return True if the event was consumed by any component, false otherwise.
      */
+    @JvmOverloads
     fun dispatchPointerEvent(
         action: PointerEvent.Action,
         button: PointerEvent.Button,
         pointerId: Int,
         x: Float,
-        y: Float
+        y: Float,
+        time: Long = 0
     ): Boolean {
         val event = pointerEventPool.removeLastOrElse { PointerEvent() }
         event.action = action
@@ -111,6 +121,7 @@ object Input {
         event.pointerId = pointerId
         event.x = x
         event.y = y
+        event.time = time
 
         val previousEvent = pointerState[pointerId]
         if (previousEvent != null) {
@@ -121,6 +132,7 @@ object Input {
             previousEvent.button = button
             previousEvent.x = x
             previousEvent.y = y
+            previousEvent.time = time
         } else {
             event.deltaX = 0f
             event.deltaY = 0f

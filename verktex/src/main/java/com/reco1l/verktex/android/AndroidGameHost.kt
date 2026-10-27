@@ -196,17 +196,40 @@ abstract class AndroidGameHost : AppCompatActivity(), GameHost {
                 button = button,
                 pointerId = event.getPointerId(index),
                 x = event.getX(index),
-                y = event.getY(index)
+                y = event.getY(index),
+                time = event.eventTime
             )
 
             // Move and cancel events carry every pointer at once, each one is dispatched.
             fun dispatchAll(action: PointerEvent.Action) =
                 (0 until event.pointerCount).fold(false) { consumed, index -> dispatch(action, index) or consumed }
 
+            // The samples batched into a move since the last one, oldest first.
+            fun dispatchHistory(): Boolean {
+                var consumed = false
+                for (i in 0 until event.historySize) {
+                    for (index in 0 until event.pointerCount) {
+                        consumed = Input.dispatchPointerEvent(
+                            action = PointerEvent.Action.Move,
+                            button = button,
+                            pointerId = event.getPointerId(index),
+                            x = event.getHistoricalX(index, i),
+                            y = event.getHistoricalY(index, i),
+                            time = event.getHistoricalEventTime(i)
+                        ) or consumed
+                    }
+                }
+                return consumed
+            }
+
             consumed = when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> dispatch(PointerEvent.Action.Down, event.actionIndex)
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> dispatch(PointerEvent.Action.Up, event.actionIndex)
-                MotionEvent.ACTION_MOVE -> dispatchAll(PointerEvent.Action.Move)
+                MotionEvent.ACTION_MOVE -> {
+                    val historyConsumed = Input.dispatchHistoricalMoves && dispatchHistory()
+                    dispatchAll(PointerEvent.Action.Move) or historyConsumed
+                }
+                MotionEvent.ACTION_CANCEL -> dispatchAll(PointerEvent.Action.Cancel)
                 else -> dispatchAll(PointerEvent.Action.Unknown)
             }
         }

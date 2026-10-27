@@ -50,7 +50,7 @@ open class FormCheckbox(initialValue: Boolean = false) : FormControl<Boolean, UI
                 true
             }
 
-            PointerEvent.Action.Unknown -> {
+            PointerEvent.Action.Unknown, PointerEvent.Action.Cancel -> {
                 rowPointerId = -1
                 false
             }

@@ -85,7 +85,7 @@ class UICheckbox(initialValue: Boolean = false) : UIControl<Boolean>(initialValu
                 }
                 true
             }
-            PointerEvent.Action.Unknown -> {
+            PointerEvent.Action.Unknown, PointerEvent.Action.Cancel -> {
                 isPressed = false
                 false
             }
