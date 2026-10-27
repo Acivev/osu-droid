@@ -7,32 +7,44 @@ import com.reco1l.verktex.data.Anchor
 import com.reco1l.verktex.data.Color4
 import com.reco1l.verktex.data.Padding
 import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.graphics.GraphicsTexture
+import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.container.UILinearContainer
 import com.reco1l.verktex.ui.text.UIText
 import ru.nsu.ccfit.zuev.osu.helper.StringTable
+import kotlin.math.min
+
+/**
+ * The AndEngine `setText(resId)` of texts.
+ */
+fun UIText.setText(@StringRes resId: Int) {
+    text = StringTable.get(resId)
+}
 
 inline fun UIContainer.legacyBadge(builder: LegacyBadge.() -> Unit) = LegacyBadge().apply(builder).also { +it }
 
 inline fun UIContainer.legacyLabeledBadge(builder: LegacyLabeledBadge.() -> Unit) = LegacyLabeledBadge().apply(builder).also { +it }
 
 /**
- * The font, padding and corner radius of an AndEngine badge size variant, in virtual units.
+ * The font, padding, icon spacing and corner radius of an AndEngine badge size variant, in virtual units.
  */
 private class BadgeSizes(variant: SizeVariant) {
     val fontSize: Float
     val padding: Padding
+    val horizontal: Float
+    val spacing: Float
     val radius: Float
 
     init {
         val font: String
-        val horizontal: Float
         val vertical: Float
 
         when (variant) {
-            SizeVariant.Small -> { font = "xs"; horizontal = 8f; vertical = 4f; radius = 6f }
-            SizeVariant.Medium -> { font = "smallFont"; horizontal = 12f; vertical = 8f; radius = 12f }
-            SizeVariant.Large -> { font = "font"; horizontal = 16f; vertical = 12f; radius = 16f }
+            SizeVariant.Small -> { font = "xs"; horizontal = 8f; vertical = 4f; spacing = 4f; radius = 6f }
+            SizeVariant.Medium -> { font = "smallFont"; horizontal = 12f; vertical = 8f; spacing = 8f; radius = 12f }
+            SizeVariant.Large -> { font = "font"; horizontal = 16f; vertical = 12f; spacing = 12f; radius = 16f }
         }
 
         fontSize = LegacyUnits.fontSize(font)
@@ -41,9 +53,18 @@ private class BadgeSizes(variant: SizeVariant) {
 }
 
 /**
- * The AndEngine UIBadge: accent text on an accent * 0.15 background, sized by [sizeVariant].
+ * The AndEngine UIBadge: accent text on an accent * 0.15 background, sized by [sizeVariant], with an
+ * optional leading texture icon.
  */
 open class LegacyBadge : UIText() {
+
+    // Verktex's leading icon is a font glyph, so a texture icon is drawn in the left padding.
+    private var iconName: String? = null
+    private var iconAssetPath: String? = null
+    private var loadIcon: (name: String, assetPath: String) -> GraphicsTexture.Region? = SkinTextures::get
+    private var icon: GraphicsTexture.Region? = null
+    private var isIconInvalid = false
+    private var iconSize = 0f
 
     var sizeVariant = SizeVariant.Medium
         set(value) {
@@ -66,11 +87,65 @@ open class LegacyBadge : UIText() {
         text = StringTable.get(resId)
     }
 
+    /**
+     * Sets the leading icon, sized to the text height like the AndEngine CompoundText did. It is
+     * looked up on the next update.
+     */
+    fun setLeadingIcon(name: String, assetPath: String, loadIcon: (name: String, assetPath: String) -> GraphicsTexture.Region? = SkinTextures::get) {
+        iconName = name
+        iconAssetPath = assetPath
+        this.loadIcon = loadIcon
+        isIconInvalid = true
+    }
+
+    override fun onUpdate(clock: TickingClock) {
+        if (isIconInvalid) {
+            isIconInvalid = false
+            icon = iconName?.let { loadIcon(it, iconAssetPath!!) }
+
+            val sizes = BadgeSizes(sizeVariant)
+            iconSize = fontFamily[fontSize, fontWeight, fontStyle].metrics.lineHeight
+            paddingLeft = (sizes.horizontal.vu + iconSize + sizes.spacing.vu).px
+        }
+
+        super.onUpdate(clock)
+    }
+
+    override fun onDraw(renderer: GraphicsRenderer) {
+        super.onDraw(renderer)
+
+        val icon = icon ?: return
+        if (icon.width <= 0f || icon.height <= 0f) return
+
+        // Fit inside a square of the text height, like the AndEngine leading icon sprite.
+        val scale = min(iconSize / icon.width, iconSize / icon.height)
+        val width = icon.width * scale
+        val height = icon.height * scale
+
+        val contentTop = paddingTop.toPixels()
+        val contentHeight = bounds.height - contentTop - paddingBottom.toPixels()
+
+        renderer.drawTexture(
+            texture = icon.texture,
+            region = icon,
+            x = BadgeSizes(sizeVariant).horizontal.vu + (iconSize - width) / 2f,
+            y = contentTop + (contentHeight - height) / 2f,
+            width = width,
+            height = height,
+            color = contentColor
+        )
+    }
+
     private fun applySizes() {
         val sizes = BadgeSizes(sizeVariant)
         fontSize = sizes.fontSize.vu.px
         padding = sizes.padding
         radius = sizes.radius.vu.px
+
+        // The icon and its padding follow on the next update.
+        if (iconName != null) {
+            isIconInvalid = true
+        }
     }
 }
 

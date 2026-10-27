@@ -16,6 +16,7 @@ import com.osudroid.multiplayer.api.data.parsePlayer
 import com.osudroid.multiplayer.api.data.parsePlayers
 import com.osudroid.ui.v2.multi.RoomScene
 import com.osudroid.utils.updateThread
+import com.reco1l.verktex.Verktex
 import ru.nsu.ccfit.zuev.osu.SecurityUtils
 import io.socket.client.IO
 import io.socket.client.Socket
@@ -324,7 +325,7 @@ object RoomAPI {
                 roomEventListener = existingScene
 
                 existingScene
-            } else RoomScene(room)
+            } else Verktex.withTreeLock { RoomScene(room) }
 
             Multiplayer.room = room
             Multiplayer.player = localPlayer
@@ -332,7 +333,7 @@ object RoomAPI {
 
             // onRoomConnect triggers UI mutations (updateInformation, updatePlayerList, show, etc.), so we move its
             // operations to the update thread.
-            updateThread { scene.onRoomConnect(room) }
+            updateThread { Verktex.withTreeLock { scene.onRoomConnect(room) } }
         } catch (e: Exception) {
             Multiplayer.log("ERROR: initialConnection handler threw an exception: ${e.javaClass.simpleName} — ${e.message}")
             Multiplayer.log(e)

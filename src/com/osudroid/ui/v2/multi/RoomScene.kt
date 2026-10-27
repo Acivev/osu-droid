@@ -20,44 +20,31 @@ import com.osudroid.multiplayer.api.data.WinCondition
 import com.osudroid.ui.v1.SettingsFragment
 import com.osudroid.ui.v2.BeatmapInfoLayout
 import com.osudroid.ui.v2.GameLoaderScene
-import com.osudroid.ui.v2.ModsIndicator
+import com.osudroid.ui.v2.modmenu.LegacyTextButton
 import com.osudroid.ui.v2.modmenu.ModMenu
+import com.osudroid.ui.v2.modmenu.legacyTextButton
+import com.osudroid.ui.verktex.*
+import com.osudroid.ui.verktex.LegacyUnits.vu
 import com.osudroid.utils.async
 import com.osudroid.utils.mainThread
 import com.osudroid.utils.runSafe
 import com.osudroid.utils.updateThread
+import com.osudroid.verktex.bridge.EngineRouter
+import com.osudroid.verktex.bridge.RoutedScene
 import com.osudroid.verktex.bridge.VerktexBridge
 import com.reco1l.verktex.Verktex
 import com.osudroid.resources.R
-import com.reco1l.andengine.Anchor
-import com.reco1l.andengine.Axes
-import com.reco1l.andengine.UIScene
-import com.reco1l.andengine.badge
-import com.reco1l.andengine.component.UIComponent.Companion.FillParent
-import com.reco1l.andengine.component.forEach
-import com.reco1l.andengine.component.setText
-import com.reco1l.andengine.container
-import com.reco1l.andengine.container.JustifyContent
-import com.reco1l.andengine.container.Orientation
-import com.reco1l.andengine.container.UIFlexContainer
-import com.reco1l.andengine.container.UILinearContainer
-import com.reco1l.andengine.flexContainer
-import com.reco1l.andengine.labeledBadge
-import com.reco1l.andengine.linearContainer
-import com.reco1l.andengine.scrollableContainer
-import com.reco1l.andengine.shape.UIBox
-import com.reco1l.andengine.sprite.ScaleType
-import com.reco1l.andengine.sprite.UISprite
-import com.reco1l.andengine.text
-import com.reco1l.andengine.text.UIText
-import com.reco1l.andengine.textButton
 import com.reco1l.andengine.ui.SizeVariant
-import com.reco1l.andengine.ui.UIBadge
-import com.reco1l.andengine.ui.UILabeledBadge
-import com.reco1l.andengine.ui.UIMessageDialog
-import com.reco1l.andengine.ui.UITextButton
-import com.reco1l.framework.Color4
-import com.reco1l.framework.math.Vec4
+import com.reco1l.verktex.data.*
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.KeyboardEvent
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.*
+import com.reco1l.verktex.ui.container.*
+import com.reco1l.verktex.ui.container.UILinearContainer.Orientation
+import com.reco1l.verktex.ui.dialog.UIMessageDialog
+import com.reco1l.verktex.ui.shape.*
+import com.reco1l.verktex.ui.text.*
 import com.reco1l.osu.ui.MessageDialog
 import com.osudroid.mods.ModScoreV2
 import org.json.JSONArray
@@ -75,7 +62,7 @@ class RoomScene(
      * be reused and update its current state accordingly.
      */
     var room: Room
-) : UIScene(), IRoomEventListener, IPlayerEventListener {
+) : UIScene(), RoutedScene, ISkinnable, IRoomEventListener, IPlayerEventListener {
     /**
      * Indicates that the host can change beatmap. **This must be `false` when waiting for a beatmap change request**.
      *
@@ -121,66 +108,73 @@ class RoomScene(
     }
 
 
+    private lateinit var rootContainer: UIContainer
     private lateinit var backgroundSprite: UISprite
     private lateinit var beatmapInfoLayout: BeatmapInfoLayout
     private lateinit var beatmapInfoAlert: UIText
-    private lateinit var modsButton: UITextButton
-    private lateinit var startButton: UITextButton
-    private lateinit var statusButton: UITextButton
+    private lateinit var modsButton: LegacyTextButton
+    private lateinit var startButton: LegacyTextButton
+    private lateinit var statusButton: LegacyTextButton
     private lateinit var nameText: UIText
-    private lateinit var teamModeBadge: UIBadge
-    private lateinit var freeModsBadge: UIBadge
-    private lateinit var winConditionBadge: UIBadge
-    private lateinit var playersBadge: UILabeledBadge
+    private lateinit var teamModeBadge: LegacyBadge
+    private lateinit var freeModsBadge: LegacyBadge
+    private lateinit var winConditionBadge: LegacyBadge
+    private lateinit var playersBadge: LegacyLabeledBadge
     private lateinit var modsIndicator: ModsIndicator
+    private lateinit var playersScrollContainer: UIScrollableContainer
     private lateinit var playersContainer: UILinearContainer
-    private lateinit var changeBeatmapButton: UITextButton
-    private lateinit var downloadBeatmapButton: UITextButton
+    private lateinit var changeBeatmapButton: LegacyTextButton
+    private lateinit var downloadBeatmapButton: LegacyTextButton
 
 
     private var currentPlayers = LongArray(0)
     private var allowAutomaticPlaybackRestart = true
 
+    // Whether the background was set, textures are registered on the update thread so the first one is set in onShown.
+    private var isBackgroundSet = false
+
+    // Whether the background shows menu-background, whose region a skin change unloads.
+    private var isMenuBackground = false
+
+    // Whether a Back already queued the leave dialog. The AndEngine Back showed it on the UI thread at once, so a
+    // second Back found it shown and dismissed it; the hop must not show it twice.
+    @Volatile
+    private var isLeaveDialogQueued = false
+
 
     init {
-        ResourceManager.getInstance().loadHighQualityAsset("mods", "mods.png")
-        ResourceManager.getInstance().loadHighQualityAsset("logout", "logout.png")
-        ResourceManager.getInstance().loadHighQualityAsset("swap", "swap.png")
-        ResourceManager.getInstance().loadHighQualityAsset("clock", "clock.png")
-        ResourceManager.getInstance().loadHighQualityAsset("bpm", "bpm.png")
+        // The room chat stays on the AndEngine HUD and loads its icons from these.
         ResourceManager.getInstance().loadHighQualityAsset("chat", "chat.png")
-        ResourceManager.getInstance().loadHighQualityAsset("download", "download.png")
         ResourceManager.getInstance().loadHighQualityAsset("send", "send.png")
-        ResourceManager.getInstance().loadHighQualityAsset("settings-icon", "settings-icon.png")
-        ResourceManager.getInstance().loadHighQualityAsset("missing", "missing.png")
 
         RoomAPI.playerEventListener = this
         RoomAPI.roomEventListener = this
         chat = RoomChat()
 
         container {
-            width = FillParent
-            height = FillParent
-            padding = Vec4(80f, 0f)
+            width = fill()
+            height = fill()
+            padding = Padding(80f.vu.px, 0f.px)
+            rootContainer = this
 
-            onUpdateTick = {
-                if (padding.bottom != chat.buttonHeight) {
-                    padding = Vec4(80f, 0f, 80f, chat.buttonHeight + 12f)
+            // The bottom padding follows the chat button every tick, see onUpdate.
+
+            // The scene draws its background below the content, its texture is set in onShown.
+            this@RoomScene.background = UIContainer().apply {
+                width = fill()
+                height = fill()
+
+                backgroundSprite = sprite {
+                    width = fill()
+                    height = fill()
+                    scaleType = UISprite.ScaleType.Crop
                 }
-            }
 
-            background = UISprite().apply {
-                scaleType = ScaleType.Crop
-                textureRegion = ResourceManager.getInstance().getTexture("menu-background")
-                backgroundSprite = this
-
-                if (!Config.isSafeBeatmapBg()) {
-                    textureRegion = ResourceManager.getInstance().getTexture("::background") ?: textureRegion
-                }
-
-                foreground = UIBox().apply {
-                    applyTheme = {
-                        color = it.accentColor * 0.1f
+                box {
+                    width = fill()
+                    height = fill()
+                    style = Style { theme ->
+                        backgroundColor = theme.palette.accent * 0.1f
                         alpha = 0.9f
                     }
                 }
@@ -188,46 +182,50 @@ class RoomScene(
 
             linearContainer {
                 orientation = Orientation.Vertical
-                width = FillParent
-                height = FillParent
+                width = fill()
+                height = fill()
 
-                flexContainer {
-                    width = FillParent
-                    justifyContent = JustifyContent.SpaceBetween
+                // The flex row with the content spaced between: the settings button sits at the right end.
+                container {
+                    width = fill()
 
                     linearContainer {
                         orientation = Orientation.Vertical
-                        spacing = 8f
-                        padding = Vec4(0f, 18f)
+                        spacing = 8f.vu.px
+                        padding = Padding(0f.px, 18f.vu.px)
 
                         nameText = text {
                             text = room.name
-                            font = ResourceManager.getInstance().getFont("font")
-                            applyTheme = { color = it.accentColor }
+                            fontSize = LegacyUnits.fontSize("font").vu.px
+                            wrapText = false
+                            // The AndEngine UIText scrolled overflowing text horizontally by default.
+                            autoScrollAxes = Axis.X
+                            autoScrollSpeed = 15f.vu
+                            style = Style { theme -> color = theme.palette.accent }
                         }
 
-                        linearContainer {
-                            spacing = 8f
+                        legacyLinearContainer {
+                            spacing = 8f.vu.px
 
-                            teamModeBadge = badge {
+                            teamModeBadge = legacyBadge {
                                 sizeVariant = SizeVariant.Small
                             }
 
-                            winConditionBadge = badge {
+                            winConditionBadge = legacyBadge {
                                 sizeVariant = SizeVariant.Small
                             }
 
-                            playersBadge = labeledBadge {
+                            playersBadge = legacyLabeledBadge {
                                 sizeVariant = SizeVariant.Small
                                 label = StringTable.get(R.string.multiplayer_room_players)
                                 value = "0/${room.maxPlayers}"
                             }
 
-                            freeModsBadge = badge {
+                            freeModsBadge = legacyBadge {
                                 sizeVariant = SizeVariant.Small
-                                applyTheme = {
-                                    color = it.accentColor * 0.1f
-                                    background?.color = it.accentColor
+                                style = Style { theme ->
+                                    color = theme.palette.accent * 0.1f
+                                    backgroundColor = theme.palette.accent
                                 }
                                 setText(R.string.multiplayer_room_free_mods)
                                 isVisible = false
@@ -240,10 +238,9 @@ class RoomScene(
                         }
                     }
 
-                    textButton {
-                        leadingIcon = UISprite(ResourceManager.getInstance().getTexture("settings-icon"))
-                        anchor = Anchor.CenterLeft
-                        origin = Anchor.CenterLeft
+                    legacyTextButton("settings-icon", "settings-icon.png", SkinTextures::getAsset) {
+                        anchor = Anchor.CenterRight
+                        origin = Anchor.CenterRight
                         onActionUp = {
                             SettingsFragment().show()
                         }
@@ -251,26 +248,29 @@ class RoomScene(
                     }
                 }
 
-                flexContainer {
-                    width = FillParent
-                    height = FillParent
-                    gap = 24f
-                    padding = Vec4(0f, 12f)
+                // The flex row of the two sections, they grow from a zero basis so they share it equally.
+                linearContainer {
+                    width = fill()
+                    height = fill()
+                    spacing = 24f.vu.px
+                    padding = Padding(0f.px, 12f.vu.px)
 
-                    fun UIFlexContainer.Section(title: Int, block: UILinearContainer.() -> Unit) {
-                        linearContainer {
+                    fun UILinearContainer.Section(title: Int, block: UILinearContainer.() -> Unit) {
+                        legacyLinearContainer {
                             orientation = Orientation.Vertical
-                            height = FillParent
-                            spacing = 8f
+                            height = fill()
+                            spacing = 8f.vu.px
 
-                            flexRules {
-                                grow = 1f
-                                basis = 0f
-                            }
+                            width = fill()
 
                             text {
                                 text = StringTable.get(title).uppercase()
-                                applyTheme = { color = it.accentColor * 0.7f }
+                                fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                                wrapText = false
+                                // The AndEngine UIText scrolled overflowing text horizontally by default.
+                                autoScrollAxes = Axis.X
+                                autoScrollSpeed = 15f.vu
+                                style = Style { theme -> color = theme.palette.accent * 0.7f }
                             }
 
                             block()
@@ -280,17 +280,17 @@ class RoomScene(
                     Section(R.string.multiplayer_room_players) {
 
                         scrollableContainer {
-                            width = FillParent
-                            relativeSizeAxes = Axes.Y
-                            height = 0.75f
-                            scrollAxes = Axes.Y
-                            clipToBounds = true
+                            width = fill()
+                            // Its height is 0.75 of the section's, see onUpdate.
+                            scrollAxes = Axis.Y
+                            clipping = ClipMode.Bounds
+                            playersScrollContainer = this
 
                             linearContainer {
                                 orientation = Orientation.Vertical
-                                width = FillParent
-                                spacing = 4f
-                                padding = Vec4.One
+                                width = fill()
+                                spacing = 4f.vu.px
+                                padding = Padding(1f.vu.px)
                                 playersContainer = this
                             }
                         }
@@ -299,38 +299,35 @@ class RoomScene(
                     Section(R.string.multiplayer_room_beatmap) {
 
                         +BeatmapInfoLayout().apply {
-                            padding = Vec4(16f)
-                            background = UIBox().apply {
-                                cornerRadius = 12f
-                                applyTheme = {
-                                    color = it.accentColor * 0.1f
-                                    alpha = 0.6f
-                                }
+                            padding = Padding(16f.vu.px)
+                            radius = 12f.vu.px
+                            style = Style { theme ->
+                                backgroundColor = (theme.palette.accent * 0.1f).copy(alpha = 0.6f)
                             }
                             isVisible = false
                             beatmapInfoLayout = this
                         }
 
                         beatmapInfoAlert = text {
-                            width = FillParent
-                            padding = Vec4(16f)
+                            width = fill()
+                            padding = Padding(16f.vu.px)
                             alignment = Anchor.Center
-                            background = UIBox().apply {
-                                cornerRadius = 12f
-                                applyTheme = {
-                                    color = it.accentColor * 0.1f
-                                    alpha = 0.6f
-                                }
+                            fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                            wrapText = false
+                            // The AndEngine UIText scrolled overflowing text horizontally by default.
+                            autoScrollAxes = Axis.X
+                            autoScrollSpeed = 15f.vu
+                            radius = 12f.vu.px
+                            style = Style { theme ->
+                                backgroundColor = (theme.palette.accent * 0.1f).copy(alpha = 0.6f)
                             }
                         }
 
                         linearContainer {
-                            width = FillParent
-                            spacing = 8f
+                            width = fill()
+                            spacing = 8f.vu.px
 
-                            changeBeatmapButton = textButton {
-                                leadingIcon = UISprite(ResourceManager.getInstance().getTexture("swap"))
-                                alignment = Anchor.CenterLeft
+                            changeBeatmapButton = legacyTextButton("swap", "swap.png", SkinTextures::getAsset) {
                                 setText(R.string.multiplayer_room_change_beatmap)
                                 onActionUp = {
                                     if (Multiplayer.isRoomHost) {
@@ -349,9 +346,7 @@ class RoomScene(
                                 }
                             }
 
-                            downloadBeatmapButton = textButton {
-                                leadingIcon = UISprite(ResourceManager.getInstance().getTexture("download"))
-                                alignment = Anchor.CenterLeft
+                            downloadBeatmapButton = legacyTextButton("download", "download.png", SkinTextures::getAsset) {
                                 isVisible = false
                             }
                         }
@@ -363,34 +358,34 @@ class RoomScene(
             linearContainer {
                 origin = Anchor.BottomLeft
                 anchor = Anchor.BottomLeft
-                spacing = 8f
+                spacing = 8f.vu.px
 
-                textButton {
-                    leadingIcon = UISprite(ResourceManager.getInstance().getTexture("logout"))
+                // The theme is not applied, the colours below replace it.
+                +object : LegacyTextButton("", "logout", "logout.png", SkinTextures::getAsset) {
+                    override fun applyTint(tint: Color4) = super.applyTint(Color4(0xFFFFBFBF))
+                }.apply {
                     setText(R.string.multiplayer_room_leave)
-                    color = Color4(0xFFFFBFBF)
-                    background?.color = Color4(0xFF342121)
-                    applyTheme = {}
+                    style = Style {}
+                    backgroundColor = Color4(0xFF342121)
                     onActionUp = { leaveDialog.show() }
                 }
 
-                modsButton = textButton {
-                    leadingIcon = UISprite(ResourceManager.getInstance().getTexture("mods"))
+                modsButton = legacyTextButton("mods", "mods.png", SkinTextures::getAsset) {
                     setText(R.string.multiplayer_room_mods)
                     onActionUp = { ModMenu.show() }
                 }
             }
 
             linearContainer {
-                width = 300f
+                width = 300f.vu.px
                 orientation = Orientation.Vertical
                 origin = Anchor.BottomRight
                 anchor = Anchor.BottomRight
-                spacing = 8f
-                padding = Vec4(0f, 12f)
+                spacing = 8f.vu.px
+                padding = Padding(0f.px, 12f.vu.px)
 
-                textButton {
-                    width = FillParent
+                legacyTextButton(null, null) {
+                    width = fill()
                     setText(R.string.multiplayer_room_start_game)
                     isSelected = true
                     onActionUp = callback@{
@@ -428,8 +423,8 @@ class RoomScene(
                     startButton = this
                 }
 
-                textButton {
-                    width = FillParent
+                legacyTextButton(null, null) {
+                    width = fill()
                     setText(R.string.multiplayer_room_not_ready)
                     onActionUp = callback@{
 
@@ -488,10 +483,17 @@ class RoomScene(
     private fun updateBackground(path: String?) {
         val textureRegion = ResourceManager.getInstance().loadBackground(path)
 
+        // The AndEngine slot keeps the background GameScene and ScoringScene read, the room shows its Verktex mirror.
+        // A null file or one that does not decode gave the menu background.
+        isBackgroundSet = true
+
         if (textureRegion != null) {
-            backgroundSprite.textureRegion = textureRegion
+            val region = SharedBackground.region()
+            isMenuBackground = region == null
+            backgroundSprite.textureRegion = region ?: SkinTextures.get("menu-background")
         } else {
-            backgroundSprite.textureRegion = ResourceManager.getInstance().getTexture("menu-background")
+            isMenuBackground = true
+            backgroundSprite.textureRegion = SkinTextures.get("menu-background")
         }
     }
 
@@ -523,14 +525,14 @@ class RoomScene(
         modsIndicator.mods = room.mods.values
     }
 
-    fun updatePlayerList() = updateThread {
+    fun updatePlayerList() = updateThread { Verktex.withTreeLock {
         val shouldReload = currentPlayers.size != room.playersMap.size
                 || !currentPlayers.all { room.playersMap.containsKey(it) }
 
         playersContainer.apply {
 
             if (shouldReload) {
-                detachChildren()
+                clearChildren()
 
                 room.activePlayers.forEach {
                     +RoomPlayerCard().apply {
@@ -540,12 +542,12 @@ class RoomScene(
                 currentPlayers = room.playersMap.keys.toLongArray()
             } else {
                 room.activePlayers.forEachIndexed { index, player ->
-                    val card = getChildByIndex(index) as RoomPlayerCard
+                    val card = this[index] as RoomPlayerCard
                     card.updateState(room, player)
                 }
             }
         }
-    }
+    } }
 
     private fun updateButtons() {
         // Guard: player is nulled by back() when the scene is tearing down; any
@@ -572,15 +574,12 @@ class RoomScene(
         val playersReady = room.activePlayers.filter { it.status == PlayerStatus.Ready }
 
         startButton.apply {
-            isVisible = Multiplayer.isRoomHost && player.status == PlayerStatus.Ready
+            isVisible = isStartButtonShown(Multiplayer.isRoomHost, player.status)
 
             // isVisible does only hide the button, but we also need to disable it.
             isEnabled = isVisible
 
-            text = when (playersReady.size) {
-                room.activePlayers.size -> StringTable.get(R.string.multiplayer_room_start_game)
-                else -> StringTable.format(R.string.multiplayer_room_force_start_game, playersReady.size, room.activePlayers.size)
-            }
+            text = startButtonText(playersReady.size, room.activePlayers.size)
         }
 
         modsButton.isEnabled = Multiplayer.isRoomHost || room.gameplaySettings.isFreeMod
@@ -625,13 +624,14 @@ class RoomScene(
 
                 if (roomBeatmap.parentSetID == null) {
                     isEnabled = false
-                    leadingIcon = UISprite(ResourceManager.getInstance().getTexture("download_off"))
+                    // Never preloaded, the legacy lookup fell back to gfx/ where it does not exist (oddity 11).
+                    setIcon("download_off", "gfx/download_off.png", SkinTextures::get)
                     setText(R.string.multiplayer_room_not_available_beatmap)
                     return@apply
                 }
 
                 isEnabled = true
-                leadingIcon = UISprite(ResourceManager.getInstance().getTexture("download"))
+                setIcon("download", "download.png", SkinTextures::getAsset)
                 setText(R.string.multiplayer_room_download_beatmap)
                 onActionUp = {
                     val url = BeatmapListing.mirror.download.request(
@@ -726,24 +726,27 @@ class RoomScene(
         chat.hide()
     }
 
-    override fun back() {
-        teardownSession()
-
+    fun back() {
         // The lobby is a Verktex scene, built and shown on the update thread. The leave dialog calls this from the main thread.
-        if (VerktexBridge.isUpdateThread) {
+        if (!VerktexBridge.isUpdateThread) {
+            updateThread { back() }
+            return
+        }
+
+        Verktex.withTreeLock {
+            // The teardown touches the room's tree.
+            teardownSession()
             Verktex.withTreeLock { LobbyScene() }.show()
-        } else {
-            updateThread { Verktex.withTreeLock { LobbyScene() }.show() }
         }
     }
 
-    override fun show() {
+    fun show() {
         if (!Multiplayer.isConnected) {
             back()
             return
         }
 
-        GlobalManager.getInstance().engine.scene = this
+        EngineRouter.showVerktex(this)
 
         if (!isWaitingForBeatmapChange.get()) {
             // onRoomBeatmapChange sets engine.scene = this just above, so it will always
@@ -760,7 +763,69 @@ class RoomScene(
         allowAutomaticPlaybackRestart = true
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    fun isShown() = Verktex.scene === this
+
+    override fun onShown() {
+        // Textures are registered on the update thread, so the first background is set here. Later ones come from updateBackground.
+        if (!isBackgroundSet) {
+            isBackgroundSet = true
+
+            backgroundSprite.apply {
+                textureRegion = SkinTextures.get("menu-background")
+                isMenuBackground = true
+
+                if (!Config.isSafeBeatmapBg()) {
+                    SharedBackground.region()?.let {
+                        textureRegion = it
+                        isMenuBackground = false
+                    }
+                }
+            }
+        }
+
+        // Skin changes only reach the shown Verktex scene, so the regions are looked up again in case the skin
+        // changed while this scene was not shown.
+        propagate { (it as? ISkinnable)?.onSkinChanged() }
+    }
+
+    override fun onSkinChanged() {
+        // A skin change unloads the skin regions, the AndEngine store kept its menu-background.
+        if (isMenuBackground) {
+            backgroundSprite.textureRegion = SkinTextures.get("menu-background")
+        }
+    }
+
+    override fun onPerformLayout() {
+        // The legacy scene covers the whole window, the safe area is not applied.
+        padding = Padding.Zero
+        super.onPerformLayout()
+    }
+
+    override fun onInputEvent(event: InputEvent): Boolean {
+        // Keys arrive on the UI thread. The leave dialog is an Android fragment, shown from the main thread.
+        if (event is KeyboardEvent && event.action == KeyboardEvent.Action.Down && event.key == KeyboardEvent.Key.Back) {
+            updateThread { Verktex.withTreeLock {
+                if (isShown() && !isLeaveDialogQueued) {
+                    isLeaveDialogQueued = true
+
+                    mainThread {
+                        leaveDialog.show()
+                        isLeaveDialogQueued = false
+                    }
+                }
+            } }
+            return true
+        }
+
+        return super.onInputEvent(event)
+    }
+
+    override fun onUpdate(clock: TickingClock) {
+        rootContainer.applyRoomPadding(chat.buttonHeight)
+
+        // The AndEngine container was 0.75 of the section's height.
+        playersScrollContainer.parent?.let { playersScrollContainer.height = (it.bounds.height * 0.75f).px }
+
         if (Config.isPlayMusicPreview() && allowAutomaticPlaybackRestart) {
             val selectedBeatmap = GlobalManager.getInstance().selectedBeatmap
 
@@ -774,7 +839,7 @@ class RoomScene(
             }
         }
 
-        super.onManagedUpdate(deltaTimeSec)
+        super.onUpdate(clock)
     }
 
 
@@ -894,7 +959,7 @@ class RoomScene(
 
     override fun onRoomNameChange(name: String) {
         room.name = name
-        updateThread { updateInformation() }
+        updateThread { Verktex.withTreeLock { updateInformation() } }
     }
 
     override fun onRoomMaxPlayersChange(maxPlayers: Int) {
@@ -907,7 +972,7 @@ class RoomScene(
         room.maxPlayers = maxPlayers
         room.resizePlayers(maxPlayers)
 
-        updateThread { updateInformation() }
+        updateThread { Verktex.withTreeLock { updateInformation() } }
         updatePlayerList()
     }
 
@@ -917,8 +982,8 @@ class RoomScene(
 
         GlobalManager.getInstance().selectedBeatmap = LibraryManager.findBeatmapByMD5(beatmap?.md5)
 
-        if (GlobalManager.getInstance().engine.scene != this) {
-            updateThread { updateBeatmapInfo() }
+        if (!isShown()) {
+            updateThread { Verktex.withTreeLock { updateBeatmapInfo() } }
             isWaitingForBeatmapChange.set(false)
             return
         }
@@ -932,10 +997,10 @@ class RoomScene(
         isWaitingForBeatmapChange.set(false)
 
         val selectedBeatmap = GlobalManager.getInstance().selectedBeatmap
-        updateThread {
+        updateThread { Verktex.withTreeLock {
             updateBackground(selectedBeatmap?.backgroundPath)
             updateBeatmap(beatmap)
-        }
+        } }
 
         if (selectedBeatmap == null) {
             GlobalManager.getInstance().songService.stop()
@@ -953,12 +1018,12 @@ class RoomScene(
         val newHostName = room.playersMap[uid]?.name ?: "#$uid"
         chat.onSystemChatMessage(StringTable.format(R.string.multiplayer_room_new_host, newHostName), "#459FFF")
 
-        updateThread {
+        updateThread { Verktex.withTreeLock {
             ModMenu.back(false)
             ModMenu.updateModButtonVisibility()
             ModMenu.updateCustomizationMenuEnabledStates()
             updateButtons()
-        }
+        } }
 
         updatePlayerList()
     }
@@ -976,14 +1041,14 @@ class RoomScene(
 
         isWaitingForModsChange.set(true)
 
-        updateThread {
+        updateThread { Verktex.withTreeLock {
             // Apply the new room mods to ModMenu first so that enabledMods is up-to-date
             // before we serialize and emit to the server.  Serializing before setMods() runs
             // would send the previous (stale) mods payload to the server.
             ModMenu.setMods(mods, room.gameplaySettings.isFreeMod)
             RoomAPI.setPlayerMods(ModMenu.enabledMods.serializeMods())
             updateInformation()
-        }
+        } }
     }
 
     override fun onRoomGameplaySettingsChange(settings: RoomGameplaySettings) {
@@ -995,7 +1060,7 @@ class RoomScene(
 
         isWaitingForModsChange.set(true)
 
-        updateThread {
+        updateThread { Verktex.withTreeLock {
             updateButtons()
             updateInformation()
             ModMenu.back(false)
@@ -1003,7 +1068,7 @@ class RoomScene(
             if (wasFreeMod != settings.isFreeMod) {
                 ModMenu.updateModButtonVisibility()
             }
-        }
+        } }
 
         invalidateStatus()
     }
@@ -1022,7 +1087,7 @@ class RoomScene(
         val player = Multiplayer.player ?: return
         if (uid == player.id) {
             isWaitingForModsChange.set(false)
-            updateThread { updateBeatmapInfo() }
+            updateThread { Verktex.withTreeLock { updateBeatmapInfo() } }
         }
     }
 
@@ -1030,7 +1095,7 @@ class RoomScene(
 
         room.teamMode = mode
 
-        updateThread { updateInformation() }
+        updateThread { Verktex.withTreeLock { updateInformation() } }
         updatePlayerList()
 
         isWaitingForStatusChange.set(true)
@@ -1041,7 +1106,7 @@ class RoomScene(
 
         room.winCondition = winCondition
 
-        updateThread { updateInformation() }
+        updateThread { Verktex.withTreeLock { updateInformation() } }
 
         if (Multiplayer.isRoomHost) {
             isWaitingForModsChange.set(true)
@@ -1141,7 +1206,7 @@ class RoomScene(
             chat.onSystemChatMessage(StringTable.format(R.string.multiplayer_room_player_joined, player.name, player.id), "#459FFF")
         }
 
-        updateThread { updateInformation() }
+        updateThread { Verktex.withTreeLock { updateInformation() } }
         updatePlayerList()
     }
 
@@ -1153,7 +1218,7 @@ class RoomScene(
             chat.onSystemChatMessage(StringTable.format(R.string.multiplayer_room_player_left, player.name, player.id), "#459FFF")
         }
 
-        updateThread { updateInformation() }
+        updateThread { Verktex.withTreeLock { updateInformation() } }
         updatePlayerList()
     }
 
@@ -1165,7 +1230,7 @@ class RoomScene(
 
             Multiplayer.log("Kicked from room.")
 
-            updateThread {
+            updateThread { Verktex.withTreeLock {
                 if (GlobalManager.getInstance().engine.scene == GlobalManager.getInstance().gameScene.scene) {
                     // Kicked while a game is in progress. We cannot navigate away from the
                     // game scene immediately — doing so would abruptly interrupt gameplay.
@@ -1181,21 +1246,22 @@ class RoomScene(
                     teardownSession()
                     Multiplayer.isMultiplayer = false
 
-                    return@updateThread
+                    return@withTreeLock
                 }
 
                 back()
 
+                // Verktex modals attach as an overlay unless they have a parent, the dialog belongs to the lobby back() showed.
                 UIMessageDialog().apply dialog@{
                     title = StringTable.get(R.string.multiplayer_room_kicked_title)
                     text = StringTable.get(R.string.multiplayer_room_kicked_message)
 
                     addButton {
-                        setText(R.string.multiplayer_room_kicked_close)
+                        text = StringTable.get(R.string.multiplayer_room_kicked_close)
                         onActionUp = { this@dialog.hide() }
                     }
-                }.show()
-            }
+                }.also { Verktex.scene += it }.show()
+            } }
             return
         }
 
@@ -1205,7 +1271,7 @@ class RoomScene(
             chat.onSystemChatMessage(StringTable.format(R.string.multiplayer_room_player_kicked, removedPlayer.name, removedPlayer.id), "#FFBFBF")
         }
 
-        updateThread { updateInformation() }
+        updateThread { Verktex.withTreeLock { updateInformation() } }
         updatePlayerList()
     }
 
@@ -1222,7 +1288,7 @@ class RoomScene(
             isWaitingForStatusChange.set(false)
         }
 
-        updateThread { updateInformation() }
+        updateThread { Verktex.withTreeLock { updateInformation() } }
         updatePlayerList()
     }
 
@@ -1235,7 +1301,26 @@ class RoomScene(
         target.team = team
 
         updatePlayerList()
-        updateThread { updateInformation() }
+        updateThread { Verktex.withTreeLock { updateInformation() } }
     }
 
+
+    companion object {
+        internal fun isStartButtonShown(isRoomHost: Boolean, status: PlayerStatus) = isRoomHost && status == PlayerStatus.Ready
+
+        internal fun startButtonText(playersReady: Int, players: Int) = when (playersReady) {
+            players -> StringTable.get(R.string.multiplayer_room_start_game)
+            else -> StringTable.format(R.string.multiplayer_room_force_start_game, playersReady, players)
+        }
+
+        /**
+         * The padding of the room's content, reassigned every tick: the test is against the chat button height
+         * while the padding is that height plus 12, so it always passes (oddity 8).
+         */
+        internal fun UIComponent.applyRoomPadding(buttonHeight: Float) {
+            if (paddingBottom != buttonHeight.vu.px) {
+                padding = Padding(80f.vu.px, 0f.px, 80f.vu.px, (buttonHeight + 12f).vu.px)
+            }
+        }
+    }
 }

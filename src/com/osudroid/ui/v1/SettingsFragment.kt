@@ -44,6 +44,7 @@ import com.osudroid.multiplayer.api.data.WinCondition
 import com.osudroid.resources.R.string
 import com.osudroid.utils.async
 import com.osudroid.utils.mainThread
+import com.osudroid.utils.updateThread
 import com.reco1l.framework.asTimeInterpolator
 import com.osudroid.multiplayer.Multiplayer
 import com.osudroid.ui.v2.CalibrationScene
@@ -59,6 +60,7 @@ import com.osudroid.mods.ModAutoplay
 import com.osudroid.replay.ReplayImporter
 import com.osudroid.utils.ModHashMap
 import com.osudroid.verktex.bridge.Destination
+import com.reco1l.verktex.Verktex
 import com.reco1l.framework.android.bottomMargin
 import java.io.File
 import kotlin.math.max
@@ -322,7 +324,8 @@ class SettingsFragment : SettingsFragment() {
             if (Multiplayer.isMultiplayer) {
                 // We need to manually update it before because the preference is updated after this listener.
                 Config.setString("difficultyAlgorithm", newValue as String)
-                Multiplayer.roomScene?.updateBeatmapInfo()
+                // The preference listener runs on the main thread, the beatmap info is on the room's tree.
+                updateThread { Verktex.withTreeLock { Multiplayer.roomScene?.updateBeatmapInfo() } }
             }
             true
         }

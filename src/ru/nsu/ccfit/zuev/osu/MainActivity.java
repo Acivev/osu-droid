@@ -1068,7 +1068,7 @@ public class MainActivity extends BaseGameActivity implements
             }
 
             if (Multiplayer.isConnected()
-                    && (getEngine().getScene() == Multiplayer.roomScene
+                    && (Multiplayer.roomScene != null && Multiplayer.roomScene.isShown()
                     || GlobalManager.getInstance().getSongMenu().isShown())) {
                 Execution.async(() -> Execution.runSafe(Multiplayer.roomScene::invalidateStatus));
             }
@@ -1198,13 +1198,6 @@ public class MainActivity extends BaseGameActivity implements
         var songMenu = GlobalManager.getInstance().getSongMenu();
 
         if (keyCode == KeyEvent.KEYCODE_BACK && songMenu != null) {
-            if (Multiplayer.isMultiplayer) {
-                if (currentScene == Multiplayer.roomScene) {
-
-                    runOnUiThread(Multiplayer.roomScene.getLeaveDialog()::show);
-                    return true;
-                }
-            }
             return true;
         }
 

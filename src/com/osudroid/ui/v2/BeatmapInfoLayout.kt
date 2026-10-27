@@ -6,14 +6,16 @@ import com.osudroid.beatmaps.BeatmapCache
 import com.osudroid.data.*
 import com.osudroid.multiplayer.api.data.*
 import com.osudroid.ui.v2.modmenu.*
+import com.osudroid.ui.verktex.*
+import com.osudroid.ui.verktex.LegacyUnits.vu
 import com.osudroid.utils.async
 import com.osudroid.utils.updateThread
-import com.reco1l.andengine.*
-import com.reco1l.andengine.container.*
-import com.reco1l.andengine.sprite.*
-import com.reco1l.andengine.text.*
-import com.reco1l.andengine.ui.*
-import com.reco1l.framework.math.Vec4
+import com.reco1l.andengine.ui.SizeVariant
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.*
+import com.reco1l.verktex.ui.container.*
+import com.reco1l.verktex.ui.container.UILinearContainer.Orientation
+import com.reco1l.verktex.ui.text.*
 import com.reco1l.framework.math.roundBy
 import com.osudroid.utils.applyMods
 import com.osudroid.utils.calculateRate
@@ -32,17 +34,17 @@ class BeatmapInfoLayout : UILinearContainer() {
     private lateinit var artistText: UIText
     private lateinit var creatorText: UIText
 
-    private lateinit var lengthBadge: UIBadge
-    private lateinit var bpmBadge: UIBadge
+    private lateinit var lengthBadge: LegacyBadge
+    private lateinit var bpmBadge: LegacyBadge
 
-    private lateinit var arText: UILabeledBadge
-    private lateinit var csText: UILabeledBadge
-    private lateinit var odText: UILabeledBadge
-    private lateinit var hpText: UILabeledBadge
+    private lateinit var arText: LegacyLabeledBadge
+    private lateinit var csText: LegacyLabeledBadge
+    private lateinit var odText: LegacyLabeledBadge
+    private lateinit var hpText: LegacyLabeledBadge
 
-    private lateinit var circlesBadge: UILabeledBadge
-    private lateinit var slidersBadge: UILabeledBadge
-    private lateinit var spinnersBadge: UILabeledBadge
+    private lateinit var circlesBadge: LegacyLabeledBadge
+    private lateinit var slidersBadge: LegacyLabeledBadge
+    private lateinit var spinnersBadge: LegacyLabeledBadge
 
     private lateinit var starRatingBadge: StarRatingBadge
     private lateinit var versionText: UIText
@@ -52,48 +54,63 @@ class BeatmapInfoLayout : UILinearContainer() {
 
 
     init {
-        width = FillParent
+        width = fill()
         orientation = Orientation.Vertical
-        spacing = 6f
+        spacing = 6f.vu.px
 
-        flexContainer {
-            width = FillParent
+        // The flex row: the column grows into the space the badge leaves.
+        linearContainer {
+            width = fill()
 
             linearContainer {
-                flexRules {
-                    grow = 1f
-                }
+                width = fill()
                 orientation = Orientation.Vertical
-                padding = Vec4(0f, 0f, 12f, 0f)
+                padding = Padding(0f.px, 0f.px, 12f.vu.px, 0f.px)
 
                 artistText = text {
-                    width = FillParent
-                    font = ResourceManager.getInstance().getFont("smallFont")
+                    width = fill()
+                    fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                    wrapText = false
+                    // The AndEngine UIText scrolled overflowing text horizontally by default.
+                    autoScrollAxes = Axis.X
+                    autoScrollSpeed = 15f.vu
                     text = "Unknown"
-                    applyTheme = { color = it.accentColor * 0.9f }
-                    clipToBounds = true
+                    style = Style { theme -> color = theme.palette.accent * 0.9f }
+                    clipping = ClipMode.Bounds
                 }
 
                 titleText = text {
-                    width = FillParent
-                    font = ResourceManager.getInstance().getFont("smallFont")
+                    width = fill()
+                    fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                    wrapText = false
+                    // The AndEngine UIText scrolled overflowing text horizontally by default.
+                    autoScrollAxes = Axis.X
+                    autoScrollSpeed = 15f.vu
                     text = "No selected beatmap"
-                    applyTheme = { color = it.accentColor }
-                    clipToBounds = true
+                    style = Style { theme -> color = theme.palette.accent }
+                    clipping = ClipMode.Bounds
                 }
 
                 versionText = text {
-                    width = FillParent
-                    font = ResourceManager.getInstance().getFont("smallFont")
+                    width = fill()
+                    fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                    wrapText = false
+                    // The AndEngine UIText scrolled overflowing text horizontally by default.
+                    autoScrollAxes = Axis.X
+                    autoScrollSpeed = 15f.vu
                     text = "Unknown"
-                    applyTheme = { color = it.accentColor * 0.8f }
-                    clipToBounds = true
+                    style = Style { theme -> color = theme.palette.accent * 0.8f }
+                    clipping = ClipMode.Bounds
                 }
 
                 creatorText = text {
-                    font = ResourceManager.getInstance().getFont("smallFont")
+                    fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                    wrapText = false
+                    // The AndEngine UIText scrolled overflowing text horizontally by default.
+                    autoScrollAxes = Axis.X
+                    autoScrollSpeed = 15f.vu
                     text = "Unknown"
-                    applyTheme = { color = it.accentColor * 0.8f }
+                    style = Style { theme -> color = theme.palette.accent * 0.8f }
                 }
             }
 
@@ -103,29 +120,29 @@ class BeatmapInfoLayout : UILinearContainer() {
 
         linearContainer {
             orientation = Orientation.Vertical
-            spacing = 4f
+            spacing = 4f.vu.px
 
             linearContainer {
                 orientation = Orientation.Horizontal
-                spacing = 4f
+                spacing = 4f.vu.px
 
-                circlesBadge = labeledBadge {
+                circlesBadge = legacyLabeledBadge {
                     label = "Circles"
                     value = "0"
                     sizeVariant = SizeVariant.Small
                 }
-                slidersBadge = labeledBadge {
+                slidersBadge = legacyLabeledBadge {
                     label = "Sliders"
                     value = "0"
                     sizeVariant = SizeVariant.Small
                 }
-                spinnersBadge = labeledBadge {
+                spinnersBadge = legacyLabeledBadge {
                     label = "Spinners"
                     value = "0"
                     sizeVariant = SizeVariant.Small
                 }
-                lengthBadge = badge {
-                    leadingIcon = UISprite(ResourceManager.getInstance().getTexture("clock"))
+                lengthBadge = legacyBadge {
+                    setLeadingIcon("clock", "clock.png", SkinTextures::getAsset)
                     text = "00:00"
                     sizeVariant = SizeVariant.Small
                 }
@@ -133,32 +150,32 @@ class BeatmapInfoLayout : UILinearContainer() {
 
             linearContainer {
                 orientation = Orientation.Horizontal
-                spacing = 4f
+                spacing = 4f.vu.px
 
-                arText = labeledBadge {
+                arText = legacyLabeledBadge {
                     label = "AR"
                     value = "0.00"
                     sizeVariant = SizeVariant.Small
                 }
-                odText = labeledBadge {
+                odText = legacyLabeledBadge {
                     label = "OD"
                     value = "0.00"
                     sizeVariant = SizeVariant.Small
                 }
-                csText = labeledBadge {
+                csText = legacyLabeledBadge {
                     label = "CS"
                     value = "0.00"
                     sizeVariant = SizeVariant.Small
                 }
-                hpText = labeledBadge {
+                hpText = legacyLabeledBadge {
                     label = "HP"
                     value = "0.00"
                     sizeVariant = SizeVariant.Small
                 }
-                bpmBadge = badge {
-                    leadingIcon = UISprite(ResourceManager.getInstance().getTexture("bpm"))
+                bpmBadge = legacyBadge {
+                    setLeadingIcon("bpm", "bpm.png", SkinTextures::getAsset)
                     text = "0"
-                    font = ResourceManager.getInstance().getFont("xs")
+                    fontSize = LegacyUnits.fontSize("xs").vu.px
                     sizeVariant = SizeVariant.Small
                 }
             }
@@ -234,8 +251,10 @@ class BeatmapInfoLayout : UILinearContainer() {
                     ensureActive()
 
                     updateThread {
-                        if (displayedBeatmap === beatmapInfo) {
-                            updateDisplay(beatmapInfo)
+                        Verktex.withTreeLock {
+                            if (displayedBeatmap === beatmapInfo) {
+                                updateDisplay(beatmapInfo)
+                            }
                         }
                     }
                 }
@@ -264,11 +283,9 @@ class BeatmapInfoLayout : UILinearContainer() {
         val commonBpm = (beatmapInfo.mostCommonBPM * totalSpeedMultiplier).roundToInt()
         val length = (beatmapInfo.length / totalSpeedMultiplier).toLong()
 
-        val sdf = SimpleDateFormat(if (length > 3600 * 1000) "HH:mm:ss" else "mm:ss")
-        sdf.timeZone = TimeZone.getTimeZone("GMT+0")
-        lengthBadge.text = sdf.format(length)
+        lengthBadge.text = formatLength(length)
 
-        bpmBadge.text = if (minBpm == maxBpm) commonBpm.toString() else "$minBpm-$maxBpm ($commonBpm)"
+        bpmBadge.text = formatBpm(minBpm, maxBpm, commonBpm)
 
         // Round to 2 decimal places.
         arText.value = difficulty.ar.roundBy(2).toString()
@@ -280,10 +297,14 @@ class BeatmapInfoLayout : UILinearContainer() {
 
 
     companion object {
-        init {
-            ResourceManager.getInstance().loadHighQualityAsset("clock", "clock.png")
-            ResourceManager.getInstance().loadHighQualityAsset("bpm", "bpm.png")
+        internal fun formatLength(length: Long): String {
+            val sdf = SimpleDateFormat(if (length > 3600 * 1000) "HH:mm:ss" else "mm:ss")
+            sdf.timeZone = TimeZone.getTimeZone("GMT+0")
+            return sdf.format(length)
         }
+
+        internal fun formatBpm(minBpm: Int, maxBpm: Int, commonBpm: Int) =
+            if (minBpm == maxBpm) commonBpm.toString() else "$minBpm-$maxBpm ($commonBpm)"
     }
 }
 
