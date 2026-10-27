@@ -200,7 +200,7 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                 }
 
                 // The leading icon is sized to the text height, as the AndEngine CompoundText did.
-                +LegacyTextButton("Back", "back-arrow", "back-arrow.png").apply {
+                +LegacyTextButton("Back", "back-arrow", "back-arrow.png", SkinTextures::getAsset).apply {
                     onActionUp = {
                         ResourceManager.getInstance().getSound("click-short-confirm")?.play()
                         cancel()
@@ -471,7 +471,7 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                             origin = Anchor.TopCenter
 
                             // The leading icon is sized to the text height, as the AndEngine CompoundText did.
-                            fun StepButton(step: Int) = object : LegacyTextButton(abs(step).toString(), if (step < 0) "minus" else "plus", if (step < 0) "minus.png" else "plus.png") {
+                            fun StepButton(step: Int) = object : LegacyTextButton(abs(step).toString(), if (step < 0) "minus" else "plus", if (step < 0) "minus.png" else "plus.png", SkinTextures::getAsset) {
                                 override fun onApplyLegacySizes() {
                                     super.onApplyLegacySizes()
                                     height = 42f.vu.px

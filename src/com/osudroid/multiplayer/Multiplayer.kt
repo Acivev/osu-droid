@@ -10,6 +10,7 @@ import com.osudroid.ui.v2.multi.*
 import com.osudroid.utils.async
 import com.reco1l.andengine.*
 import com.osudroid.utils.updateThread
+import com.reco1l.verktex.Verktex
 import kotlin.time.Duration.Companion.milliseconds
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -146,7 +147,7 @@ object Multiplayer {
                 ToastLogger.showText("Failed to connect to the room: ${e.javaClass} - ${e.message}", true)
                 Log.e("LobbyScene", "Failed to connect to room.", e)
 
-                UIEngine.current.scene = LobbyScene()
+                updateThread { Verktex.withTreeLock { LobbyScene().show() } }
             }
 
         }

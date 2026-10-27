@@ -3,27 +3,31 @@ package com.osudroid.ui.v2.multi
 import com.osudroid.resources.R.string
 import com.osudroid.multiplayer.api.*
 import com.osudroid.multiplayer.api.data.*
+import com.osudroid.ui.verktex.LegacyUnits.vu
 import com.osudroid.utils.async
-import com.reco1l.andengine.*
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.container.*
-import com.reco1l.andengine.ui.*
-import com.reco1l.andengine.ui.form.*
+import com.osudroid.utils.updateThread
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.*
+import com.reco1l.verktex.ui.*
+import com.reco1l.verktex.ui.container.*
+import com.reco1l.verktex.ui.container.UILinearContainer.Orientation
+import com.reco1l.verktex.ui.dialog.UIDialog
+import com.reco1l.verktex.ui.form.*
 import ru.nsu.ccfit.zuev.osu.*
 import ru.nsu.ccfit.zuev.osu.helper.*
 import ru.nsu.ccfit.zuev.osu.menu.*
 import ru.nsu.ccfit.zuev.osu.online.*
 
 class RoomCreateDialog(lobbyScene: LobbyScene) : UIDialog<UIScrollableContainer>(UIScrollableContainer().apply {
-    scrollAxes = Axes.Y
-    width = FillParent
-    height = 360f
-    clipToBounds = true
+    scrollAxes = Axis.Y
+    width = fill()
+    height = 360f.vu.px
+    clipping = ClipMode.Bounds
 }) {
     init {
 
         val form = FormContainer().apply {
-            width = FillParent
+            width = fill()
             orientation = Orientation.Vertical
 
             onSubmit = { data ->
@@ -71,7 +75,7 @@ class RoomCreateDialog(lobbyScene: LobbyScene) : UIDialog<UIScrollableContainer>
                         )
 
                     } catch (e: Exception) {
-                        UIEngine.current.scene = lobbyScene
+                        updateThread { Verktex.withTreeLock { lobbyScene.show() } }
                         ToastLogger.showText("Failed to create a room: ${e.message}", true)
                         e.printStackTrace()
                     }
@@ -81,19 +85,19 @@ class RoomCreateDialog(lobbyScene: LobbyScene) : UIDialog<UIScrollableContainer>
 
             +FormInput(StringTable.format(string.multiplayer_lobby_create_room_name_default, OnlineManager.getInstance().username)).apply {
                 key = "name"
-                width = FillParent
+                width = fill()
                 label = StringTable.get(string.multiplayer_lobby_room_name)
             }
 
             +FormInput().apply {
                 key = "password"
-                width = FillParent
+                width = fill()
                 label = StringTable.get(string.multiplayer_lobby_room_password)
             }
 
             +FormSlider(8f).apply {
                 key = "capacity"
-                width = FillParent
+                width = fill()
                 label = StringTable.get(string.multiplayer_lobby_room_capacity)
                 control.max = 16f
                 control.min = 2f
@@ -103,12 +107,12 @@ class RoomCreateDialog(lobbyScene: LobbyScene) : UIDialog<UIScrollableContainer>
 
         }
 
-        innerContent.attachChild(form)
+        innerContent += form
 
         title = StringTable.get(string.multiplayer_lobby_create_room)
 
         addButton(UITextButton().apply {
-            setText(string.multiplayer_lobby_create_room_accept)
+            text = StringTable.get(string.multiplayer_lobby_create_room_accept)
             isSelected = true
             onActionUp = {
                 form.submit()
@@ -116,7 +120,7 @@ class RoomCreateDialog(lobbyScene: LobbyScene) : UIDialog<UIScrollableContainer>
         })
 
         addButton(UITextButton().apply {
-            setText(string.multiplayer_lobby_create_room_cancel)
+            text = StringTable.get(string.multiplayer_lobby_create_room_cancel)
             onActionUp = { hide() }
         })
     }

@@ -6,6 +6,7 @@ import com.osudroid.ui.verktex.SkinTextures
 import com.reco1l.verktex.data.Anchor
 import com.reco1l.verktex.data.Color4
 import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.GraphicsTexture
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.ui.UISprite
 import com.reco1l.verktex.ui.container.UILinearContainer
@@ -13,12 +14,14 @@ import com.reco1l.verktex.ui.text.UIText
 
 /**
  * The AndEngine UITextButton with a leading icon: the icon is sized to the text height and 8
- * apart from it, both centred in the button.
+ * apart from it, both centred in the button. [loadIcon] looks the icon up, skin first by default;
+ * pass `SkinTextures::getAsset` for icons the legacy code loaded from the bundled assets only.
  */
 open class LegacyTextButton(
     text: String,
     private val iconName: String,
-    private val iconAssetPath: String
+    private val iconAssetPath: String,
+    private val loadIcon: (name: String, assetPath: String) -> GraphicsTexture.Region? = SkinTextures::get
 ) : LegacyButton() {
 
     private val icon = UISprite()
@@ -59,7 +62,7 @@ open class LegacyTextButton(
     override fun onUpdate(clock: TickingClock) {
         if (shouldLoadTexture) {
             shouldLoadTexture = false
-            icon.textureRegion = SkinTextures.get(iconName, iconAssetPath)
+            icon.textureRegion = loadIcon(iconName, iconAssetPath)
         }
 
         // CompoundText sized its leading icon to the text height on both axes.

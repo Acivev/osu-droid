@@ -793,7 +793,7 @@ class MainMenuV2 : UIScene(), ISkinnable, RoutedScene {
                 GlobalManager.getInstance().mainActivity.loadBeatmapLibrary()
                 updateThread {
                     GlobalManager.getInstance().songMenu.reload()
-                    GlobalManager.getInstance().engine.scene = LobbyScene()
+                    Verktex.withTreeLock { LobbyScene() }.show()
                 }
             }
         } else {

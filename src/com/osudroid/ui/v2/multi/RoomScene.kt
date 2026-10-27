@@ -26,10 +26,11 @@ import com.osudroid.utils.async
 import com.osudroid.utils.mainThread
 import com.osudroid.utils.runSafe
 import com.osudroid.utils.updateThread
+import com.osudroid.verktex.bridge.VerktexBridge
+import com.reco1l.verktex.Verktex
 import com.osudroid.resources.R
 import com.reco1l.andengine.Anchor
 import com.reco1l.andengine.Axes
-import com.reco1l.andengine.UIEngine
 import com.reco1l.andengine.UIScene
 import com.reco1l.andengine.badge
 import com.reco1l.andengine.component.UIComponent.Companion.FillParent
@@ -727,7 +728,13 @@ class RoomScene(
 
     override fun back() {
         teardownSession()
-        UIEngine.current.scene = LobbyScene()
+
+        // The lobby is a Verktex scene, built and shown on the update thread. The leave dialog calls this from the main thread.
+        if (VerktexBridge.isUpdateThread) {
+            Verktex.withTreeLock { LobbyScene() }.show()
+        } else {
+            updateThread { Verktex.withTreeLock { LobbyScene() }.show() }
+        }
     }
 
     override fun show() {

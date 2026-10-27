@@ -18,7 +18,6 @@ import com.osudroid.utils.Execution;
 import com.osudroid.verktex.bridge.EngineRouter;
 import com.osudroid.verktex.bridge.RoutedScene;
 import com.osudroid.verktex.bridge.VerktexBridge;
-import com.reco1l.andengine.UIEngine;
 import com.reco1l.verktex.Verktex;
 import com.reco1l.verktex.data.Anchor;
 import com.reco1l.verktex.data.Color4;
@@ -675,7 +674,7 @@ public class ScoringScene extends UIScene implements RoutedScene, ISkinnable {
         {
             // Preventing NPEs when player gets disconnected while playing
             if (!Multiplayer.isConnected()) {
-                UIEngine.getCurrent().setScene(new LobbyScene());
+                Verktex.INSTANCE.withTreeLock(() -> new LobbyScene()).show();
             } else {
                 Multiplayer.roomScene.show();
             }

@@ -62,7 +62,6 @@ import com.osudroid.utils.AccessibilityDetector;
 import com.osudroid.beatmaps.DifficultyCalculationManager;
 import com.osudroid.multiplayer.Multiplayer;
 import com.osudroid.UpdateManager;
-import com.osudroid.ui.v2.multi.LobbyScene;
 
 import com.reco1l.osu.ui.MessageDialog;
 import com.reco1l.verktex.GameHost;
@@ -1200,11 +1199,6 @@ public class MainActivity extends BaseGameActivity implements
 
         if (keyCode == KeyEvent.KEYCODE_BACK && songMenu != null) {
             if (Multiplayer.isMultiplayer) {
-                if (currentScene instanceof LobbyScene lobbyScene) {
-                    lobbyScene.back();
-                    return true;
-                }
-
                 if (currentScene == Multiplayer.roomScene) {
 
                     runOnUiThread(Multiplayer.roomScene.getLeaveDialog()::show);

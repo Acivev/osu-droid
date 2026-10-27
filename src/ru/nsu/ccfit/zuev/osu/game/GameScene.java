@@ -2365,7 +2365,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             if (Multiplayer.isConnected() && roomScene != null) {
                 roomScene.show();
             } else {
-                engine.setScene(new LobbyScene());
+                Verktex.INSTANCE.withTreeLock(() -> new LobbyScene()).show();
             }
 
             return;
