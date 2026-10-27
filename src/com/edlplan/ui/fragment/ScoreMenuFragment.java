@@ -17,6 +17,7 @@ import com.edlplan.ui.BaseAnimationListener;
 import com.edlplan.ui.EasingHelper;
 import com.osudroid.data.BeatmapInfo;
 import com.osudroid.data.DatabaseManager;
+import com.osudroid.utils.Execution;
 import com.reco1l.framework.android.ViewsKt;
 import com.reco1l.osu.ui.MessageDialog;
 
@@ -97,7 +98,7 @@ public class ScoreMenuFragment extends BaseFragment {
 
                         if (scoreInfo != null && scoreInfoTable.deleteScore(scoreId) != 0) {
                             Snackbar.make(v, com.osudroid.resources.R.string.menu_deletescore_delete_success, 1500).show();
-                            GlobalManager.getInstance().getSongMenu().reloadScoreboard();
+                            Execution.updateThread(() -> GlobalManager.getInstance().getSongMenu().reloadScoreboard());
 
                             new File(scoreInfo.getReplayPath()).delete();
                         } else {

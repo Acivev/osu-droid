@@ -26,7 +26,7 @@ class HUDLeaderboard : HUDElement() {
 
     private val isReplaying = replayId != -1
 
-    private val isGlobalLeaderboard = GlobalManager.getInstance().songMenu.isBoardOnline
+    private val isGlobalLeaderboard = GlobalManager.getInstance().songMenu.isBoardOnline()
 
 
     override fun onSizeChanged() {
@@ -42,7 +42,7 @@ class HUDLeaderboard : HUDElement() {
         super.onManagedUpdate(deltaTimeSec)
 
         if (!Multiplayer.isMultiplayer) {
-            val items = GlobalManager.getInstance().songMenu.board
+            val items = GlobalManager.getInstance().songMenu.getBoard()
 
             // We consider that if it's in replay mode the length should be the same, in case it's not then the
             // length should be +1 greater (because of the new score).
