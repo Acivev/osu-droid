@@ -41,7 +41,13 @@ data class DrawCommand(
     /**
      * The set of uniform variables to be passed to the shader program during rendering.
      */
-    val uniformSet: GraphicsShader.UniformSet
+    val uniformSet: GraphicsShader.UniformSet = GraphicsShader.UniformSet(),
+
+    /**
+     * Whether this command clears the depth buffer instead of drawing. A clear command carries no
+     * buffer or shader and is never merged with other commands.
+     */
+    val clearDepth: Boolean = false,
 ) {
 
     /**
@@ -55,7 +61,8 @@ data class DrawCommand(
         depthState: DepthState,
         uniformSet: GraphicsShader.UniformSet,
     ): Boolean {
-        return this.shader == shader &&
+        return !clearDepth &&
+                this.shader == shader &&
                 this.uniformSet == uniformSet &&
                 this.texture == texture &&
                 this.blendMode == blendMode &&

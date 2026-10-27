@@ -14,6 +14,14 @@ object ESCommandExecutor {
 
     fun execute(command: DrawCommand, viewportWidth: Int, viewportHeight: Int) {
 
+        if (command.clearDepth) {
+            // glClear honours the scissor test and the depth mask, either may be left over from the previous command.
+            GLES32.glDisable(GLES32.GL_SCISSOR_TEST)
+            GLES32.glDepthMask(true)
+            GLES32.glClear(GLES32.GL_DEPTH_BUFFER_BIT)
+            return
+        }
+
         if (command.buffer == null || command.shader == null || command.buffer.isEmpty()) return
 
         // Scissor test, the scissor is in window space (top-left origin) while GL expects bottom-left.

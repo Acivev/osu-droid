@@ -130,6 +130,17 @@ abstract class GraphicsRenderer {
     }
 
     /**
+     * Clears the depth buffer at this point of the frame. Draws recorded before stay before the clear
+     * and the next draw starts a new command.
+     */
+    fun clearDepth() {
+        commandBatch.addLast(DrawCommand(clearDepth = true))
+
+        // A geometry draw without a new setState() would otherwise write into a buffer already queued before the clear.
+        activeBuffer = null
+    }
+
+    /**
      * Pushes a transformation matrix onto the matrix stack. This matrix will be applied to subsequent drawing operations.
      */
     fun pushMatrix(matrix: Mat2) {

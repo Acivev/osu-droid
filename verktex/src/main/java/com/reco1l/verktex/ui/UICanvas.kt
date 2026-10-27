@@ -27,12 +27,19 @@ abstract class UICanvas : UIComponent() {
      */
     var depthState: DepthState = DepthState.Default
 
+    /**
+     * Whether the depth buffer is cleared before the canvas draws, so its depth testing is not affected
+     * by anything drawn earlier in the frame.
+     */
+    var clearDepthBeforeDraw = false
+
 
     override fun drawContent(renderer: GraphicsRenderer) {
         val shader = shader
         if (shader != null) renderer.pushShader(shader)
         renderer.pushBlendMode(blendMode)
         renderer.pushDepthState(depthState)
+        if (clearDepthBeforeDraw) renderer.clearDepth()
         onDraw(renderer)
         renderer.popDepthState()
         renderer.popBlendMode()
