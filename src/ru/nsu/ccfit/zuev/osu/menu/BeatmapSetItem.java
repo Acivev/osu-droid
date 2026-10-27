@@ -1,9 +1,9 @@
 package ru.nsu.ccfit.zuev.osu.menu;
 
 import com.osudroid.data.BeatmapSetInfo;
-import org.andengine.entity.Entity;
-import org.andengine.entity.scene.Scene;
-import org.andengine.entity.sprite.Sprite;
+import com.osudroid.ui.verktex.SkinTextures;
+import com.reco1l.verktex.graphics.GraphicsTexture;
+import com.reco1l.verktex.ui.container.UIContainer;
 
 import java.lang.ref.WeakReference;
 import java.util.List;
@@ -12,7 +12,6 @@ import java.util.regex.Pattern;
 
 import ru.nsu.ccfit.zuev.osu.Config;
 import ru.nsu.ccfit.zuev.osu.LibraryManager;
-import ru.nsu.ccfit.zuev.osu.ResourceManager;
 import com.osudroid.data.BeatmapInfo;
 import com.osudroid.data.DatabaseManager;
 
@@ -20,32 +19,36 @@ import ru.nsu.ccfit.zuev.osu.Utils;
 import ru.nsu.ccfit.zuev.osu.DifficultyAlgorithm;
 import ru.nsu.ccfit.zuev.osu.helper.StringTable;
 
+/**
+ * A beatmap set of the song list. Its cards are pooled Verktex components attached to the layer given in
+ * {@link #attachTo}, positioned in virtual units by {@link #setPos}. Must be used on the update thread.
+ */
 public class BeatmapSetItem {
     private final BeatmapItem[] beatmapItems;
     private BeatmapSetInfo beatmapSetInfo;
     private final String beatmapSetDir;
-    private final int bgHeight;
+    // Read from the texture when first needed (on the update thread), so constructing an item needs no texture.
+    // Not cached while the texture is missing, so a later lookup can still succeed.
+    private Integer bgHeight = null;
     private final String titleStr;
     private final String creatorStr;
     public float percentAppeared = 0;
     MenuItemBackground background;
-    Scene scene;
     boolean selected = false;
+    private static final Pattern FILTER_PATTERN = Pattern.compile("(ar|od|cs|hp|star)(=|<|>|<=|>=)(\\d+)");
     WeakReference<MenuItemListener> listener;
     private BeatmapItem selectedBeatmapItem = null;
     private boolean visible = true;
-    private boolean favorite;
+    // Queried from the database on first use, so the filter logic runs without one.
+    private Boolean favorite;
     private boolean deleted = false;
-    private Entity layer = null;
+    private UIContainer layer = null;
     private int beatmapId = -1;
 
     public BeatmapSetItem(final MenuItemListener listener, final BeatmapSetInfo beatmapSetInfo) {
         this.listener = new WeakReference<>(listener);
         this.beatmapSetInfo = beatmapSetInfo;
         beatmapSetDir = beatmapSetInfo.getDirectory();
-        bgHeight = (int) (ResourceManager.getInstance()
-                .getTexture("menu-button-background").getHeight()
-                - Utils.toRes(25));
 //        titleStr = (beatmap.getArtistUnicode() == null ? beatmap.getArtist() : beatmap.getArtistUnicode()) + " - "
 //                + (beatmap.getTitleUnicode() == null ? beatmap.getTitle() : beatmap.getTitleUnicode());
         var beatmapInfo = this.beatmapSetInfo.getBeatmaps().get(0);
@@ -56,18 +59,12 @@ public class BeatmapSetItem {
                 beatmapInfo.getCreator());
         beatmapItems = new BeatmapItem[beatmapSetInfo.getCount()];
 
-        var props = DatabaseManager.getBeatmapOptionsTable().getOptions(beatmapSetInfo.getDirectory());
-        favorite = props != null && props.isFavorite();
-
     }
 
     public BeatmapSetItem(final MenuItemListener listener, final BeatmapSetInfo beatmapSetInfo, int id) {
         this.listener = new WeakReference<>(listener);
         this.beatmapSetInfo = beatmapSetInfo;
         beatmapSetDir = this.beatmapSetInfo.getDirectory();
-        bgHeight = (int) (ResourceManager.getInstance()
-                .getTexture("menu-button-background").getHeight()
-                - Utils.toRes(25));
 //        titleStr = (beatmap.getArtistUnicode() == null ? beatmap.getArtist() : beatmap.getArtistUnicode()) + " - "
 //                + (beatmap.getTitleUnicode() == null ? beatmap.getTitle() : beatmap.getTitleUnicode());
         var beatmapInfo = this.beatmapSetInfo.getBeatmaps().get(0);
@@ -78,9 +75,19 @@ public class BeatmapSetItem {
         beatmapItems = new BeatmapItem[1];
         beatmapId = id;
 
-        var props = DatabaseManager.getBeatmapOptionsTable().getOptions(beatmapSetInfo.getDirectory());
-        favorite = props != null && props.isFavorite();
+    }
 
+    private int getBgHeight() {
+        if (bgHeight != null) {
+            return bgHeight;
+        }
+        final GraphicsTexture.Region texture = SkinTextures.get("menu-button-background");
+        final int height = (int) ((texture != null ? texture.getHeight() : 0)
+                - Utils.toRes(25));
+        if (texture != null) {
+            bgHeight = height;
+        }
+        return height;
     }
 
 
@@ -101,8 +108,7 @@ public class BeatmapSetItem {
         }
     }
 
-    public void attachToScene(final Scene scene, final Entity layer) {
-        this.scene = scene;
+    public void attachTo(final UIContainer layer) {
         this.layer = layer;
         // initBackground();
     }
@@ -112,50 +118,51 @@ public class BeatmapSetItem {
             return 0;
         }
         if (selected) {
-            return bgHeight + percentAppeared * (bgHeight)
+            return getBgHeight() + percentAppeared * (getBgHeight())
                     * (beatmapItems.length - 1);
         }
-        return bgHeight - Utils.toRes(5);
+        return getBgHeight() - Utils.toRes(5);
     }
 
     public float getInitialHeight() {
         if (!visible) {
             return 0;
         }
-        return bgHeight - Utils.toRes(5);
+        return getBgHeight() - Utils.toRes(5);
     }
 
     public float getTotalHeight() {
-        return (bgHeight) * (beatmapItems.length);
+        return (getBgHeight()) * (beatmapItems.length);
     }
 
+    /** Positions the cards, {@code x} and {@code y} are in virtual units. */
     public void setPos(final float x, final float y) {
         if (background != null) {
             background.setPosition(x, y);
-            if (y > Config.getRES_HEIGHT() || y < -background.getHeight()) {
+            if (y > Config.getRES_HEIGHT() || y < -background.getVirtualHeight()) {
                 freeBackground();
             }
         }
         if (!selected) {
             if (visible && background == null
-                    && y < Config.getRES_HEIGHT() && y > -bgHeight) {
+                    && y < Config.getRES_HEIGHT() && y > -getBgHeight()) {
                 initBackground();
                 background.setPosition(x, y);
             }
             return;
         }
         float oy = 0;
-        for (final Sprite s : beatmapItems) {
+        for (final BeatmapItem s : beatmapItems) {
             if (s == null) {
                 continue;
             }
             final float cy = y + oy + Config.getRES_HEIGHT() / 2f
-                    + s.getHeight() / 2;
+                    + s.getVirtualHeight() / 2;
             final float ox = x
                     + Utils.toRes(170 * (float) Math.abs(Math.cos(cy * Math.PI
                     / (Config.getRES_HEIGHT() * 2))));
             s.setPosition(ox - Utils.toRes(100), y + oy);
-            oy += (s.getHeight() - Utils.toRes(25)) * percentAppeared;
+            oy += (s.getVirtualHeight() - Utils.toRes(25)) * percentAppeared;
         }
     }
 
@@ -164,7 +171,7 @@ public class BeatmapSetItem {
     }
 
     public void select(boolean reloadBG) {
-        if (!listener.get().isSelectAllowed() || scene == null) {
+        if (listener.get() == null || !listener.get().isSelectAllowed() || layer == null) {
             return;
         }
 
@@ -179,7 +186,7 @@ public class BeatmapSetItem {
     }
 
     public void deselect() {
-        if (scene == null ) {
+        if (layer == null ) {
             return;
         }
 
@@ -194,7 +201,7 @@ public class BeatmapSetItem {
     }
 
     public void deselectBeatmap() {
-        if (scene == null) {
+        if (layer == null) {
             return;
         }
         if (selectedBeatmapItem != null) {
@@ -238,8 +245,7 @@ public class BeatmapSetItem {
         final String lowerText = builder.toString().toLowerCase();
         final String[] lowerFilterTexts = filter.toLowerCase().split("[ ]");
         for (String filterText : lowerFilterTexts) {
-            Pattern pattern = Pattern.compile("(ar|od|cs|hp|star)(=|<|>|<=|>=)(\\d+)");
-            Matcher matcher = pattern.matcher(filterText);
+            Matcher matcher = FILTER_PATTERN.matcher(filterText);
             if (matcher.find()) {
                 String key = matcher.group(1);
                 String opt = matcher.group(2);
@@ -332,12 +338,16 @@ public class BeatmapSetItem {
     }
 
     public void stopScroll(final float y) {
-        listener.get().stopScroll(y);
+        if (listener.get() != null) {
+            listener.get().stopScroll(y);
+        }
     }
 
     public void selectBeatmap(final BeatmapItem beatmapInfo, boolean reloadBG) {
         selectedBeatmapItem = beatmapInfo;
-        listener.get().selectBeatmap(beatmapInfo.getBeatmapInfo(), reloadBG);
+        if (listener.get() != null) {
+            listener.get().selectBeatmap(beatmapInfo.getBeatmapInfo(), reloadBG);
+        }
     }
 
     public boolean isBeatmapSelected(final BeatmapItem beatmapItem) {
@@ -363,17 +373,16 @@ public class BeatmapSetItem {
         background.setTitle(titleStr);
         background.setAuthor(creatorStr);
         background.setVisible(true);
-        if (!background.hasParent()) {
-            layer.attachChild(background);
-            scene.registerTouchArea(background);
+        if (background.getParent() == null) {
+            layer.plusAssign(background);
         }
     }
 
     private synchronized void freeBeatmaps() {
         for (var item : beatmapItems) {
             if (item != null) {
+                // Invisible items ignore input, as the unregistered AndEngine touch area did.
                 item.setVisible(false);
-                scene.unregisterTouchArea(item);
                 SongMenuPool.getInstance().putBeatmapItem(item);
             }
         }
@@ -417,10 +426,13 @@ public class BeatmapSetItem {
                 var item = SongMenuPool.getInstance().newBeatmapItem();
                 item.setItem(this);
                 item.setBeatmapInfo(beatmapSetInfo.getBeatmap(i));
-                if (!item.hasParent()) {
-                    layer.attachChild(item);
+                if (item.getParent() == null) {
+                    layer.plusAssign(item);
                 }
-                scene.registerTouchArea(item);
+                // The AndEngine touch area was registered again, after all the others.
+                if (layer instanceof SongMenu.ListLayer listLayer) {
+                    listLayer.moveToDispatchEnd(item);
+                }
                 item.setVisible(true);
 
                 beatmapItems[i] = item;
@@ -429,10 +441,13 @@ public class BeatmapSetItem {
             var item = SongMenuPool.getInstance().newBeatmapItem();
             item.setItem(this);
             item.setBeatmapInfo(beatmapSetInfo.getBeatmap(beatmapId));
-            if (!item.hasParent()) {
-                layer.attachChild(item);
+            if (item.getParent() == null) {
+                layer.plusAssign(item);
             }
-            scene.registerTouchArea(item);
+            // The AndEngine touch area was registered again, after all the others.
+            if (layer instanceof SongMenu.ListLayer listLayer) {
+                listLayer.moveToDispatchEnd(item);
+            }
             item.setVisible(true);
 
             beatmapItems[0] = item;
@@ -440,6 +455,12 @@ public class BeatmapSetItem {
     }
 
     public boolean isFavorite() {
+        if (favorite != null) {
+            return favorite;
+        }
+
+        var props = DatabaseManager.getBeatmapOptionsTable().getOptions(beatmapSetInfo.getDirectory());
+        favorite = props != null && props.isFavorite();
         return favorite;
     }
 
@@ -448,7 +469,9 @@ public class BeatmapSetItem {
     }
 
     public void showPropertiesMenu() {
-        listener.get().showPropertiesMenu(this);
+        if (listener.get() != null) {
+            listener.get().showPropertiesMenu(this);
+        }
     }
 
     public void update(final float dt) {
@@ -467,7 +490,7 @@ public class BeatmapSetItem {
     }
 
     public void removeFromScene() {
-        if (scene == null) {
+        if (layer == null) {
             return;
         }
         if (selected) {
@@ -475,7 +498,7 @@ public class BeatmapSetItem {
         }
         freeBackground();
         visible = false;
-        scene = null;
+        layer = null;
     }
 
     public int tryGetCorrespondingBeatmapId(String beatmapFilename){

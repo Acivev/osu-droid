@@ -1,51 +1,76 @@
 package ru.nsu.ccfit.zuev.osu.menu;
 
-import com.reco1l.andengine.component.ComponentsKt;
+import com.osudroid.ui.verktex.ColorsKt;
+import com.osudroid.ui.verktex.IPressable;
+import com.osudroid.ui.verktex.ISkinnable;
+import com.osudroid.ui.verktex.LegacyUnits;
+import com.osudroid.ui.verktex.SkinTextures;
 import com.reco1l.framework.Color4;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.graphics.GraphicsTexture;
+import com.reco1l.verktex.input.InputEvent;
+import com.reco1l.verktex.input.PointerEvent;
+import com.reco1l.verktex.time.TickingClock;
+import com.reco1l.verktex.ui.UISprite;
+import com.reco1l.verktex.ui.container.UIContainer;
+import com.reco1l.verktex.ui.text.UIText;
 
-import org.andengine.entity.sprite.Sprite;
-import org.andengine.entity.text.Text;
-import org.andengine.input.touch.TouchEvent;
 import org.andengine.util.math.MathUtils;
 
-import ru.nsu.ccfit.zuev.osu.GlobalManager;
 import ru.nsu.ccfit.zuev.osu.ResourceManager;
 import ru.nsu.ccfit.zuev.skins.OsuSkin;
 import ru.nsu.ccfit.zuev.osu.Utils;
 
-public class MenuItemBackground extends Sprite {
+/**
+ * The card of an unselected beatmap set. A Verktex sprite cannot hold children, so the
+ * `menu-button-background` sprite and the two texts are children of this container, sized to the texture.
+ * The texts are siblings of the sprite: the AndEngine texts did not take the sprite's colour.
+ */
+public class MenuItemBackground extends UIContainer implements ISkinnable, IPressable {
 
     private static final Color4 DEFAULT_COLOR = new Color4(240 / 255f, 150 / 255f, 0 / 255f);
     private static final Color4 ON_TOUCH_COLOR = new Color4(1f, 1f, 1f);
-    private final Text title, author;
-    private final Color4 defColor = OsuSkin.get().getColor("MenuItemDefaultColor", DEFAULT_COLOR);
-    private final Color4 onTouchColor = OsuSkin.get().getColor("MenuItemOnTouchColor", ON_TOUCH_COLOR);
+    private final UISprite sprite;
+    private final UIText title, author;
+    private final com.reco1l.verktex.data.Color4 defColor = ColorsKt.toVerktex(OsuSkin.get().getColor("MenuItemDefaultColor", DEFAULT_COLOR));
+    private final com.reco1l.verktex.data.Color4 onTouchColor = ColorsKt.toVerktex(OsuSkin.get().getColor("MenuItemOnTouchColor", ON_TOUCH_COLOR));
     private boolean moved = false;
     private float initialX = 0, initialY = 0;
     private BeatmapSetItem item;
-    private final float[] tmp = new float[2];
+
+    // Legacy position, in virtual units.
+    private float positionX = 0, positionY = 0;
+
+    private boolean textureInvalid = true;
+
+    // LegacyUnits.scale the sizes were last applied for.
+    private float appliedScale = 0;
 
     public MenuItemBackground() {
-        super(0, 0, ResourceManager.getInstance().getTexture(
-                "menu-button-background"), GlobalManager.getInstance().getEngine().getVertexBufferObjectManager());
+        sprite = new UISprite(null);
+        sprite.setScaleType(UISprite.ScaleType.Stretch);
 
-        final var vbo = GlobalManager.getInstance().getEngine().getVertexBufferObjectManager();
-        setAlpha(0.8f);
-        title = new Text(Utils.toRes(32), Utils.toRes(25),
-                ResourceManager.getInstance().getFont("font"), "", 255, vbo);
-        author = new Text(0, 0, ResourceManager.getInstance()
-                .getFont("font"), "", 100, vbo);
-        author.setPosition(Utils.toRes(150), Utils.toRes(60));
+        title = new UIText();
+        title.setWrapText(false);
+        author = new UIText();
+        author.setWrapText(false);
 
-        ComponentsKt.setColor4(this, defColor);
-        attachChild(title);
-        attachChild(author);
+        // The AndEngine setAlpha(0.8f) was replaced by the alpha of this colour.
+        sprite.setColor(defColor);
+        plusAssign(sprite);
+        plusAssign(title);
+        plusAssign(author);
     }
 
+    /** Height of the texture, in virtual units (legacy {@code getHeight()}). */
+    public float getVirtualHeight() {
+        updateTexture();
+        final GraphicsTexture.Region region = sprite.getTextureRegion();
+        return region != null ? region.getHeight() : 0;
+    }
 
-    @Override
     public void reset() {
-        ComponentsKt.setColor4(this, defColor);
+        sprite.setColor(defColor);
     }
 
     public void setItem(final BeatmapSetItem it) {
@@ -60,42 +85,102 @@ public class MenuItemBackground extends Sprite {
         author.setText(newAuthor);
     }
 
+    /** Legacy {@code setPosition}, in virtual units. */
+    public void setPosition(final float x, final float y) {
+        positionX = x;
+        positionY = y;
+        setX(DimensionKt.getPx(x * LegacyUnits.getScale()));
+        setY(DimensionKt.getPx(y * LegacyUnits.getScale()));
+    }
 
     @Override
-    public boolean onAreaTouched(final TouchEvent pSceneTouchEvent,
-                                 final float pTouchAreaLocalX, final float pTouchAreaLocalY) {
-        if (!isVisible()) {
+    public void onSkinChanged() {
+        textureInvalid = true;
+    }
+
+    private void updateTexture() {
+        if (!textureInvalid) {
+            return;
+        }
+        textureInvalid = false;
+
+        sprite.setTextureRegion(SkinTextures.get("menu-button-background"));
+        appliedScale = 0;
+    }
+
+    @Override
+    protected void onUpdate(final TickingClock clock) {
+        updateTexture();
+
+        final float scale = LegacyUnits.getScale();
+        if (appliedScale != scale) {
+            appliedScale = scale;
+
+            final GraphicsTexture.Region region = sprite.getTextureRegion();
+            setWidth(DimensionKt.getPx((region != null ? region.getWidth() : 0) * scale));
+            setHeight(DimensionKt.getPx((region != null ? region.getHeight() : 0) * scale));
+            sprite.setWidth(getWidth());
+            sprite.setHeight(getHeight());
+
+            setX(DimensionKt.getPx(positionX * scale));
+            setY(DimensionKt.getPx(positionY * scale));
+
+            title.setX(DimensionKt.getPx(Utils.toRes(32) * scale));
+            title.setY(DimensionKt.getPx(Utils.toRes(25) * scale));
+            author.setX(DimensionKt.getPx(Utils.toRes(150) * scale));
+            author.setY(DimensionKt.getPx(Utils.toRes(60) * scale));
+
+            final var fontSize = DimensionKt.getPx(LegacyUnits.fontSize("font") * scale);
+            title.setFontSize(fontSize);
+            author.setFontSize(fontSize);
+        }
+
+        super.onUpdate(clock);
+    }
+
+    @Override
+    public boolean onInputEvent(final InputEvent inputEvent) {
+        if (!(inputEvent instanceof PointerEvent event) || !isVisible()) {
+            return false;
+        }
+
+        // AndEngine only reported touches inside the touch area.
+        if (!containsScenePoint(event.getX(), event.getY())) {
             return false;
         }
 
         // Since this entity is "scrolling", the local Y coordinate may stay the same as the position of the card also
         // moves. Using local coordinates here would cause scrolling cancellation below to not work as expected since
-        // the disposition stays the same regardless of scrolling distance.
-        float[] coords = convertLocalToSceneCoordinates(pTouchAreaLocalX, pTouchAreaLocalY, tmp);
-        float x = coords[0];
-        float y = coords[1];
+        // the disposition stays the same regardless of scrolling distance. The slop is in virtual units.
+        float x = event.getX() / LegacyUnits.getScale();
+        float y = event.getY() / LegacyUnits.getScale();
 
-        if (pSceneTouchEvent.isActionDown()) {
+        if (event.getAction() == PointerEvent.Action.Down) {
             moved = false;
-            ComponentsKt.setColor4(this, onTouchColor);
+            sprite.setColor(onTouchColor);
             if (item != null) {
-                item.stopScroll(getY() + pTouchAreaLocalY);
+                item.stopScroll(positionY + toLocalSpaceFromScene(event.getX(), event.getY()).getY() / LegacyUnits.getScale());
             }
             initialX = x;
             initialY = y;
             return true;
-        } else if (pSceneTouchEvent.isActionUp() && !moved) {
+        } else if (event.getAction() == PointerEvent.Action.Up && !moved) {
             ResourceManager.getInstance().getSound("menuclick").play();
-            ComponentsKt.setColor4(this, defColor);
+            sprite.setColor(defColor);
             if (item != null) {
                 item.select();
             }
             return true;
-        } else if ((pSceneTouchEvent.isActionOutside() || pSceneTouchEvent.isActionMove()) && !moved
+        } else if (event.getAction() == PointerEvent.Action.Move && !moved
                 && MathUtils.distance(initialX, initialY, x, y) > 50) {
-            ComponentsKt.setColor4(this, defColor);
+            sprite.setColor(defColor);
             moved = true;
         }
         return false;
+    }
+
+    @Override
+    public void cancelPress() {
+        sprite.setColor(defColor);
     }
 }

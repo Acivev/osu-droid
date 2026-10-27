@@ -5,6 +5,7 @@ import static com.osudroid.data.BeatmapsKt.BeatmapInfo;
 import android.animation.ValueAnimator;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.graphics.Bitmap;
 import android.util.Log;
 
 import com.edlplan.framework.easing.Easing;
@@ -13,16 +14,26 @@ import com.edlplan.ui.fragment.BeatmapPropertiesFragment;
 import com.edlplan.ui.fragment.ScoreMenuFragment;
 import com.osudroid.beatmaps.BeatmapCache;
 import com.osudroid.ui.v1.BeatmapAttributeDisplay;
+import com.osudroid.ui.verktex.IPressable;
+import com.osudroid.ui.verktex.ISkinnable;
+import com.osudroid.ui.verktex.LegacyUnits;
+import com.osudroid.ui.verktex.SkinTextures;
+import com.osudroid.ui.verktex.songmenu.LegacyPressTracker;
+import com.osudroid.ui.verktex.songmenu.ListScroller;
 import com.osudroid.utils.Execution;
-import com.reco1l.andengine.UIScene;
-import com.reco1l.andengine.container.UIContainer;
+import com.osudroid.verktex.bridge.Destination;
+import com.osudroid.verktex.bridge.EngineRouter;
+import com.osudroid.verktex.bridge.RoutedScene;
+import com.osudroid.verktex.bridge.VerktexBridge;
+import com.reco1l.verktex.ui.UIScene;
+import com.reco1l.verktex.ui.container.UIContainer;
 import com.reco1l.framework.EasingKt;
 import com.osudroid.multiplayer.api.RoomAPI;
 import com.osudroid.data.BeatmapInfo;
 import com.osudroid.data.BeatmapSetInfo;
 import com.osudroid.data.DatabaseManager;
-import com.reco1l.andengine.sprite.UIAnimatedSprite;
-import com.reco1l.andengine.sprite.UISprite;
+import com.osudroid.ui.verktex.songmenu.SkinButton;
+import com.reco1l.verktex.ui.UISprite;
 import com.osudroid.multiplayer.Multiplayer;
 
 import com.osudroid.ui.v2.modmenu.ModMenu;
@@ -37,21 +48,26 @@ import com.osudroid.mods.ModReplayV6;
 import com.osudroid.utils.LRUCache;
 import com.osudroid.utils.ModUtils;
 
+import com.reco1l.verktex.Verktex;
+import com.reco1l.verktex.android.AndroidTextureSource;
+import com.reco1l.verktex.data.Anchor;
+import com.reco1l.verktex.data.Color4;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.data.Vec2;
+import com.reco1l.verktex.data.Vec4;
+import com.reco1l.verktex.graphics.GraphicsRenderer;
+import com.reco1l.verktex.graphics.GraphicsTexture;
+import com.reco1l.verktex.input.InputEvent;
+import com.reco1l.verktex.input.KeyboardEvent;
+import com.reco1l.verktex.input.PointerEvent;
+import com.reco1l.verktex.texture.Textures;
+import com.reco1l.verktex.time.TickingClock;
+import com.reco1l.verktex.ui.UIComponent;
+import com.reco1l.verktex.ui.shape.UIBox;
+import com.reco1l.verktex.ui.text.UIText;
+
 import org.andengine.engine.Engine;
-import org.andengine.engine.handler.IUpdateHandler;
-import org.andengine.entity.Entity;
-import org.andengine.entity.primitive.Rectangle;
-import org.andengine.entity.scene.Scene;
-import org.andengine.entity.scene.ITouchArea;
-import org.andengine.entity.scene.background.Background;
-import org.andengine.entity.scene.background.SpriteBackground;
-import org.andengine.entity.sprite.Sprite;
-import org.andengine.entity.text.Text;
-import org.andengine.input.touch.TouchEvent;
-import org.andengine.opengl.font.Font;
-import org.andengine.opengl.texture.region.TextureRegion;
 import org.andengine.util.debug.Debug;
-import org.andengine.util.HorizontalAlign;
 import org.andengine.util.math.MathUtils;
 
 import java.io.File;
@@ -59,9 +75,11 @@ import java.io.IOException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 import java.util.concurrent.CancellationException;
+import java.util.function.Predicate;
 
 import org.jetbrains.annotations.Nullable;
 
+import kotlin.Unit;
 import kotlinx.coroutines.Job;
 import kotlinx.coroutines.JobKt;
 import ru.nsu.ccfit.zuev.audio.BassSoundProvider;
@@ -87,34 +105,34 @@ import ru.nsu.ccfit.zuev.osu.scoring.StatisticV2;
 import ru.nsu.ccfit.zuev.skins.OsuSkin;
 import ru.nsu.ccfit.zuev.skins.SkinLayout;
 
-public class SongMenu implements IUpdateHandler, MenuItemListener,
-        IScrollBarListener {
-    public UIScene scene;
-    public UIContainer frontLayer = new UIContainer();
+/**
+ * The song menu. Positions and sizes are the virtual units of the legacy menu, converted to window
+ * pixels in {@link #onPerformLayout}. Its state and tree are changed on the update thread only.
+ */
+public class SongMenu extends UIScene implements ISkinnable, RoutedScene, MenuItemListener {
+    private ListLayer frontLayer = new ListLayer();
     SortOrder sortOrder = SortOrder.Title;
     private Engine engine;
     public GameScene game;
     private ScoringScene scoreScene;
-    private float camY = 0;
-    private float velocityY;
+    private final ListScroller scroller = new ListScroller(Config.getRES_WIDTH(), Config.getRES_HEIGHT(), Utils::toRes);
     private Activity context;
-    private Entity backLayer = new Entity();
+    private ListLayer backLayer = new ListLayer();
     private ArrayList<BeatmapSetItem> items = new ArrayList<>();
     private BeatmapSetItem selectedItem = null;
-    private BeatmapInfo selectedBeatmap;
-    private Sprite bg = null;
+    // Read by the difficulty calculation job.
+    private volatile BeatmapInfo selectedBeatmap;
+    private UISprite bg = null;
     private String backgroundPath = "";
     private ScoreBoard board;
-    private Float touchY = null;
     private String filterText = "";
     private boolean favsOnly = false;
     @Nullable private List<String> limitC;
-    private float maxY = 100500;
-    private int pointerId = -1;
-    private float initalY = -1;
-    private float secPassed = 0, tapTime;
+    private float secPassed = 0;
     private ScrollBar scrollbar;
-    private boolean allowAutomaticPlaybackRestart = true;
+    // Written by the music loading job.
+    private volatile boolean allowAutomaticPlaybackRestart = true;
+    // Main thread only.
     private ValueAnimator musicVolumeAnimator;
 
     private Job calculationJob,
@@ -122,15 +140,15 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
                 backgroundLoadingJob,
                 mapStatusJob;
 
-    private Text
+    private UIText
             beatmapMetadataText,
             beatmapCreatorText,
             beatmapLengthText,
             beatmapHitObjectsText,
             beatmapDifficultyText;
 
-    private ITouchArea currentPressedButton;
     private UISprite scoringSwitcher = null;
+    private String scoringSwitcherTexture = "ranking_disabled";
     private SearchBarFragment searchBar = null;
     private GroupType groupType = GroupType.MapSet;
 
@@ -140,7 +158,39 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
     private final LinkedList<BeatmapSetItem> previousSelectedItems = new LinkedList<>();
     private final LRUCache<String, RankedStatus> mapStatuses = new LRUCache<>(50);
 
+    // Tree, rebuilt by load()
+    private UIContainer backgroundLayer = new UIContainer();
+    private UIBox backgroundBox = new UIBox();
+    private UISprite songSelectTop = null;
+    private UIText emptyText = null;
+
+    // LegacyUnits.scale and songselect-top region the empty text and the top banner were last sized for.
+    private float appliedScale = 0;
+    private GraphicsTexture.Region appliedTopRegion = null;
+    private OnlinePanel onlinePanel = null;
+
+    /** The shown background sprite, null while the background is a plain colour. */
+    private UISprite backgroundSprite = null;
+
+    /** Whether {@link #backgroundSprite} shows {@code menu-background}, which is looked up again after a skin change. */
+    private boolean isMenuBackground = false;
+
+    /** Key of the beatmap background the scene registered, unloaded once it is replaced. */
+    private String backgroundTextureKey = null;
+    private int backgroundGeneration = 0;
+
+    /** Decoded beatmap background and its path, handed to AndEngine by {@link #handOverBackground}. */
+    private Bitmap currentBackgroundBitmap = null;
+    private String handOverPath = null;
+
+    private boolean isLibraryEmpty = false;
+
+    // Virtual y of the five info texts, found on the update thread.
+    private final float[] infoTextY = new float[5];
+    private boolean texturesInvalid = false;
+
     public SongMenu() {
+        scroller.setMaxY(100500);
     }
 
     public static void stopMusicStatic() {
@@ -170,6 +220,8 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
 
     public void init(final Activity context, final Engine engine,
                      final GameScene pGame) {
+        VerktexBridge.checkUpdateThread();
+
         this.engine = engine;
         game = pGame;
         this.context = context;
@@ -185,22 +237,35 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
     }
 
     public void reload() {
-        frontLayer = new UIContainer();
-        backLayer = new Entity();
-        scene.unregisterUpdateHandler(this);
-        scene.setTouchAreaBindingOnActionDownEnabled(false);
+        VerktexBridge.checkUpdateThread();
+
         load();
-        GlobalManager.getInstance().getGameScene().setOldScene(scene);
+        GlobalManager.getInstance().getGameScene().setOldScene(new Destination.Verktex(this));
     }
 
     public synchronized void load() {
-        scene = new UIScene();
-        final var vbo = engine.getVertexBufferObjectManager();
-        // This is needed for UIScene to behave on par with regular Scene, otherwise we would have weird scenarios such
-        // as entities in the back layer having touch priority despite being rendered behind the front layer.
-        scene.setOnAreaTouchTraversalBackToFront();
-        camY = 0;
-        velocityY = 0;
+        Verktex.INSTANCE.withTreeLock(() -> {
+            loadTree();
+            return null;
+        });
+    }
+
+    private void loadTree() {
+        VerktexBridge.checkUpdateThread();
+
+        // The rows hold avatars, which clearing an ancestor does not unload.
+        if (board != null) {
+            board.release();
+        }
+        clearChildren();
+        if (backgroundTextureKey != null) {
+            Textures.INSTANCE.unload(backgroundTextureKey);
+        }
+        backgroundTextureKey = null;
+        bg = null;
+
+        scroller.setCamY(0);
+        scroller.setVelocityY(0);
         selectedItem = null;
         items = new ArrayList<>();
         selectedBeatmap = null;
@@ -208,136 +273,83 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         loadFilterFragment();
         updateMusicEffects();
 
-        scene.attachChild(backLayer);
-        scene.attachChild(frontLayer);
-        scene.registerTouchArea(frontLayer);
+        backgroundLayer = new UIContainer();
+        backgroundLayer.setWidth(DimensionKt.fill(1f));
+        backgroundLayer.setHeight(DimensionKt.fill(1f));
+        backgroundBox = new UIBox();
+        backgroundBox.setWidth(DimensionKt.fill(1f));
+        backgroundBox.setHeight(DimensionKt.fill(1f));
+        backgroundLayer.plusAssign(backgroundBox);
+        backgroundSprite = null;
 
-        final TextureRegion tex = ResourceManager.getInstance().getTexture("menu-background");
-        if (tex != null) {
-            float height = tex.getHeight();
-            height *= Config.getRES_WIDTH() / (float) tex.getWidth();
-            final Sprite bg = new Sprite(0, (Config.getRES_HEIGHT() - height) / 2,
-                    Config.getRES_WIDTH(), height, tex, vbo);
-            scene.setBackground(new SpriteBackground(bg));
+        // The legacy scene registered the online panel's touch area only outside multiplayer.
+        backLayer = new ListLayer();
+        frontLayer = new ListLayer(true, child -> child != onlinePanel || !Multiplayer.isMultiplayer);
+
+        plusAssign(backgroundLayer);
+        plusAssign(backLayer);
+        plusAssign(frontLayer);
+
+        if (SkinTextures.get("menu-background") != null) {
+            showMenuBackground();
         } else {
-            scene.setBackground(new Background(70 / 255f, 129 / 255f, 252 / 255f));
+            setBackgroundColor(70 / 255f, 129 / 255f, 252 / 255f);
         }
 
-        final Rectangle bgDimRect = new Rectangle(0, 0, Config.getRES_WIDTH(), Config.getRES_HEIGHT(), vbo);
-        bgDimRect.setColor(0, 0, 0, 0.2f);
-        backLayer.attachChild(bgDimRect);
+        final UIBox bgDimRect = new UIBox();
+        bgDimRect.setWidth(DimensionKt.getPx(Config.getRES_WIDTH() * LegacyUnits.getScale()));
+        bgDimRect.setHeight(DimensionKt.getPx(Config.getRES_HEIGHT() * LegacyUnits.getScale()));
+        bgDimRect.setBackgroundColor(Color4.Companion.getBlack());
+        bgDimRect.setAlpha(0.2f);
+        backLayer.plusAssign(bgDimRect);
 
-        board = new ScoreBoard(scene, backLayer, this);
+        board = new ScoreBoard(backLayer, this);
 
 //        float oy = 10;
         for (final BeatmapSetInfo i : LibraryManager.getLibrary()) {
             final BeatmapSetItem item = new BeatmapSetItem(this, i);
             items.add(item);
-            item.attachToScene(scene, backLayer);
+            item.attachTo(backLayer);
 //            oy += item.getHeight();
         }
         sortOrder = SortOrder.Title;
         sort();
 
+        scrollbar = null;
+        songSelectTop = null;
+        scoringSwitcher = null;
+        onlinePanel = null;
+        OnlineScoring.getInstance().setSongMenuPanel(null);
+        emptyText = null;
+        appliedScale = 0;
+        isLibraryEmpty = items.size() == 0;
+
         if (items.size() == 0) {
-            final Text text = new Text(0, 0, ResourceManager.getInstance()
-                    .getFont("CaptionFont"), "There are no songs in library, try using the beatmap downloader.",
-                    new org.andengine.entity.text.TextOptions(HorizontalAlign.CENTER), vbo);
-            text.setPosition(Config.getRES_WIDTH() / 2f - text.getWidth() / 2,
-                    Config.getRES_HEIGHT() / 2f - text.getHeight() / 2);
-            text.setScale(1.5f);
-            text.setColor(0, 0, 0);
-            scene.attachChild(text);
+            emptyText = new UIText();
+            emptyText.setText("There are no songs in library, try using the beatmap downloader.");
+            emptyText.setWrapText(false);
+            emptyText.setAlignment(Anchor.Center);
+            emptyText.setAnchor(Anchor.Center);
+            emptyText.setOrigin(Anchor.Center);
+            emptyText.setScale(1.5f);
+            emptyText.setColor(Color4.Companion.getBlack());
+            plusAssign(emptyText);
             return;
         }
 
-        scene.setOnSceneTouchListener((pScene, evt) -> {
-            if (evt.getX() < Config.getRES_WIDTH() / 5f * 2) {
-                return false;
-            }
-            switch (evt.getAction()) {
-                case (TouchEvent.ACTION_DOWN):
-                    velocityY = 0;
-                    touchY = evt.getY();
-                    pointerId = evt.getPointerID();
-                    tapTime = secPassed;
-                    initalY = touchY;
-                    break;
-                case (TouchEvent.ACTION_MOVE):
-                    if (pointerId != -1 && pointerId != evt.getPointerID()) {
-                        break;
-                    }
-                    if (initalY == -1) {
-                        velocityY = 0;
-                        touchY = evt.getY();
-                        initalY = touchY;
-                        tapTime = secPassed;
-                        pointerId = evt.getPointerID();
-                    }
-                    final float dy = evt.getY() - touchY;
+        scrollbar = new ScrollBar(this);
 
-                    camY -= dy;
-                    touchY = evt.getY();
-                    if (camY <= -Config.getRES_HEIGHT() / 2f) {
-                        camY = -Config.getRES_HEIGHT() / 2f;
-                        velocityY = 0;
-                    } else if (camY >= maxY) {
-                        camY = maxY;
-                        velocityY = 0;
-                    }
-
-                    // velocityY = -3f * dy;
-                    break;
-                default: {
-                    if (pointerId != -1 && pointerId != evt.getPointerID()) {
-                        break;
-                    }
-                    touchY = null;
-                    if (secPassed - tapTime < 0.001f || initalY == -1) {
-                        velocityY = 0;
-                    } else {
-                        velocityY = (initalY - evt.getY())
-                                / (secPassed - tapTime);
-                    }
-                    pointerId = -1;
-                    initalY = -1;
-
-                }
-                break;
-            }
-            return true;
-        });
-
-        scene.registerUpdateHandler(this);
-
-        scrollbar = new ScrollBar(scene);
-
-        final TextureRegion songSelectTopTexture = ResourceManager.getInstance().getTexture("songselect-top");
-        final Sprite songSelectTop = new Sprite(0, 0, songSelectTopTexture, vbo);
-        songSelectTop.setSize(songSelectTopTexture.getWidth() * songSelectTopTexture.getHeight() / 184f, 184);
-        songSelectTop.setPosition(-1640, songSelectTop.getY());
+        songSelectTop = new UISprite();
+        songSelectTop.setScaleType(UISprite.ScaleType.Stretch);
         songSelectTop.setAlpha(0.6f);
-        frontLayer.attachChild(songSelectTop);
+        frontLayer.plusAssign(songSelectTop);
 
-        beatmapMetadataText = new Text(Utils.toRes(70), Utils.toRes(2),
-                ResourceManager.getInstance().getFont("font"), "title", 1024, vbo);
-        frontLayer.attachChild(beatmapMetadataText);
-
-        beatmapCreatorText = new Text(Utils.toRes(70), beatmapMetadataText.getY() + beatmapMetadataText.getHeight() + Utils.toRes(2),
-                ResourceManager.getInstance().getFont("middleFont"), "mapper", 1024, vbo);
-        frontLayer.attachChild(beatmapCreatorText);
-
-        beatmapLengthText = new BeatmapStatisticToggleText(Utils.toRes(4), beatmapCreatorText.getY() + beatmapCreatorText.getHeight() + Utils.toRes(2),
-                ResourceManager.getInstance().getFont("middleFont"), "beatmapInfo", 1024, vbo);
-        frontLayer.attachChild(beatmapLengthText);
-
-        beatmapHitObjectsText = new BeatmapStatisticToggleText(Utils.toRes(4), beatmapLengthText.getY() + beatmapLengthText.getHeight() + Utils.toRes(2),
-                ResourceManager.getInstance().getFont("middleFont"), "beatmapInfo2", 1024, vbo);
-        frontLayer.attachChild(beatmapHitObjectsText);
-
-        beatmapDifficultyText = new BeatmapStatisticToggleText(Utils.toRes(4), beatmapHitObjectsText.getY() + beatmapHitObjectsText.getHeight() + Utils.toRes(2),
-                ResourceManager.getInstance().getFont("smallFont"), "dimensionInfo", 1024, vbo);
-        frontLayer.attachChild(beatmapDifficultyText);
+        beatmapMetadataText = infoText("title", new UIText());
+        beatmapCreatorText = infoText("mapper", new UIText());
+        beatmapLengthText = infoText("beatmapInfo", new BeatmapStatisticToggleText());
+        beatmapHitObjectsText = infoText("beatmapInfo2", new BeatmapStatisticToggleText());
+        beatmapDifficultyText = infoText("dimensionInfo", new BeatmapStatisticToggleText());
+        computeInfoTextY();
 
         var clickShortSound = ResourceManager.getInstance().getSound("click-short");
         var clickShortConfirmSound = ResourceManager.getInstance().getSound("click-short-confirm");
@@ -351,299 +363,186 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         SkinLayout layoutOptions = OsuSkin.get().getLayout("OptionsButton");
         SkinLayout layoutRandom = OsuSkin.get().getLayout("RandomButton");
 
-        var backButton = new UIAnimatedSprite("menu-back", true, OsuSkin.get().getAnimationFramerate()) {
-            boolean moved = false;
-            float dx = 0, dy = 0;
-            boolean scaleWhenHold = true;
+        var backButton = new SkinButton("menu-back", null, true);
+        backButton.setScaleWhenHold(true);
 
-            {
-                if (layoutBackButton != null) {
-                    scaleWhenHold = layoutBackButton.property.optBoolean("scaleWhenHold", true);
+        if (layoutBackButton != null) {
+            backButton.setScaleWhenHold(layoutBackButton.property.optBoolean("scaleWhenHold", true));
+        }
+
+        backButton.setScaleOrigin(Anchor.BottomLeft); // Bottom left corner
+        backButton.setOnPress(() -> {
+            BassSoundProvider playSnd = ResourceManager.getInstance().getSound("menuback");
+            if (playSnd != null) {
+                playSnd.play();
+            }
+            return Unit.INSTANCE;
+        });
+        backButton.setOnRelease(moved -> {
+            if (selectedBeatmap != null && !moved) {
+                backButton.setScale(1f);
+                back();
+            }
+            return Unit.INSTANCE;
+        });
+        backButton.setOnCancel(() -> {
+            backButton.setScale(1f);
+            return Unit.INSTANCE;
+        });
+
+        SkinButton modSelection = null;
+
+        if (!Multiplayer.isMultiplayer) {
+            modSelection = new SkinButton("selection-mods", "selection-mods-over", false);
+            modSelection.setOnRelease(moved -> {
+                if (!moved) {
+                    scroller.setVelocityY(0);
+                    if (clickShortConfirmSound != null) {
+                        clickShortConfirmSound.play();
+                    }
+                    ModMenu.INSTANCE.show();
+                }
+                return Unit.INSTANCE;
+            });
+            modSelection.setOnCancel(() -> {
+                if (clickShortSound != null) {
+                    clickShortSound.play();
+                }
+                return Unit.INSTANCE;
+            });
+        }
+
+        var optionSelection = new SkinButton("selection-options", "selection-options-over", false);
+        optionSelection.setOnRelease(moved -> {
+            if (!moved) {
+                scroller.setVelocityY(0);
+                if (clickShortConfirmSound != null) {
+                    clickShortConfirmSound.play();
                 }
 
-                setScaleCenter(0f, 1f); // Bottom left corner
-                setSize(getWidth(), getHeight());
+                searchBar.loadConfig(context);
+                searchBar.showMenu(SongMenu.this);
+            }
+            return Unit.INSTANCE;
+        });
+        optionSelection.setOnCancel(() -> {
+            if (clickShortSound != null) {
+                clickShortSound.play();
+            }
+            return Unit.INSTANCE;
+        });
+
+        var randomMap = new SkinButton("selection-random", "selection-random-over", false);
+        randomMap.setOnPress(() -> {
+            if (previousSelectionTimer != null) {
+                previousSelectionTimer.cancel();
             }
 
-            @Override
-            public boolean onAreaTouched(final TouchEvent pSceneTouchEvent,
-                                         final float pTouchAreaLocalX, final float pTouchAreaLocalY) {
-                if (pSceneTouchEvent.isActionDown()) {
-                    if (currentPressedButton == null) {
-                        currentPressedButton = this;
-                        if (scaleWhenHold) setScale(1.25f);
-                        moved = false;
-                        dx = pTouchAreaLocalX;
-                        dy = pTouchAreaLocalY;
-                        BassSoundProvider playSnd = ResourceManager.getInstance().getSound("menuback");
-                        if (playSnd != null) {
-                            playSnd.play();
+            previousSelectionTimer = new Timer();
+            previousSelectionTimer.scheduleAtFixedRate(new TimerTask() {
+                @Override
+                public void run() {
+                    // The timer thread only posts each step, which runs on the update thread while the button is held.
+                    Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
+                        if (LegacyPressTracker.Companion.getCurrentPressedButton() != randomMap) {
+                            return null;
                         }
-                    }
-                    return true;
-                }
-                if (pSceneTouchEvent.isActionUp()) {
-                    if (currentPressedButton == this) {
-                        currentPressedButton = null;
 
-                        if (selectedBeatmap != null && !moved) {
-                            setScale(1f);
-                            back();
+                        BeatmapSetItem previousItem = previousSelectedItems.pollLast();
+                        while (previousItem != null && previousItem.isDeleted()) {
+                            previousItem = previousSelectedItems.pollLast();
                         }
-                    }
-                    return true;
-                }
-                if (pSceneTouchEvent.isActionOutside()
-                        || pSceneTouchEvent.isActionMove()
-                        && (MathUtils.distance(dx, dy, pTouchAreaLocalX,
-                        pTouchAreaLocalY) > 50) && currentPressedButton == this) {
-                    currentPressedButton = null;
-                    setScale(1f);
-                    moved = true;
-                }
-                return false;
-            }
-        };
 
-        UISprite modSelection = null;
+                        if (previousItem == null) {
+                            cancel();
+                            return null;
+                        }
 
-        if (!Multiplayer.isMultiplayer)
-            modSelection = new UISprite() {
-                boolean moved = false;
-                private float dx = 0, dy = 0;
+                        previousSelectionPerformed = true;
 
-                {
-                    setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-mods"));
-                    setSize(getWidth(), getHeight());
+                        if (clickShortConfirmSound != null) {
+                            clickShortConfirmSound.play();
+                        }
+
+                        previousItem.select();
+                        return null;
+                    }));
                 }
 
                 @Override
-                public boolean onAreaTouched(final TouchEvent pSceneTouchEvent,
-                                             final float pTouchAreaLocalX, final float pTouchAreaLocalY) {
-                    if (pSceneTouchEvent.isActionDown()) {
-                        if (currentPressedButton == null) {
-                            currentPressedButton = this;
-                            setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-mods-over"));
-                            moved = false;
-                            dx = pTouchAreaLocalX;
-                            dy = pTouchAreaLocalY;
-                        }
-                        return true;
-                    }
-                    if (pSceneTouchEvent.isActionUp()) {
-                        if (currentPressedButton == this) {
-                            currentPressedButton = null;
-
-                            if (!moved) {
-                                setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-mods"));
-                                velocityY = 0;
-                                if (clickShortConfirmSound != null) {
-                                    clickShortConfirmSound.play();
-                                }
-                                ModMenu.INSTANCE.show();
-                            }
-                        }
-                        return true;
-                    }
-                    if (pSceneTouchEvent.isActionOutside()
-                            || pSceneTouchEvent.isActionMove()
-                            && (MathUtils.distance(dx, dy, pTouchAreaLocalX,
-                            pTouchAreaLocalY) > 50) && currentPressedButton == this) {
-                        if (!moved && clickShortSound != null) {
-                            clickShortSound.play();
-                        }
-
-                        currentPressedButton = null;
-                        moved = true;
-                        setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-mods"));
-                    }
-                    return false;
+                public boolean cancel() {
+                    previousSelectionTimer = null;
+                    return super.cancel();
                 }
-            };
+            }, previousSelectionInterval, previousSelectionInterval);
 
-        var optionSelection = new UISprite() {
-            boolean moved = false;
-            private float dx = 0, dy = 0;
-
-            {
-                setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-options"));
-                setSize(getWidth(), getHeight());
+            previousSelectionPerformed = false;
+            return Unit.INSTANCE;
+        });
+        randomMap.setOnRelease(moved -> {
+            if (previousSelectionTimer != null) {
+                previousSelectionTimer.cancel();
             }
 
-            @Override
-            public boolean onAreaTouched(final TouchEvent pSceneTouchEvent,
-                                         final float pTouchAreaLocalX, final float pTouchAreaLocalY) {
-                if (pSceneTouchEvent.isActionDown()) {
-                    if (currentPressedButton == null) {
-                        currentPressedButton = this;
-                        setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-options-over"));
-                        moved = false;
-                        dx = pTouchAreaLocalX;
-                        dy = pTouchAreaLocalY;
-                    }
-                    return true;
+            if (!moved && !previousSelectionPerformed) {
+                scroller.setVelocityY(0);
+                if (items.size() <= 1) {
+                    return Unit.INSTANCE;
                 }
-                if (pSceneTouchEvent.isActionUp()) {
-                    if (currentPressedButton == this) {
-                        currentPressedButton = null;
-
-                        if (!moved) {
-                            setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-options"));
-                            velocityY = 0;
-                            if (clickShortConfirmSound != null) {
-                                clickShortConfirmSound.play();
-                            }
-
-                            searchBar.loadConfig(context);
-                            searchBar.showMenu(SongMenu.this);
-                        }
-                    }
-                    return true;
+                int rnd = MathUtils.random(0, items.size() - 1);
+                int index = 0;
+                while (rnd > 0) {
+                    rnd--;
+                    int oldIndex = index;
+                    do {
+                        index = (index + 1) % items.size();
+                        if (index == oldIndex)
+                            return Unit.INSTANCE;
+                    } while (!items.get(index).isVisible());
                 }
-                if (pSceneTouchEvent.isActionOutside()
-                        || pSceneTouchEvent.isActionMove()
-                        && (MathUtils.distance(dx, dy, pTouchAreaLocalX,
-                        pTouchAreaLocalY) > 50) && currentPressedButton == this) {
-                    if (!moved && clickShortSound != null) {
-                        clickShortSound.play();
-                    }
-
-                    currentPressedButton = null;
-                    moved = true;
-                    setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-options"));
+                if (!items.get(index).isVisible()) {
+                    return Unit.INSTANCE;
                 }
-                return false;
-            }
-        };
-
-        var randomMap = new UISprite() {
-            boolean moved = false;
-            private float dx = 0, dy = 0;
-
-            {
-                setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-random"));
-                setSize(getWidth(), getHeight());
+                if (selectedItem == items.get(index)) {
+                    return Unit.INSTANCE;
+                }
+                if (clickShortConfirmSound != null) {
+                    clickShortConfirmSound.play();
+                }
+                items.get(index).select();
             }
 
-            @Override
-            public boolean onAreaTouched(final TouchEvent pSceneTouchEvent,
-                                         final float pTouchAreaLocalX, final float pTouchAreaLocalY) {
-                if (pSceneTouchEvent.isActionDown()) {
-                    if (currentPressedButton == null) {
-                        currentPressedButton = this;
-
-                        setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-random-over"));
-                        moved = false;
-                        dx = pTouchAreaLocalX;
-                        dy = pTouchAreaLocalY;
-
-                        if (previousSelectionTimer != null) {
-                            previousSelectionTimer.cancel();
-                        }
-
-                        previousSelectionTimer = new Timer();
-                        previousSelectionTimer.scheduleAtFixedRate(new TimerTask() {
-                            @Override
-                            public void run() {
-                                BeatmapSetItem previousItem = previousSelectedItems.pollLast();
-                                while (previousItem != null && previousItem.isDeleted()) {
-                                    previousItem = previousSelectedItems.pollLast();
-                                }
-
-                                if (previousItem == null) {
-                                    cancel();
-                                    return;
-                                }
-
-                                previousSelectionPerformed = true;
-
-                                if (clickShortConfirmSound != null) {
-                                    clickShortConfirmSound.play();
-                                }
-
-                                previousItem.select();
-                            }
-
-                            @Override
-                            public boolean cancel() {
-                                previousSelectionTimer = null;
-                                return super.cancel();
-                            }
-                        }, previousSelectionInterval, previousSelectionInterval);
-
-                        previousSelectionPerformed = false;
-                    }
-                    return true;
-                }
-                if (pSceneTouchEvent.isActionUp()) {
-                    if (currentPressedButton == this) {
-                        currentPressedButton = null;
-
-                        setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-random"));
-
-                        if (previousSelectionTimer != null) {
-                            previousSelectionTimer.cancel();
-                        }
-
-                        if (!moved && !previousSelectionPerformed) {
-                            velocityY = 0;
-                            if (items.size() <= 1) {
-                                return true;
-                            }
-                            int rnd = MathUtils.random(0, items.size() - 1);
-                            int index = 0;
-                            while (rnd > 0) {
-                                rnd--;
-                                int oldIndex = index;
-                                do {
-                                    index = (index + 1) % items.size();
-                                    if (index == oldIndex)
-                                        return true;
-                                } while (!items.get(index).isVisible());
-                            }
-                            if (!items.get(index).isVisible()) {
-                                return true;
-                            }
-                            if (selectedItem == items.get(index)) {
-                                return true;
-                            }
-                            if (clickShortConfirmSound != null) {
-                                clickShortConfirmSound.play();
-                            }
-                            items.get(index).select();
-                        }
-
-                        previousSelectionPerformed = false;
-                    }
-
-                    return true;
-                }
-                if (pSceneTouchEvent.isActionOutside()
-                        || pSceneTouchEvent.isActionMove()
-                        && (MathUtils.distance(dx, dy, pTouchAreaLocalX,
-                        pTouchAreaLocalY) > 50) && currentPressedButton == this) {
-                    if (!moved && clickShortSound != null) {
-                        clickShortSound.play();
-                    }
-
-                    currentPressedButton = null;
-                    moved = true;
-                    setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("selection-random"));
-
-                    if (previousSelectionTimer != null) {
-                        previousSelectionTimer.cancel();
-                    }
-                }
-                return false;
+            previousSelectionPerformed = false;
+            return Unit.INSTANCE;
+        });
+        randomMap.setOnCancel(() -> {
+            if (clickShortSound != null) {
+                clickShortSound.play();
             }
-        };
+
+            if (previousSelectionTimer != null) {
+                previousSelectionTimer.cancel();
+            }
+            return Unit.INSTANCE;
+        });
+        randomMap.setOnPressDropped(() -> {
+            if (previousSelectionTimer != null) {
+                previousSelectionTimer.cancel();
+            }
+            return Unit.INSTANCE;
+        });
 
         float paddingBottom = Multiplayer.isConnected() ? Multiplayer.roomScene.getChat().getButtonHeight() : 0f;
 
-        if (modSelection != null)
+        // These grow from their top left corner, as the AndEngine sprites did.
+        if (modSelection != null) {
+            modSelection.setScaleOrigin(Anchor.TopLeft);
             modSelection.setScale(1.5f);
+        }
 
+        optionSelection.setScaleOrigin(Anchor.TopLeft);
         optionSelection.setScale(1.5f);
+        randomMap.setScaleOrigin(Anchor.TopLeft);
         randomMap.setScale(1.5f);
 
         var isNewLayout = OsuSkin.get().isUseNewLayout();
@@ -658,7 +557,7 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
             if (isNewLayout && layoutMods != null) {
                 layoutMods.apply(modSelection, backButton);
             } else {
-                modSelection.setPosition(backButton.getX() + backButton.getWidthScaled(), Config.getRES_HEIGHT() - modSelection.getHeightScaled() - paddingBottom);
+                modSelection.setPosition(backButton.getLegacyX() + backButton.getWidthScaled(), Config.getRES_HEIGHT() - modSelection.getHeightScaled() - paddingBottom);
             }
         }
 
@@ -666,50 +565,160 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
             layoutOptions.apply(optionSelection, modSelection != null ? modSelection : backButton);
         } else {
             var prevButton = modSelection != null ? modSelection : backButton;
-            optionSelection.setPosition(prevButton.getX() + prevButton.getWidthScaled(), Config.getRES_HEIGHT() - optionSelection.getHeightScaled() - paddingBottom);
+            optionSelection.setPosition(prevButton.getLegacyX() + prevButton.getWidthScaled(), Config.getRES_HEIGHT() - optionSelection.getHeightScaled() - paddingBottom);
         }
 
         if (isNewLayout && layoutRandom != null) {
             layoutRandom.apply(randomMap, optionSelection);
         } else {
-            randomMap.setPosition(optionSelection.getX() + optionSelection.getWidthScaled(), Config.getRES_HEIGHT() - randomMap.getHeightScaled() - paddingBottom);
+            randomMap.setPosition(optionSelection.getLegacyX() + optionSelection.getWidthScaled(), Config.getRES_HEIGHT() - randomMap.getHeightScaled() - paddingBottom);
         }
 
-        frontLayer.attachChild(backButton);
-        scene.registerTouchArea(backButton);
+        frontLayer.plusAssign(backButton);
 
         if (modSelection != null)
         {
-            frontLayer.attachChild(modSelection);
-            scene.registerTouchArea(modSelection);
+            frontLayer.plusAssign(modSelection);
         }
-        frontLayer.attachChild(optionSelection);
-        scene.registerTouchArea(optionSelection);
-        frontLayer.attachChild(randomMap);
-        scene.registerTouchArea(randomMap);
+        frontLayer.plusAssign(optionSelection);
+        frontLayer.plusAssign(randomMap);
 
-        if (OnlineScoring.getInstance().createSecondPanel() != null) {
-            OnlinePanel panel = OnlineScoring.getInstance().getSecondPanel();
-            panel.detachSelf();
-            panel.setPosition(randomMap.getX() + randomMap.getWidthScaled() + 20, Config.getRES_HEIGHT() - 110 - paddingBottom);
+        if (OnlineManager.getInstance().isStayOnline()) {
+            OnlinePanel panel = new OnlinePanel();
+            panel.setInfo();
+            String avatarURL = OnlineManager.getInstance().getAvatarURL();
+            panel.setProfile(OnlineScoring.getInstance().isAvatarLoaded() && avatarURL != null && !avatarURL.isEmpty() ? avatarURL : null);
+            OnlineScoring.getInstance().setSongMenuPanel(panel);
+            panel.setPosition(randomMap.getLegacyX() + randomMap.getWidthScaled() + 20, Config.getRES_HEIGHT() - 110 - paddingBottom);
             OnlineScoring.getInstance().loadProfileAssets(false);
-            frontLayer.attachChild(panel);
+            frontLayer.plusAssign(panel);
+            onlinePanel = panel;
 
             scoringSwitcher = new UISprite() {
                 @Override
-                public boolean onAreaTouched(TouchEvent pSceneTouchEvent, float pTouchAreaLocalX, float pTouchAreaLocalY) {
-                    if (!pSceneTouchEvent.isActionDown()) return false;
+                public boolean onInputEvent(InputEvent event) {
+                    if (!(event instanceof PointerEvent pointerEvent) || pointerEvent.getAction() != PointerEvent.Action.Down) return false;
                     toggleScoringSwitcher();
                     return true;
                 }
             };
-            scoringSwitcher.setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("ranking_disabled"));
-            scoringSwitcher.setPosition(10, 10);
-            if (!Multiplayer.isMultiplayer) {
-                scene.registerTouchArea(panel.rect);
+            scoringSwitcher.setScaleType(UISprite.ScaleType.Stretch);
+            scoringSwitcherTexture = "ranking_disabled";
+            frontLayer.plusAssign(scoringSwitcher);
+        }
+
+        loadTextures();
+    }
+
+    private UIText infoText(final String initialText, final UIText text) {
+        text.setText(initialText);
+        text.setWrapText(false);
+        text.setColor(Color4.Companion.getWhite());
+        frontLayer.plusAssign(text);
+        return text;
+    }
+
+    @Override
+    protected void onDraw(final GraphicsRenderer renderer) {
+        // UIScene.onDraw without the safe-area padding: the legacy scene covers the whole window.
+        onPerformLayout();
+
+        final Vec4 clip = renderer.getClipBounds();
+        for (final UIComponent child : getChildren()) {
+            if (child.intersectsSceneRect(clip.getX(), clip.getY(), clip.getZ(), clip.getW())) {
+                onDrawChild(renderer, child);
             }
-            scene.registerTouchArea(scoringSwitcher);
-            frontLayer.attachChild(scoringSwitcher);
+        }
+    }
+
+    @Override
+    public void onPerformLayout() {
+        final float resWidth = Config.getRES_WIDTH();
+        final float resHeight = Config.getRES_HEIGHT();
+        final float scale = LegacyUnits.getScale();
+
+        if (backgroundSprite != null) {
+            final GraphicsTexture.Region region = backgroundSprite.getTextureRegion();
+            if (region != null) {
+                final float height = region.getHeight() * (resWidth / region.getWidth());
+                backgroundSprite.setX(DimensionKt.getPx(0f));
+                backgroundSprite.setY(DimensionKt.getPx((resHeight - height) / 2 * scale));
+                setLegacySize(backgroundSprite, resWidth, height, resWidth, resHeight);
+            }
+        }
+
+        final boolean scaleChanged = appliedScale != scale;
+        appliedScale = scale;
+
+        if (scaleChanged && emptyText != null) {
+            emptyText.setFontSize(DimensionKt.getPx(LegacyUnits.fontSize("CaptionFont") * scale));
+        }
+
+        if (songSelectTop != null) {
+            final GraphicsTexture.Region region = songSelectTop.getTextureRegion();
+            if (scaleChanged || region != appliedTopRegion) {
+                appliedTopRegion = region;
+                setLegacySize(songSelectTop, (region != null ? region.getWidth() : 0) * (region != null ? region.getHeight() : 0) / 184f, 184f, resWidth, resHeight);
+                songSelectTop.setX(DimensionKt.getPx(-1640f * scale));
+            }
+        }
+
+        if (!isLibraryEmpty && beatmapDifficultyText != null) {
+            layoutInfoTexts();
+        }
+
+        if (scoringSwitcher != null) {
+            final GraphicsTexture.Region region = scoringSwitcher.getTextureRegion();
+            scoringSwitcher.setX(DimensionKt.getPx(10f * scale));
+            scoringSwitcher.setY(DimensionKt.getPx(10f * scale));
+            scoringSwitcher.setWidth(DimensionKt.getPx((region != null ? region.getWidth() : 0) * scale));
+            scoringSwitcher.setHeight(DimensionKt.getPx((region != null ? region.getHeight() : 0) * scale));
+        }
+
+        super.onPerformLayout();
+    }
+
+    /**
+     * Sizes a sprite in virtual units. A child is measured at most as large as the window, so a
+     * larger sprite is measured at a fraction of its size and stretched back by its scale.
+     */
+    private static void setLegacySize(final UISprite sprite, final float width, final float height, final float resWidth, final float resHeight) {
+        final float stretchX = Math.max(1f, (float) Math.ceil(width / resWidth));
+        final float stretchY = Math.max(1f, (float) Math.ceil(height / resHeight));
+        final float scale = LegacyUnits.getScale();
+        sprite.setScaleOrigin(Anchor.TopLeft);
+        sprite.setScaleX(stretchX);
+        sprite.setScaleY(stretchY);
+        sprite.setWidth(DimensionKt.getPx(width / stretchX * scale));
+        sprite.setHeight(DimensionKt.getPx(height / stretchY * scale));
+    }
+
+    private void layoutInfoTexts() {
+        placeInfoText(beatmapMetadataText, 70, infoTextY[0], "font");
+        placeInfoText(beatmapCreatorText, 70, infoTextY[1], "middleFont");
+        placeInfoText(beatmapLengthText, 4, infoTextY[2], "middleFont");
+        placeInfoText(beatmapHitObjectsText, 4, infoTextY[3], "middleFont");
+        placeInfoText(beatmapDifficultyText, 4, infoTextY[4], "smallFont");
+    }
+
+    private static void placeInfoText(final UIText text, final int x, final float y, final String fontName) {
+        final float scale = LegacyUnits.getScale();
+        text.setFontSize(DimensionKt.getPx(LegacyUnits.fontSize(fontName) * scale));
+        text.setX(DimensionKt.getPx(Utils.toRes(x) * scale));
+        text.setY(DimensionKt.getPx(y * scale));
+    }
+
+    /**
+     * The legacy texts were placed below each other from the line heights of their AndEngine fonts,
+     * which are kept so the texts start where they did.
+     */
+    private void computeInfoTextY() {
+        float y = Utils.toRes(2f);
+        final String[] fontNames = { "font", "middleFont", "middleFont", "middleFont", "smallFont" };
+
+        for (int i = 0; i < fontNames.length; i++) {
+            infoTextY[i] = y;
+            y += ResourceManager.getInstance().getFont(fontNames[i]).getLineHeight() + Utils.toRes(2f);
         }
     }
 
@@ -735,17 +744,70 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         updateScoringSwitcherStatus(true);
     }
 
-    public UIScene getScene() {
-        return scene;
+    public boolean isShown() {
+        return Verktex.INSTANCE.getScene() == this;
     }
     public SearchBarFragment getSearchBar() { return searchBar; }
 
     public void show() {
-        engine.setScene(scene);
+        EngineRouter.showVerktex(this);
+    }
+
+    @Override
+    public void onShown() {
+        // Skin changes only reach the shown Verktex scene, so the regions are looked up again in
+        // case the skin changed while this scene was not shown.
+        propagate(child -> {
+            if (child instanceof ISkinnable skinnable) {
+                skinnable.onSkinChanged();
+            }
+            return Unit.INSTANCE;
+        });
+
+        // A release that went to AndEngine while this scene was not shown left its press behind.
+        propagate(child -> {
+            if (child instanceof IPressable pressable) {
+                pressable.cancelPress();
+            }
+            return Unit.INSTANCE;
+        });
+
+        if (previousSelectionTimer != null) {
+            previousSelectionTimer.cancel();
+        }
+    }
+
+    @Override
+    public void onSkinChanged() {
+        texturesInvalid = true;
+    }
+
+    private void loadTextures() {
+        // Loaded internally by the legacy ResourceManager, a skin cannot override them.
+        if (songSelectTop != null) {
+            songSelectTop.setTextureRegion(SkinTextures.getAsset("songselect-top", "songselect-top.png"));
+        }
+        if (scoringSwitcher != null) {
+            scoringSwitcher.setTextureRegion(SkinTextures.getAsset(scoringSwitcherTexture, scoringSwitcherTexture + ".png"));
+        }
+
+        if (isMenuBackground && backgroundSprite != null) {
+            backgroundSprite.setTextureRegion(SkinTextures.get("menu-background"));
+        }
     }
 
     public void setFilter(final String filter, final SortOrder order,
                           final boolean favsOnly, @Nullable List<String> limit) {
+        Verktex.INSTANCE.withTreeLock(() -> {
+            setFilterLocked(filter, order, favsOnly, limit);
+            return null;
+        });
+    }
+
+    private void setFilterLocked(final String filter, final SortOrder order,
+                                 final boolean favsOnly, @Nullable List<String> limit) {
+        VerktexBridge.checkUpdateThread();
+
         String beatmapFilename = "";
         if (selectedBeatmap != null) {
             beatmapFilename = selectedBeatmap.getFilename();
@@ -763,8 +825,8 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         }
         limitC = limit;
         filterText = filter;
-        camY = 0;
-        velocityY = 0;
+        scroller.setCamY(0);
+        scroller.setVelocityY(0);
         final String lowerFilter = filter.toLowerCase();
         for (final BeatmapSetItem item : items) {
             item.applyFilter(lowerFilter, favsOnly, limit);
@@ -824,6 +886,26 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         });
     }
 
+    @Override
+    protected void onUpdate(final TickingClock clock) {
+        if (texturesInvalid) {
+            texturesInvalid = false;
+            loadTextures();
+        }
+
+        // The mod menu was a modal child scene in AndEngine, which paused this scene.
+        if (EngineRouter.getHasShownOverlay()) {
+            return;
+        }
+
+        // The legacy scene registered its update handler only with a non-empty library.
+        if (!isLibraryEmpty) {
+            onUpdate(clock.getElapsedTickTime());
+        }
+
+        super.onUpdate(clock);
+    }
+
     public void onUpdate(final float pSecondsElapsed) {
         secPassed += pSecondsElapsed;
         increaseBackgroundLuminance(pSecondsElapsed);
@@ -843,7 +925,7 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
             }
         }
 
-        float oy = -camY;
+        float oy = -scroller.getCamY();
         for (final BeatmapSetItem item : items) {
             final float cy = oy + Config.getRES_HEIGHT() / 2f + item.getHeight()
                     / 2;
@@ -853,30 +935,66 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
             item.setPos(ox, oy);
             oy += item.getHeight();
         }
-        oy += camY;
-        camY += velocityY * pSecondsElapsed;
-        maxY = oy - Config.getRES_HEIGHT() / 2f;
-        if (camY <= -Config.getRES_HEIGHT() / 2f && velocityY < 0
-                || camY >= maxY && velocityY > 0) {
-            camY -= velocityY * pSecondsElapsed;
-            velocityY = 0;
-        }
-        if (Math.abs(velocityY) > Utils.toRes(1000) * pSecondsElapsed) {
-            velocityY -= Utils.toRes(1000) * pSecondsElapsed
-                    * Math.signum(velocityY);
-        } else {
-            velocityY = 0;
-        }
+        oy += scroller.getCamY();
+        scroller.update(pSecondsElapsed, oy);
 
         expandSelectedItem(pSecondsElapsed);
 
-        updateScrollbar(camY + Config.getRES_HEIGHT() / 2f, oy);
+        updateScrollbar(scroller.getCamY() + Config.getRES_HEIGHT() / 2f, oy);
+    }
+
+    private void setBackgroundColor(final float red, final float green, final float blue) {
+        backgroundBox.setBackgroundColor(new Color4(red, green, blue, 1f));
+        if (backgroundSprite != null) {
+            backgroundSprite.removeSelf();
+        }
+        backgroundSprite = null;
+        isMenuBackground = false;
+    }
+
+    private void showMenuBackground() {
+        showBackgroundSprite(SkinTextures.get("menu-background"));
+        isMenuBackground = true;
+    }
+
+    private UISprite showBackgroundSprite(final GraphicsTexture.Region region) {
+        if (backgroundSprite != null) {
+            backgroundSprite.removeSelf();
+        }
+
+        final UISprite sprite = new UISprite(region);
+        sprite.setScaleType(UISprite.ScaleType.Stretch);
+        backgroundSprite = sprite;
+        isMenuBackground = false;
+        backgroundLayer.plusAssign(sprite);
+        return sprite;
     }
 
     public void increaseBackgroundLuminance(final float pSecondsElapsed) {
         if (bg != null && bg.getRed() < 1) {
             final float col = Math.min(1, bg.getRed() + pSecondsElapsed);
-            bg.setColor(col, col, col);
+            bg.setColor(new Color4(col, col, col, bg.getAlpha()));
+        }
+    }
+
+    /**
+     * Hands the shown beatmap background to AndEngine's {@code ::background}, as the legacy menu loaded it
+     * there when it was selected. Must be called on the update thread.
+     */
+    public void handOverBackground() {
+        VerktexBridge.checkUpdateThread();
+
+        final String path = handOverPath;
+        if (path == null) {
+            return;
+        }
+        final Bitmap bitmap = currentBackgroundBitmap;
+
+        // Without a kept bitmap AndEngine decodes the file itself, as the legacy menu did.
+        if (bitmap != null) {
+            ResourceManager.getInstance().loadBackground(path, bitmap);
+        } else {
+            ResourceManager.getInstance().loadBackground(path);
         }
     }
 
@@ -892,14 +1010,69 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
     }
 
     public void updateScrollbar(final float vy, final float maxy) {
+        if (scrollbar == null) {
+            return;
+        }
         scrollbar.setPosition(vy, maxy);
-        scrollbar.setVisible(Math.abs(velocityY) > Utils.toRes(500));
+        scrollbar.setVisible(scroller.isScrollbarVisible());
     }
 
-    public void reset() {
+    @Override
+    public boolean onInputEvent(final InputEvent event) {
+        // Keys arrive on the UI thread.
+        if (event instanceof KeyboardEvent keyboardEvent && keyboardEvent.getAction() == KeyboardEvent.Action.Down) {
+            switch (keyboardEvent.getKey()) {
+                case Back -> {
+                    Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
+                        back();
+                        return null;
+                    }));
+                    return true;
+                }
+                case Menu -> {
+                    Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
+                        stopScroll(0f);
+                        showPropertiesMenu(null);
+                        return null;
+                    }));
+                    return true;
+                }
+                default -> {
+                }
+            }
+        }
+
+        if (!(event instanceof PointerEvent pointerEvent)) {
+            return super.onInputEvent(event);
+        }
+
+        // The legacy scene asked its touch areas first: the front layer was registered before the cards.
+        if (frontLayer.onInputEvent(event) || backLayer.onInputEvent(event)) {
+            return true;
+        }
+
+        // Without songs the legacy scene had no touch listener.
+        if (isLibraryEmpty) {
+            return false;
+        }
+
+        final float x = pointerEvent.getX() / LegacyUnits.getScale();
+        if (!scroller.acceptsX(x)) {
+            return false;
+        }
+
+        final float y = pointerEvent.getY() / LegacyUnits.getScale();
+        switch (pointerEvent.getAction()) {
+            case Down -> scroller.onDown(pointerEvent.getPointerId(), y, secPassed);
+            case Move -> scroller.onMove(pointerEvent.getPointerId(), y, secPassed);
+            default -> scroller.onUp(pointerEvent.getPointerId(), y, secPassed);
+        }
+        return true;
     }
 
     public void select(final BeatmapSetItem item) {
+        VerktexBridge.checkUpdateThread();
+
         if (selectedItem != null) {
             selectedItem.deselect();
 
@@ -912,7 +1085,6 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         }
 
         selectedItem = item;
-        velocityY = 0;
         selectedBeatmap = null;
         float height = 0;
         for (int i = 0; i < items.size(); i++) {
@@ -921,12 +1093,20 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
             }
             height += items.get(i).getInitialHeight();
         }
-        camY = height - Config.getRES_HEIGHT() / 2f;
-        camY += item.getTotalHeight() / 2;
+        scroller.centerOn(height, item.getTotalHeight());
     }
 
     @SuppressLint("SimpleDateFormat")
     public synchronized void changeDimensionInfo(BeatmapInfo beatmapInfo) {
+        Verktex.INSTANCE.withTreeLock(() -> {
+            changeDimensionInfoLocked(beatmapInfo);
+            return null;
+        });
+    }
+
+    private void changeDimensionInfoLocked(BeatmapInfo beatmapInfo) {
+        VerktexBridge.checkUpdateThread();
+
         if (beatmapInfo == null) {
             return;
         }
@@ -950,14 +1130,14 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         float originalOD = beatmapInfo.getOverallDifficulty();
         float originalHP = beatmapInfo.getHpDrainRate();
 
-        beatmapDifficultyText.setColor(1, 1, 1);
-        beatmapLengthText.setColor(1, 1, 1);
+        beatmapDifficultyText.setColor(new Color4(1f, 1f, 1f, 1f));
+        beatmapLengthText.setColor(new Color4(1f, 1f, 1f, 1f));
 
         if (mods.contains(ModDifficultyAdjust.class)) {
             if (isPreciseMod) {
-                beatmapDifficultyText.setColor(1, 120 / 255f, 0);
+                beatmapDifficultyText.setColor(new Color4(1f, 120 / 255f, 0f, 1f));
             } else {
-                beatmapDifficultyText.setColor(1, 180 / 255f, 0);
+                beatmapDifficultyText.setColor(new Color4(1f, 180 / 255f, 0f, 1f));
             }
         } else if (
             (!Precision.almostEquals(originalCS, difficulty.gameplayCS) && originalCS < difficulty.gameplayCS) ||
@@ -966,9 +1146,9 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
             (!Precision.almostEquals(originalOD, difficulty.hp) && originalHP < difficulty.hp)
         ) {
             if (isPreciseMod) {
-                beatmapDifficultyText.setColor(214 / 255f, 45 / 255f, 45 / 255f);
+                beatmapDifficultyText.setColor(new Color4(214 / 255f, 45 / 255f, 45 / 255f, 1f));
             } else {
-                beatmapDifficultyText.setColor(205 / 255f, 85 / 255f, 85 / 255f);
+                beatmapDifficultyText.setColor(new Color4(205 / 255f, 85 / 255f, 85 / 255f, 1f));
             }
         } else if (
             (!Precision.almostEquals(originalCS, difficulty.gameplayCS) && originalCS > difficulty.gameplayCS) ||
@@ -977,18 +1157,18 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
             (!Precision.almostEquals(originalOD, difficulty.hp) && originalHP > difficulty.hp)
         ) {
             if (isPreciseMod) {
-                beatmapDifficultyText.setColor(158 / 255f, 108 / 255f, 65 / 255f);
+                beatmapDifficultyText.setColor(new Color4(158 / 255f, 108 / 255f, 65 / 255f, 1f));
             } else {
-                beatmapDifficultyText.setColor(46 / 255f, 139 / 255f, 87 / 255f);
+                beatmapDifficultyText.setColor(new Color4(46 / 255f, 139 / 255f, 87 / 255f, 1f));
             }
         } else if (isPreciseMod) {
-            beatmapDifficultyText.setColor(205 / 255f, 85 / 255f, 85 / 255f);
+            beatmapDifficultyText.setColor(new Color4(205 / 255f, 85 / 255f, 85 / 255f, 1f));
         }
 
         if (totalSpeedMultiplier > 1) {
-            beatmapLengthText.setColor(205 / 255f, 85 / 255f, 85 / 255f);
+            beatmapLengthText.setColor(new Color4(205 / 255f, 85 / 255f, 85 / 255f, 1f));
         } else if (totalSpeedMultiplier < 1) {
-            beatmapLengthText.setColor(46 / 255f, 139 / 255f, 87 / 255f);
+            beatmapLengthText.setColor(new Color4(46 / 255f, 139 / 255f, 87 / 255f, 1f));
         }
 
         int minBpm = Math.round(beatmapInfo.getBpmMin() * totalSpeedMultiplier);
@@ -1026,6 +1206,15 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
     }
 
     public synchronized void updateInfo(BeatmapInfo beatmapInfo) {
+        Verktex.INSTANCE.withTreeLock(() -> {
+            updateInfoLocked(beatmapInfo);
+            return null;
+        });
+    }
+
+    private void updateInfoLocked(BeatmapInfo beatmapInfo) {
+        VerktexBridge.checkUpdateThread();
+
         if (beatmapInfo == null) {
             return;
         }
@@ -1055,7 +1244,8 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
                 var beatmap = BeatmapCache.getBeatmap(beatmapInfo, true, mode, scope);
 
                 // Do not update if the beatmap has been changed.
-                if (selectedBeatmap != null && !beatmap.getMd5().equals(selectedBeatmap.getMD5())) {
+                var selected = selectedBeatmap;
+                if (selected != null && !beatmap.getMd5().equals(selected.getMD5())) {
                     return;
                 }
 
@@ -1063,7 +1253,12 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
                 beatmapInfo.apply(newInfo);
                 DatabaseManager.getBeatmapInfoTable().update(newInfo);
 
-                changeDimensionInfo(beatmapInfo);
+                Execution.updateThread(() -> {
+                    // A newer selection may have been made meanwhile.
+                    if (selectedBeatmap == beatmapInfo) {
+                        changeDimensionInfo(beatmapInfo);
+                    }
+                });
 
                 // Copy the mods to avoid concurrent modification
                 var mods = ModMenu.INSTANCE.getEnabledMods().deepCopy().values();
@@ -1073,16 +1268,32 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
                     case standard -> BeatmapDifficultyCalculator.calculateStandardDifficulty(beatmap, mods, scope);
                 };
 
-                setStarsDisplay((float) attributes.starRating);
+                setStarsDisplayIfSelected(beatmapInfo, (float) attributes.starRating);
             } catch (IOException | IllegalArgumentException e) {
                 Log.e("SongMenu", "Unable to calculate star rating", e);
-                setStarsDisplay(0);
+                setStarsDisplayIfSelected(beatmapInfo, 0);
+            }
+        });
+    }
+
+    private void setStarsDisplayIfSelected(final BeatmapInfo beatmapInfo, final float star) {
+        Execution.updateThread(() -> {
+            if (selectedBeatmap == beatmapInfo) {
+                setStarsDisplay(star);
             }
         });
     }
 
     @Override
     public void selectBeatmap(final BeatmapInfo beatmapInfo, boolean reloadBG) {
+        Verktex.INSTANCE.withTreeLock(() -> {
+            selectBeatmapLocked(beatmapInfo, reloadBG);
+            return null;
+        });
+    }
+
+    private void selectBeatmapLocked(final BeatmapInfo beatmapInfo, boolean reloadBG) {
+        VerktexBridge.checkUpdateThread();
 
         // Playing corresponding audio for the selected track.
         var selectedAudio = selectedBeatmap != null ? selectedBeatmap : GlobalManager.getInstance().getSelectedBeatmap();
@@ -1093,11 +1304,14 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
 
         if (selectedBeatmap != null && selectedBeatmap.getFilename().equals(beatmapInfo.getFilename())) {
             // Do not initiate gameplay if the player is still holding one of the menu buttons.
-            if (currentPressedButton != null) {
+            if (LegacyPressTracker.Companion.getCurrentPressedButton() != null) {
                 return;
             }
 
-            ResourceManager.getInstance().getSound("menuhit").play();
+            BassSoundProvider menuHitSound = ResourceManager.getInstance().getSound("menuhit");
+            if (menuHitSound != null) {
+                menuHitSound.play();
+            }
             cancelCalculationJobs();
             cancelMapStatusLoadingJob();
 
@@ -1116,6 +1330,7 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
                 }
             });
 
+            handOverBackground();
             game.startGame(beatmapInfo, null, ModMenu.INSTANCE.getEnabledMods());
             return;
         }
@@ -1132,74 +1347,101 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         }
         backgroundPath = beatmapInfo.getBackgroundPath();
         bg = null;
-        scene.setBackground(new Background(0, 0, 0));
+        setBackgroundColor(0, 0, 0);
 
         if (backgroundLoadingJob != null) {
             backgroundLoadingJob.cancel(new CancellationException("Background loading has been cancelled."));
         }
 
+        final int generation = ++backgroundGeneration;
+        final String path = backgroundPath;
+        final boolean fromFile = !Config.isSafeBeatmapBg() && beatmapInfo.getBackgroundFilename() != null;
+
         backgroundLoadingJob = Execution.async(scope -> {
             JobKt.ensureActive(scope.getCoroutineContext());
 
-            TextureRegion tex = Config.isSafeBeatmapBg() || beatmapInfo.getBackgroundFilename() == null?
-                    ResourceManager.getInstance().getTexture("menu-background") :
-                    ResourceManager.getInstance().loadBackground(backgroundPath);
-
-            if (tex != null) {
-                float height = tex.getHeight();
-                height *= Config.getRES_WIDTH()
-                        / (float) tex.getWidth();
-                bg = new Sprite(0,
-                        (Config.getRES_HEIGHT() - height) / 2, Config
-                        .getRES_WIDTH(), height, tex, GlobalManager.getInstance().getEngine().getVertexBufferObjectManager());
-                bg.setColor(0, 0, 0);
-            }
+            final GraphicsTexture.Source source = fromFile ? SkinTextures.decode(new File(path)) : null;
 
             JobKt.ensureActive(scope.getCoroutineContext());
 
-            if (bg == null) {
-                final TextureRegion tex1 = ResourceManager
-                        .getInstance().getTexture("menu-background");
-                float height = tex1.getHeight();
-                height *= Config.getRES_WIDTH()
-                        / (float) tex1.getWidth();
-                bg = new Sprite(
-                        0,
-                        (Config.getRES_HEIGHT() - height) / 2,
-                        Config.getRES_WIDTH(), height, tex1, GlobalManager.getInstance().getEngine().getVertexBufferObjectManager());
-                backgroundPath = "";
-            }
-
-            JobKt.ensureActive(scope.getCoroutineContext());
-
-            Execution.updateThread(() -> {
-                if (selectedBeatmap != null && !selectedBeatmap.getFilename().equals(beatmapInfo.getFilename())) {
-                    return;
+            Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
+                // A newer selection started loading its background meanwhile.
+                if (generation != backgroundGeneration) {
+                    return null;
                 }
 
-                scene.setBackground(new SpriteBackground(bg));
-            });
+                if (selectedBeatmap != null && !selectedBeatmap.getFilename().equals(beatmapInfo.getFilename())) {
+                    return null;
+                }
+
+                onBackgroundLoaded(source, fromFile, path, generation);
+                return null;
+            }));
         });
     }
 
-    public void stopScroll(final float y) {
-        velocityY = 0;
-        touchY = y;
-        initalY = -1;
-    }
+    private void onBackgroundLoaded(@Nullable final GraphicsTexture.Source source, final boolean fromFile,
+                                    final String path, final int generation) {
+        final String key = "::background#" + generation;
 
-    public void updateScore() {
-        board.init(selectedBeatmap);
-        if (selectedItem != null) {
-            selectedItem.updateMarks();
+        GraphicsTexture.Region fileRegion = null;
+        if (source != null) {
+            try {
+                fileRegion = SkinTextures.register(key, source, true);
+            } catch (Exception e) {
+                fileRegion = null;
+            }
+        }
+
+        // The legacy loadBackground fell back to menu-background when the file did not decode.
+        final GraphicsTexture.Region region = fileRegion != null ? fileRegion : SkinTextures.get("menu-background");
+
+        if (fromFile) {
+            handOverPath = path;
+            // A decode Verktex could not register (above maxTextureSize) is not kept alive for the hand-over.
+            currentBackgroundBitmap = fileRegion != null && source instanceof AndroidTextureSource androidSource ? androidSource.getBitmap() : null;
+        }
+
+        if (region == null) {
+            backgroundPath = "";
+            return;
+        }
+
+        final String previousKey = backgroundTextureKey;
+        backgroundTextureKey = fileRegion != null ? key : null;
+
+        final UISprite sprite = showBackgroundSprite(region);
+        sprite.setColor(new Color4(0f, 0f, 0f, 1f));
+        bg = sprite;
+
+        if (previousKey != null) {
+            Textures.INSTANCE.unload(previousKey);
         }
     }
 
+    public void stopScroll(final float y) {
+        scroller.stopScroll(y);
+    }
+
+    public void updateScore() {
+        VerktexBridge.checkUpdateThread();
+
+        Verktex.INSTANCE.withTreeLock(() -> {
+            board.init(selectedBeatmap);
+            if (selectedItem != null) {
+                selectedItem.updateMarks();
+            }
+            return null;
+        });
+    }
+
     public void openScore(final int id, boolean showOnline, final String playerName) {
+        VerktexBridge.checkUpdateThread();
+
         var difficulty = selectedBeatmap.getBeatmapDifficulty();
 
         if (showOnline) {
-            engine.setScene(new LoadingScreen().getScene());
+            LoadingScreen.show();
             ToastLogger.showText(com.osudroid.resources.R.string.online_loadrecord, false);
 
             cancelCalculationJobs();
@@ -1218,11 +1460,20 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
                     StatisticV2 stat = new StatisticV2(params, difficulty);
 
                     stat.setPlayerName(playerName);
-                    scoreScene.load(stat, null, null, hasReplay ? OnlineManager.getReplayURL(id) : null, null, selectedBeatmap);
-                    engine.setScene(scoreScene.getScene());
+                    Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
+                        try {
+                            handOverBackground();
+                            scoreScene.load(stat, null, null, hasReplay ? OnlineManager.getReplayURL(id) : null, null, selectedBeatmap);
+                            engine.setScene(scoreScene.getScene());
+                        } catch (Exception e) {
+                            Debug.e("Cannot load play info: " + e.getMessage(), e);
+                            show();
+                        }
+                        return null;
+                    }));
                 } catch (Exception e) {
                     Debug.e("Cannot load play info: " + e.getMessage(), e);
-                    engine.setScene(scene);
+                    Execution.updateThread(this::show);
                 }
             });
             return;
@@ -1269,6 +1520,7 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
 
         var replayFile = new File(Config.getScorePath() + stat.getReplayFilename());
 
+        handOverBackground();
         scoreScene.load(stat, null, null, replayFile.exists() ? replayFile.getAbsolutePath() : null, null, selectedBeatmap);
 
         if (scoreNeedsUpdate) {
@@ -1285,8 +1537,8 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
 
 
     public void onScroll(final float where) {
-        velocityY = 0;
-        camY = where - Config.getRES_HEIGHT() / 2f;
+        scroller.setVelocityY(0);
+        scroller.setCamY(where - Config.getRES_HEIGHT() / 2f);
     }
 
     public void back() {
@@ -1294,12 +1546,15 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
     }
 
     private void back(boolean resetMultiplayerBeatmap) {
+        VerktexBridge.checkUpdateThread();
 
         if (Multiplayer.isMultiplayer) {
             if (resetMultiplayerBeatmap) {
                 resetMultiplayerRoomBeatmap();
             }
 
+            // The room shows the background AndEngine holds.
+            handOverBackground();
             Multiplayer.roomScene.show();
             return;
         }
@@ -1364,16 +1619,21 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
     }
 
     public void reloadScoreboard() {
-        if (GlobalManager.getInstance().getEngine().getScene() != scene) {
+        VerktexBridge.checkUpdateThread();
+
+        if (!isShown()) {
             return;
         }
 
-        board.init(selectedBeatmap);
+        Verktex.INSTANCE.withTreeLock(() -> {
+            board.init(selectedBeatmap);
+            return null;
+        });
     }
 
     public void setY(final float y) {
-        velocityY = 0;
-        camY = y;
+        scroller.setVelocityY(0);
+        scroller.setCamY(y);
     }
 
     public void startMusicVolumeAnimation() {
@@ -1527,19 +1787,24 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
     }
 
     public void select() {
-        if (GlobalManager.getInstance().getSelectedBeatmap() != null) {
-            BeatmapInfo beatmapInfo = GlobalManager.getInstance().getSelectedBeatmap();
+        Verktex.INSTANCE.withTreeLock(() -> {
+            VerktexBridge.checkUpdateThread();
 
-            var i = items.size() - 1;
-            while (i >= 0) {
-                var item = items.get(i);
-                if (item.getBeatmapSetInfo().getDirectory().equals(beatmapInfo.getSetDirectory())) {
-                    item.select();
-                    break;
+            if (GlobalManager.getInstance().getSelectedBeatmap() != null) {
+                BeatmapInfo beatmapInfo = GlobalManager.getInstance().getSelectedBeatmap();
+
+                var i = items.size() - 1;
+                while (i >= 0) {
+                    var item = items.get(i);
+                    if (item.getBeatmapSetInfo().getDirectory().equals(beatmapInfo.getSetDirectory())) {
+                        item.select();
+                        break;
+                    }
+                    --i;
                 }
-                --i;
             }
-        }
+            return null;
+        });
     }
 
     public BeatmapInfo getSelectedBeatmap() {
@@ -1576,7 +1841,7 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
                     for (final BeatmapSetInfo i : LibraryManager.getLibrary()) {
                         final BeatmapSetItem item = new BeatmapSetItem(this, i);
                         items.add(item);
-                        item.attachToScene(scene, backLayer);
+                        item.attachTo(backLayer);
 //                        oy += item.getHeight();
                     }
                     break;
@@ -1585,7 +1850,7 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
                         for (int j = 0; j < i.getCount(); j++) {
                             final BeatmapSetItem item = new BeatmapSetItem(this, i, j);
                             items.add(item);
-                            item.attachToScene(scene, backLayer);
+                            item.attachTo(backLayer);
 //                            oy += item.getHeight();
                         }
                     }
@@ -1602,17 +1867,21 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
     }
 
     public void setStarsDisplay(float star) {
-        String str = beatmapDifficultyText.getText().toString();
-        String[] strs = str.split("Stars: ");
-        if (strs.length == 2) {
-            beatmapDifficultyText.setText(strs[0] + "Stars: " + GameHelper.Round(star, 2));
-        }
+        Verktex.INSTANCE.withTreeLock(() -> {
+            VerktexBridge.checkUpdateThread();
+
+            String str = beatmapDifficultyText.getText();
+            String[] strs = str.split("Stars: ");
+            if (strs.length == 2) {
+                beatmapDifficultyText.setText(strs[0] + "Stars: " + GameHelper.Round(star, 2));
+            }
+            return null;
+        });
     }
 
     private void reSelectItem(String beatmapFilename) {
         if (!beatmapFilename.isEmpty()) {
-            if (selectedBeatmap.getFilename().equals(beatmapFilename) && items.size() > 1 && selectedItem != null && selectedItem.isVisible()) {
-                velocityY = 0;
+            if (selectedBeatmap != null && selectedBeatmap.getFilename().equals(beatmapFilename) && items.size() > 1 && selectedItem != null && selectedItem.isVisible()) {
                 float height = 0;
                 for (int i = 0; i < items.size(); i++) {
                     if (items.get(i) == selectedItem) {
@@ -1620,8 +1889,8 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
                     }
                     height += items.get(i).getInitialHeight();
                 }
-                camY = height - Config.getRES_HEIGHT() / 2f;
-                camY += items.get(0).getTotalHeight() / 2;
+                // The legacy centred on the total height of the first item, not of the selected one.
+                scroller.centerOn(height, items.get(0).getTotalHeight());
                 return;
             }
             for (int i = items.size() - 1; i >= 0; i--) {
@@ -1653,13 +1922,22 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         }
     }
 
+    private void setScoringSwitcherTexture(final String name) {
+        if (scoringSwitcher == null) {
+            return;
+        }
+        scoringSwitcherTexture = name;
+        scoringSwitcher.setTextureRegion(SkinTextures.getAsset(name, name + ".png"));
+    }
+
     private void updateScoringSwitcherStatus(boolean forceUpdate) {
         if (scoringSwitcher == null) {
             return;
         }
 
+        var selectedBeatmap = this.selectedBeatmap;
         if (selectedBeatmap == null || !board.isShowOnlineScores()) {
-            scoringSwitcher.setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded("ranking_disabled"));
+            setScoringSwitcherTexture("ranking_disabled");
             return;
         }
 
@@ -1667,13 +1945,13 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         var cachedStatus = mapStatuses.get(md5);
 
         if (!forceUpdate && cachedStatus != null) {
-            scoringSwitcher.setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded(
+            setScoringSwitcherTexture(
                 "selection-" + switch (cachedStatus) {
                     case ranked, approved, loved -> cachedStatus.name().toLowerCase();
                     case qualified -> "approved";
                     default -> "question";
                 }
-            ));
+            );
             return;
         }
 
@@ -1682,38 +1960,48 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
             case PP -> "pp";
         };
 
-        scoringSwitcher.setTextureRegion(ResourceManager.getInstance().getTexture(textureName));
+        setScoringSwitcherTexture(textureName);
 
         cancelMapStatusLoadingJob();
 
         mapStatusJob = Execution.async(scope -> {
+            var job = scope.getCoroutineContext().get(Job.Key);
+
             try {
                 JobKt.ensureActive(scope.getCoroutineContext());
 
                 var status = OnlineManager.getInstance().getBeatmapStatus(md5);
 
-                if (!board.isShowOnlineScores() || status == null || scoringSwitcher == null || selectedBeatmap == null || !selectedBeatmap.getMD5().equals(md5)) {
-                    return;
-                }
-
-                mapStatuses.put(md5, status);
-
                 JobKt.ensureActive(scope.getCoroutineContext());
 
-                scoringSwitcher.setTextureRegion(ResourceManager.getInstance().getTextureIfLoaded(
-                    "selection-" + switch (status) {
-                        case ranked, approved, loved -> status.name().toLowerCase();
-                        default -> "question";
+                Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
+                    var selected = this.selectedBeatmap;
+
+                    if (job != null && job.isCancelled() || !board.isShowOnlineScores() || status == null || scoringSwitcher == null || selected == null || selected != selectedBeatmap || !selected.getMD5().equals(md5)) {
+                        return null;
                     }
-                ));
+
+                    mapStatuses.put(md5, status);
+
+                    setScoringSwitcherTexture(
+                        "selection-" + switch (status) {
+                            case ranked, approved, loved -> status.name().toLowerCase();
+                            default -> "question";
+                        }
+                    );
+                    return null;
+                }));
             } catch (OnlineManagerException e) {
                 Debug.e("Cannot get beatmap status: " + e.getMessage(), e);
 
                 JobKt.ensureActive(scope.getCoroutineContext());
 
-                if (scoringSwitcher != null) {
-                    scoringSwitcher.setTextureRegion(ResourceManager.getInstance().getTexture(textureName));
-                }
+                Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
+                    if ((job == null || !job.isCancelled()) && this.selectedBeatmap == selectedBeatmap) {
+                        setScoringSwitcherTexture(textureName);
+                    }
+                    return null;
+                }));
             }
         });
     }
@@ -1723,11 +2011,11 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
      */
     public void onDifficultyCalculationEnd() {
 
-        if (GlobalManager.getInstance().getEngine().getScene() != scene) {
+        if (!isShown()) {
             return;
         }
 
-        Execution.updateThread(() -> {
+        Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
 
             // If the sort order is related to difficulty, we need to reload the menu items.
             if (sortOrder == SortOrder.DroidStars || sortOrder == SortOrder.StandardStars) {
@@ -1738,7 +2026,8 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
                 reloadCurrentSelection();
             }
 
-        });
+            return null;
+        }));
     }
 
 
@@ -1757,54 +2046,166 @@ public class SongMenu implements IUpdateHandler, MenuItemListener,
         MapSet, SingleDiff
     }
 
-    private class BeatmapStatisticToggleText extends Text {
-        public BeatmapStatisticToggleText(float pX, float pY, Font pFont, String pText, int pCharactersMaximum, org.andengine.opengl.vbo.VertexBufferObjectManager pVBO) {
-            super(pX, pY, pFont, pText, pCharactersMaximum, pVBO);
-        }
-
-        private boolean moved = false;
-        private float dx = 0, dy = 0;
+    /**
+     * One of the three lower info texts. A tap opens the beatmap's attributes adjusted for the
+     * enabled mods. Shares the buttons' press guard.
+     */
+    private class BeatmapStatisticToggleText extends UIText implements IPressable {
+        private final LegacyPressTracker press = new LegacyPressTracker(this);
 
         @Override
-        public boolean onAreaTouched(TouchEvent pSceneTouchEvent, float pTouchAreaLocalX, float pTouchAreaLocalY) {
-            if (pSceneTouchEvent.isActionDown()) {
-                if (currentPressedButton == null) {
-                    currentPressedButton = this;
-                    moved = false;
-                    dx = pTouchAreaLocalX;
-                    dy = pTouchAreaLocalY;
-                }
+        public boolean onInputEvent(final InputEvent inputEvent) {
+            if (!(inputEvent instanceof PointerEvent pSceneTouchEvent)) {
+                return false;
+            }
+
+            // Local coordinates in virtual units, the slop is in virtual units.
+            final Vec2 local = toLocalSpaceFromScene(pSceneTouchEvent.getX(), pSceneTouchEvent.getY());
+            final float pTouchAreaLocalX = local.getX() / LegacyUnits.getScale();
+            final float pTouchAreaLocalY = local.getY() / LegacyUnits.getScale();
+
+            if (pSceneTouchEvent.getAction() == PointerEvent.Action.Down) {
+                press.down(pTouchAreaLocalX, pTouchAreaLocalY);
                 return true;
             }
 
-            if (pSceneTouchEvent.isActionUp()) {
-                if (currentPressedButton == this) {
-                    currentPressedButton = null;
+            if (pSceneTouchEvent.getAction() == PointerEvent.Action.Up) {
+                if (press.up()) {
                     var selectedBeatmap = SongMenu.this.selectedBeatmap;
 
-                    if (selectedBeatmap != null && !moved) {
+                    if (selectedBeatmap != null && !press.getMoved()) {
                         var mods = ModMenu.INSTANCE.getEnabledMods();
-                        new BeatmapAttributeDisplay(selectedBeatmap.getBeatmapDifficulty(), mods.values()).show();
+                        Verktex.INSTANCE.withTreeLock(() -> {
+                            new BeatmapAttributeDisplay(selectedBeatmap.getBeatmapDifficulty(), mods.values()).show();
+                            return null;
+                        });
                     }
                 }
                 return true;
             }
 
-            if (pSceneTouchEvent.isActionOutside()
-                    || pSceneTouchEvent.isActionMove()
-                    && (MathUtils.distance(dx, dy, pTouchAreaLocalX,
-                    pTouchAreaLocalY) > 50) && currentPressedButton == this) {
-                currentPressedButton = null;
-                moved = true;
+            if (pSceneTouchEvent.getAction() == PointerEvent.Action.Move) {
+                press.move(pTouchAreaLocalX, pTouchAreaLocalY);
+                return false;
             }
 
+            // Cancel events are dispatched to every component, so they are not consumed.
+            press.cancel();
             return false;
         }
 
         @Override
-        public void onAttached() {
-            scene.registerTouchArea(this);
-            super.onAttached();
+        public void cancelPress() {
+            press.cancel();
+        }
+    }
+
+    /**
+     * A full-window layer that offers events to its children. Children {@code accepts} rejects are skipped.
+     * <p>
+     * The list layer (the default) stands for the cards, each registered with the AndEngine scene,
+     * whose back to front traversal asked them in registration order: children are asked in attach
+     * order, those given to {@link #moveToDispatchEnd} after all others in the order they were given.
+     * <p>
+     * A {@code container} layer stands for the legacy front layer, a reco1l {@code UIContainer} registered as one
+     * touch area. It asked its children last attached first, hit tests every event, and the child that
+     * consumed a press gets every event of that pointer until it is lifted, the layer consuming them all.
+     */
+    static class ListLayer extends UIContainer implements IPressable {
+        private final boolean container;
+        private final Predicate<UIComponent> accepts;
+
+        private final LinkedHashSet<UIComponent> dispatchEnd = new LinkedHashSet<>();
+        private final HashMap<Integer, UIComponent> bindings = new HashMap<>();
+
+        ListLayer() {
+            this(false, child -> true);
+        }
+
+        ListLayer(final boolean container, final Predicate<UIComponent> accepts) {
+            this.container = container;
+            this.accepts = accepts;
+
+            setWidth(DimensionKt.fill(1f));
+            setHeight(DimensionKt.fill(1f));
+        }
+
+        /** Asks {@code child} after every other child, as an AndEngine touch area registered again. */
+        void moveToDispatchEnd(final UIComponent child) {
+            dispatchEnd.remove(child);
+            dispatchEnd.add(child);
+        }
+
+        @Override
+        public boolean onInputEvent(final InputEvent event) {
+            if (container && event instanceof PointerEvent pointerEvent) {
+                final UIComponent bound = bindings.get(pointerEvent.getPointerId());
+
+                if (bound != null) {
+                    if (pointerEvent.getAction() == PointerEvent.Action.Up || pointerEvent.getAction() == PointerEvent.Action.Unknown) {
+                        bindings.remove(pointerEvent.getPointerId());
+                    }
+
+                    if (bound.getParent() == this) {
+                        bound.onInputEvent(event);
+                        return true;
+                    }
+                }
+            }
+
+            final List<UIComponent> children = getChildren();
+
+            if (container) {
+                for (int i = children.size() - 1; i >= 0; i--) {
+                    if (offer(children.get(i), event)) {
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // By index: a child can attach new children while it handles the event.
+            int i = 0;
+            while (i < children.size()) {
+                final UIComponent child = children.get(i++);
+
+                if (!dispatchEnd.contains(child) && offer(child, event)) {
+                    return true;
+                }
+            }
+
+            for (final UIComponent child : new ArrayList<>(dispatchEnd)) {
+                if (child.getParent() == this && offer(child, event)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private boolean offer(final UIComponent child, final InputEvent event) {
+            if (!accepts.test(child)) {
+                return false;
+            }
+
+            if (event instanceof PointerEvent pointerEvent
+                    && (container || pointerEvent.getAction() == PointerEvent.Action.Down)
+                    && !child.containsScenePoint(pointerEvent.getX(), pointerEvent.getY())) {
+                return false;
+            }
+
+            if (!child.onInputEvent(event)) {
+                return false;
+            }
+
+            if (container && event instanceof PointerEvent pointerEvent && pointerEvent.getAction() == PointerEvent.Action.Down) {
+                bindings.put(pointerEvent.getPointerId(), child);
+            }
+            return true;
+        }
+
+        @Override
+        public void cancelPress() {
+            bindings.clear();
         }
     }
 }

@@ -19,9 +19,10 @@ import com.osudroid.resources.R.*
 import com.edlplan.ui.BaseAnimationListener
 import com.edlplan.ui.EasingHelper
 import com.osudroid.utils.mainThread
+import com.osudroid.utils.updateThread
+import com.reco1l.verktex.Verktex
 import com.reco1l.framework.android.cornerRadius
 import com.reco1l.framework.android.dp
-import org.andengine.entity.scene.Scene
 import ru.nsu.ccfit.zuev.osu.*
 import ru.nsu.ccfit.zuev.osu.helper.StringTable
 import ru.nsu.ccfit.zuev.osu.menu.IFilterMenu
@@ -34,7 +35,6 @@ class SearchBarFragment : BaseFragment(), IFilterMenu {
     private var savedFolder: String? = null
     private var savedFavOnly = false
     private var savedFilter: String? = null
-    private var scene: Scene? = null
     private lateinit var filter: EditText
     private var menu: SongMenu? = null
     private lateinit var favoritesOnly: CheckBox
@@ -85,32 +85,29 @@ class SearchBarFragment : BaseFragment(), IFilterMenu {
         mainThread(this::reloadViewData)
     }
 
-    override fun getScene() = scene
-
     override fun hideMenu() {
         updateUpdater()
-        scene = null
         dismiss()
     }
 
     override fun showMenu(parent: SongMenu?) {
         this.menu = parent!!
-        scene = Scene()
-        scene!!.isBackgroundEnabled = false
         updater = object : Updater() {
             override fun createEventRunnable(): Runnable =
                 Runnable { parent.loadFilter(this@SearchBarFragment) }
 
-            override fun postEvent(r: Runnable?) = parent.scene.postRunnable(r)
+            override fun postEvent(r: Runnable?) {
+                updateThread { r?.run() }
+            }
         }
         show()
     }
 
     override fun onDetach() {
         super.onDetach()
-        menu?.scene?.postRunnable { menu?.loadFilter(this) }
+        // The menu is read when the runnable runs, after it was cleared below (as before).
+        updateThread { menu?.loadFilter(this) }
         menu = null
-        scene = null
     }
 
     override fun onAttach(context: Context) {
@@ -209,7 +206,9 @@ class SearchBarFragment : BaseFragment(), IFilterMenu {
                     difficultyAlgorithmButton.text = "osu!droid"
                 }
 
-                getGlobal().songMenu.reloadCurrentSelection()
+                updateThread {
+                    Verktex.withTreeLock { getGlobal().songMenu.reloadCurrentSelection() }
+                }
             }
 
             if (Config.getString("difficultyAlgorithm", "0").toInt() == 0) {

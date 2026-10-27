@@ -2,8 +2,6 @@ package ru.nsu.ccfit.zuev.osu.menu;
 
 import android.content.Context;
 
-import org.andengine.entity.scene.Scene;
-
 public interface IFilterMenu {
 
     String getFilter();
@@ -15,8 +13,6 @@ public interface IFilterMenu {
     String getFavoriteFolder();
 
     void loadConfig(Context context);
-
-    Scene getScene();
 
     void hideMenu();
 

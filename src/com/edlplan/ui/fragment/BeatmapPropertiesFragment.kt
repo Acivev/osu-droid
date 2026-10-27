@@ -13,7 +13,9 @@ import com.osudroid.data.BeatmapOptions
 import com.osudroid.data.DatabaseManager
 import com.reco1l.framework.android.cornerRadius
 import com.reco1l.framework.android.dp
+import com.osudroid.utils.updateThread
 import com.reco1l.osu.ui.MessageDialog
+import com.reco1l.verktex.Verktex
 import ru.nsu.ccfit.zuev.osu.GlobalManager
 import ru.nsu.ccfit.zuev.osu.menu.IPropsMenu
 import ru.nsu.ccfit.zuev.osu.menu.BeatmapSetItem
@@ -116,7 +118,7 @@ class BeatmapPropertiesFragment : BaseFragment(), IPropsMenu {
 
                 addButton("Yes") {
                     if (menu != null) {
-                        menu!!.scene.postRunnable { item!!.delete() }
+                        updateThread { Verktex.withTreeLock { item!!.delete() } }
                     }
                     dismiss()
                 }
@@ -178,7 +180,10 @@ class BeatmapPropertiesFragment : BaseFragment(), IPropsMenu {
     }
 
     fun saveProp() {
-        item!!.isFavorite = beatmapOptions!!.isFavorite
+        // The item is read by the filter on the update thread.
+        val item = item!!
+        val favorite = beatmapOptions!!.isFavorite
+        updateThread { item.setFavorite(favorite) }
         DatabaseManager.beatmapOptionsTable.update(beatmapOptions!!)
     }
 }

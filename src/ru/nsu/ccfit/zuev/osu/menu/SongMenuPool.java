@@ -5,6 +5,9 @@ import org.andengine.util.debug.Debug;
 import java.util.LinkedList;
 import java.util.Queue;
 
+/**
+ * Pools the cards of the song list. Must be used on the update thread, the cards are Verktex components.
+ */
 public class SongMenuPool {
     private static final SongMenuPool instance = new SongMenuPool();
     private final Queue<MenuItemBackground> backgrounds = new LinkedList<>();

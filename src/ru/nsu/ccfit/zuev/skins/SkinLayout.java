@@ -2,7 +2,7 @@ package ru.nsu.ccfit.zuev.skins;
 
 import androidx.annotation.NonNull;
 
-import com.reco1l.andengine.sprite.UISprite;
+import com.osudroid.ui.verktex.songmenu.SkinButton;
 import org.json.JSONObject;
 
 import ru.nsu.ccfit.zuev.osu.Config;
@@ -27,19 +27,22 @@ public class SkinLayout {
         return layout;
     }
 
-    public void apply(@NonNull UISprite sprite) {
-        apply(sprite, null);
+    public void apply(@NonNull SkinButton button) {
+        apply(button, null);
     }
 
-    public void apply(@NonNull UISprite sprite, UISprite previousSprite) {
+    /**
+     * Applies this layout to a song menu button, in virtual units.
+     */
+    public void apply(@NonNull SkinButton button, SkinButton previousButton) {
         if (scale != -1) {
-            sprite.setScale(scale);
+            button.setScale(scale);
         }
         if (width != -1) {
-            sprite.setWidth(width);
+            button.setLegacyWidth(width);
         }
         if (height != -1) {
-            sprite.setHeight(height);
+            button.setLegacyHeight(height);
         }
 
         // The origin of the sprite that is using this class is in bottom left, but without its
@@ -47,16 +50,16 @@ public class SkinLayout {
         // different origins yet. To work around this, we need to flip the position in the Y axis.
         // TODO: When ExtendedSprite supports touch area properly, this should be changed to use bottom-left origin
         float x = xPosition;
-        float y = Config.getRES_HEIGHT() - sprite.getHeightScaled() - yPosition;
+        float y = Config.getRES_HEIGHT() - button.getHeightScaled() - yPosition;
 
         if (Float.isNaN(x)) {
-            x = previousSprite != null ? previousSprite.getX() + previousSprite.getWidthScaled() : 0;
+            x = previousButton != null ? previousButton.getLegacyX() + previousButton.getWidthScaled() : 0;
         }
 
         if (Float.isNaN(y)) {
-            y = Config.getRES_HEIGHT() - sprite.getHeightScaled();
+            y = Config.getRES_HEIGHT() - button.getHeightScaled();
         }
 
-        sprite.setPosition(x, y);
+        button.setPosition(x, y);
     }
 }

@@ -18,4 +18,6 @@ public interface MenuItemListener {
     boolean isSelectAllowed();
 
     void showPropertiesMenu(BeatmapSetItem item);
+
+    void showDeleteScoreMenu(int scoreId);
 }
