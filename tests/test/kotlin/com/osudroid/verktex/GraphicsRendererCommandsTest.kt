@@ -58,6 +58,7 @@ class GraphicsRendererCommandsTest {
         override fun createBuffer(): GraphicsBuffer = FakeBuffer()
         override fun createShader(source: GraphicsShader.Source): GraphicsShader = FakeShader()
         override fun createTexture(width: Float, height: Float): GraphicsTexture = FakeTexture(width, height)
+        override fun createExternalTexture(width: Float, height: Float): GraphicsTexture = FakeTexture(width, height)
     }
 
     private class RecordingRenderer : GraphicsRenderer() {

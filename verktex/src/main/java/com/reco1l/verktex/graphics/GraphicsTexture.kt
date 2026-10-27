@@ -63,7 +63,7 @@ abstract class GraphicsTexture : GraphicsResource() {
      *
      * @see TexturePackingAlgorithm
      */
-    fun fitsSource(source: Source): Boolean = synchronized(lock) {
+    open fun fitsSource(source: Source): Boolean = synchronized(lock) {
         ensureFreeRegions()
         packingAlgorithm.fits(source.width, source.height, freeRegions)
     }
@@ -75,7 +75,7 @@ abstract class GraphicsTexture : GraphicsResource() {
      * @see TexturePackingAlgorithm
      * @return The newly created [Region] if the source fits, or null if it does not fit.
      */
-    fun addSource(source: Source): Region? = synchronized(lock) {
+    open fun addSource(source: Source): Region? = synchronized(lock) {
 
         val existingRegion = regions.find { it.source == source }
         if (existingRegion != null) {
@@ -118,12 +118,16 @@ abstract class GraphicsTexture : GraphicsResource() {
     }
 
 
-    final override fun onLoad() = synchronized(lock) {
-        onCreateTexture()
+    final override fun onLoad() {
+        synchronized(lock) {
+            onCreateTexture()
 
-        // The texture storage was (re)created, so every region must be uploaded again.
-        pendingUploads.clear()
-        pendingUploads += regions
+            // The texture storage was (re)created, so every region must be uploaded again.
+            pendingUploads.clear()
+            pendingUploads += regions
+        }
+
+        onTextureCreated()
     }
 
     final override fun onBind() = synchronized(lock) {
@@ -142,6 +146,11 @@ abstract class GraphicsTexture : GraphicsResource() {
      * The texture must be left bound after this call.
      */
     protected abstract fun onCreateTexture()
+
+    /**
+     * Called after [onCreateTexture] once the texture's lock is released, on the same thread.
+     */
+    protected open fun onTextureCreated() = Unit
 
     /**
      * Called when the texture should be bound so that sources can be uploaded to it or it can be drawn.

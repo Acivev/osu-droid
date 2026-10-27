@@ -341,6 +341,16 @@ abstract class GraphicsRenderer {
     }
 
     /**
+     * Creates a new external texture (such as one fed with video frames) with the specified width and
+     * height, registered so that it is recreated after a context loss.
+     */
+    fun createExternalTexture(width: Float, height: Float): GraphicsTexture {
+        val texture = device.createExternalTexture(width, height)
+        registerResource(texture)
+        return texture
+    }
+
+    /**
      * Creates a new vertex buffer for storing vertex data.
      */
     fun createVertexBuffer(): GraphicsBuffer {

@@ -11,6 +11,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  * A texture backed by a [SurfaceTexture] (`GL_TEXTURE_EXTERNAL_OES`), fed by a producer such as a
  * `MediaPlayer` drawing into [surface]. It has no storage or sources of its own, only [region]
  * covering it whole, and is sampled with `BuiltIn.Shaders.Video` through [transform].
+ *
+ * Create it with `GraphicsRenderer.createExternalTexture` so it is registered with the renderer;
+ * constructing it directly skips registration, so it is never told about a context loss.
  */
 open class ESExternalTexture(
     override val width: Float,
@@ -50,8 +53,9 @@ open class ESExternalTexture(
         private set
 
     /**
-     * Called on the draw thread every time the surface is (re)created, i.e. on the first load and
-     * after a context loss, so the producer can attach to the new [surface].
+     * Called every time the surface is (re)created, i.e. on the first load and after a context loss,
+     * so the producer can attach to the new [surface]. It runs on the draw thread in the middle of a
+     * draw (outside the texture's lock), so it must stay cheap.
      */
     var onSurfaceRecreated: (() -> Unit)? = null
 
@@ -85,9 +89,21 @@ open class ESExternalTexture(
 
         this.surfaceTexture = surfaceTexture
         surface = Surface(surfaceTexture)
+    }
 
+    override fun onTextureCreated() {
         onSurfaceRecreated?.invoke()
     }
+
+    /**
+     * Always false, an external texture is filled by its [surface] and holds no sources.
+     */
+    override fun fitsSource(source: Source) = false
+
+    /**
+     * Always null, an upload into the external texture's name would be invalid.
+     */
+    override fun addSource(source: Source): Region? = null
 
     override fun onBindTexture() {
         bindExternalTexture()
@@ -112,12 +128,7 @@ open class ESExternalTexture(
 
         surfaceTexture.updateTexImage()
         surfaceTexture.getTransformMatrix(transform)
-
-        // transform = transform * flip, where flip maps v to 1 - v: column 3 gains column 1, which is negated.
-        for (row in 0 until 4) {
-            transform[12 + row] += transform[4 + row]
-            transform[4 + row] = -transform[4 + row]
-        }
+        foldVerticalFlip(transform)
     }
 
     override fun onContextLost() {
@@ -154,5 +165,17 @@ open class ESExternalTexture(
 
     companion object {
         private const val TARGET = GLES11Ext.GL_TEXTURE_EXTERNAL_OES
+
+        /**
+         * Replaces the column-major [matrix] with `matrix * flip`, where flip maps v to 1 - v, turning
+         * the [SurfaceTexture]'s bottom-left origin into the engine's top-left one.
+         */
+        fun foldVerticalFlip(matrix: FloatArray) {
+            // Column 3 gains column 1, which is negated.
+            for (row in 0 until 4) {
+                matrix[12 + row] += matrix[4 + row]
+                matrix[4 + row] = -matrix[4 + row]
+            }
+        }
     }
 }

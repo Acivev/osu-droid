@@ -35,6 +35,10 @@ class ESDevice : GraphicsDevice {
         return ESTexture(width, height)
     }
 
+    override fun createExternalTexture(width: Float, height: Float): ESExternalTexture {
+        return ESExternalTexture(width, height)
+    }
+
     override fun createBuffer(): ESBuffer {
         return ESBuffer()
     }
