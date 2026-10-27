@@ -72,8 +72,11 @@ abstract class GraphicsRenderer {
     private var activeBuffer: GraphicsBuffer? = null
     private var activeTexture: GraphicsTexture? = null
     private var activeScissor: Vec4? = null
-    private var activeUniformSet: GraphicsShader.UniformSet = GraphicsShader.UniformSet()
+    private var activeUniformSet: GraphicsShader.UniformSet = EMPTY_UNIFORMS
 
+    // Transformed positions are written here instead of allocating a Vec2 per vertex. It is only
+    // used within one draw helper call at a time, the renderer is driven by a single thread.
+    private val points = FloatArray(8)
 
 
     /**
@@ -226,8 +229,12 @@ abstract class GraphicsRenderer {
 
         val currentMatrix = matrixStack.lastOrNull() ?: Mat2.Identity
 
-        val (x0, y0) = currentMatrix.transform(x, y)
-        val (x1, y1) = currentMatrix.transform(x + width, y + height)
+        currentMatrix.transform(x, y, points, 0)
+        currentMatrix.transform(x + width, y + height, points, 2)
+        val x0 = points[0]
+        val y0 = points[1]
+        val x1 = points[2]
+        val y1 = points[3]
 
         val x = min(x0, x1)
         val y = min(y0, y1)
@@ -393,21 +400,22 @@ abstract class GraphicsRenderer {
         drawGeometry { transform, baseColor ->
 
             val color = transformColor(color)
+            val p = points
 
-            val (x0, y0) = transform.transform(x, y)
-            val (x1, y1) = transform.transform(x + width, y)
-            val (x2, y2) = transform.transform(x + width, y + height)
-            val (x3, y3) = transform.transform(x, y + height)
+            transform.transform(x, y, p, 0)
+            transform.transform(x + width, y, p, 2)
+            transform.transform(x + width, y + height, p, 4)
+            transform.transform(x, y + height, p, 6)
 
             // Triangle 1
-            addVertex(x0, y0, 0f, 0f, color)
-            addVertex(x1, y1, 1f, 0f, color)
-            addVertex(x2, y2, 1f, 1f, color)
+            addVertex(p[0], p[1], 0f, 0f, color)
+            addVertex(p[2], p[3], 1f, 0f, color)
+            addVertex(p[4], p[5], 1f, 1f, color)
 
             // Triangle 2
-            addVertex(x0, y0, 0f, 0f, color)
-            addVertex(x2, y2, 1f, 1f, color)
-            addVertex(x3, y3, 0f, 1f, color)
+            addVertex(p[0], p[1], 0f, 0f, color)
+            addVertex(p[4], p[5], 1f, 1f, color)
+            addVertex(p[6], p[7], 0f, 1f, color)
         }
     }
 
@@ -424,7 +432,7 @@ abstract class GraphicsRenderer {
     ) {
         setState(
             shader = BuiltIn.Shaders.SolidQuad,
-            uniformSet = GraphicsShader.UniformSet()
+            uniformSet = EMPTY_UNIFORMS
         )
 
         // The quad shader fades out at UV edges, so every vertex samples its center to keep the
@@ -432,13 +440,37 @@ abstract class GraphicsRenderer {
         drawGeometry { transform, baseColor ->
             val color = transformColor(color)
 
-            val (x0, y0) = transform.transform(x, y)
-            val (x1, y1) = transform.transform(x + width, y)
-            val (x2, y2) = transform.transform(x + width * middle, y + height)
+            val p = points
 
-            addVertex(x0, y0, 0.5f, 0.5f, color)
-            addVertex(x1, y1, 0.5f, 0.5f, color)
-            addVertex(x2, y2, 0.5f, 0.5f, color)
+            transform.transform(x, y, p, 0)
+            transform.transform(x + width, y, p, 2)
+            transform.transform(x + width * middle, y + height, p, 4)
+
+            addVertex(p[0], p[1], 0.5f, 0.5f, color)
+            addVertex(p[2], p[3], 0.5f, 0.5f, color)
+            addVertex(p[4], p[5], 0.5f, 0.5f, color)
+        }
+    }
+
+    /**
+     * Draws a triangle mesh, [vertices] holds [vertexCount] positions in local space as x, y pairs
+     * and every three of them form a triangle.
+     *
+     * Like [drawGeometry] it writes into the active state, so [setState] must have been called
+     * before. Every vertex samples the center of the UV space and uses [color].
+     */
+    fun drawTriangles(vertices: FloatArray, vertexCount: Int, color: Color4) {
+        require(vertexCount % 3 == 0) { "The vertex count must be a multiple of 3, got $vertexCount." }
+        require(vertices.size >= vertexCount * 2) { "Expected ${vertexCount * 2} floats, got ${vertices.size}." }
+
+        drawGeometry { transform, _ ->
+            val color = transformColor(color)
+            val p = points
+
+            for (i in 0 until vertexCount) {
+                transform.transform(vertices[i * 2], vertices[i * 2 + 1], p, 0)
+                addVertex(p[0], p[1], 0.5f, 0.5f, color)
+            }
         }
     }
 
@@ -458,7 +490,7 @@ abstract class GraphicsRenderer {
 
         setState(
             shader = BuiltIn.Shaders.SolidQuad,
-            uniformSet = GraphicsShader.UniformSet()
+            uniformSet = EMPTY_UNIFORMS
         )
 
         drawGeometry { transform, baseColor ->
@@ -468,18 +500,20 @@ abstract class GraphicsRenderer {
             val nx = -(y2 - y1) / length * lineWidth / 2f
             val ny = (x2 - x1) / length * lineWidth / 2f
 
-            val (ax, ay) = transform.transform(x1 + nx, y1 + ny)
-            val (bx, by) = transform.transform(x2 + nx, y2 + ny)
-            val (cx, cy) = transform.transform(x2 - nx, y2 - ny)
-            val (dx, dy) = transform.transform(x1 - nx, y1 - ny)
+            val p = points
 
-            addVertex(ax, ay, 0.5f, 0.5f, color)
-            addVertex(bx, by, 0.5f, 0.5f, color)
-            addVertex(cx, cy, 0.5f, 0.5f, color)
+            transform.transform(x1 + nx, y1 + ny, p, 0)
+            transform.transform(x2 + nx, y2 + ny, p, 2)
+            transform.transform(x2 - nx, y2 - ny, p, 4)
+            transform.transform(x1 - nx, y1 - ny, p, 6)
 
-            addVertex(ax, ay, 0.5f, 0.5f, color)
-            addVertex(cx, cy, 0.5f, 0.5f, color)
-            addVertex(dx, dy, 0.5f, 0.5f, color)
+            addVertex(p[0], p[1], 0.5f, 0.5f, color)
+            addVertex(p[2], p[3], 0.5f, 0.5f, color)
+            addVertex(p[4], p[5], 0.5f, 0.5f, color)
+
+            addVertex(p[0], p[1], 0.5f, 0.5f, color)
+            addVertex(p[4], p[5], 0.5f, 0.5f, color)
+            addVertex(p[6], p[7], 0.5f, 0.5f, color)
         }
     }
 
@@ -506,7 +540,7 @@ abstract class GraphicsRenderer {
 
         setState(
             shader = BuiltIn.Shaders.SolidQuad,
-            uniformSet = GraphicsShader.UniformSet()
+            uniformSet = EMPTY_UNIFORMS
         )
 
         drawGeometry { transform, baseColor ->
@@ -516,7 +550,10 @@ abstract class GraphicsRenderer {
             val cy = y + height / 2f
             val w = width / 2f
             val h = height / 2f
-            val (centerX, centerY) = transform.transform(cx, cy)
+            val p = points
+            transform.transform(cx, cy, p, 0)
+            val centerX = p[0]
+            val centerY = p[1]
 
             if (segments <= 0) {
                 Logger.w(
@@ -541,11 +578,11 @@ abstract class GraphicsRenderer {
                 val y = cy + h * sin(angle)
 
                 if (j > 0) {
-                    val (px, py) = transform.transform(previousX, previousY)
-                    val (nx, ny) = transform.transform(x, y)
+                    transform.transform(previousX, previousY, p, 2)
+                    transform.transform(x, y, p, 4)
 
-                    addVertex(px, py, 0.5f, 0.5f, color)
-                    addVertex(nx, ny, 0.5f, 0.5f, color)
+                    addVertex(p[2], p[3], 0.5f, 0.5f, color)
+                    addVertex(p[4], p[5], 0.5f, 0.5f, color)
                     addVertex(centerX, centerY, 0.5f, 0.5f, color)
                 }
 
@@ -574,7 +611,7 @@ abstract class GraphicsRenderer {
 
         setState(
             shader = BuiltIn.Shaders.SolidQuad,
-            uniformSet = GraphicsShader.UniformSet()
+            uniformSet = EMPTY_UNIFORMS
         )
 
         drawGeometry { transform, _ ->
@@ -590,22 +627,25 @@ abstract class GraphicsRenderer {
             val start = (startAngle - 90f).toRadians()
             val delta = ((endAngle - 90f).toRadians() - start) / segments
 
+            val p = points
+
             for (segment in 0 until segments) {
                 val a0 = start + segment * delta
                 val a1 = a0 + delta
 
-                val (ox0, oy0) = transform.transform(cx + outerX * cos(a0), cy + outerY * sin(a0))
-                val (ox1, oy1) = transform.transform(cx + outerX * cos(a1), cy + outerY * sin(a1))
-                val (ix0, iy0) = transform.transform(cx + innerX * cos(a0), cy + innerY * sin(a0))
-                val (ix1, iy1) = transform.transform(cx + innerX * cos(a1), cy + innerY * sin(a1))
+                // Outer start and end, then inner start and end.
+                transform.transform(cx + outerX * cos(a0), cy + outerY * sin(a0), p, 0)
+                transform.transform(cx + outerX * cos(a1), cy + outerY * sin(a1), p, 2)
+                transform.transform(cx + innerX * cos(a0), cy + innerY * sin(a0), p, 4)
+                transform.transform(cx + innerX * cos(a1), cy + innerY * sin(a1), p, 6)
 
-                addVertex(ox0, oy0, 0.5f, 0.5f, color)
-                addVertex(ox1, oy1, 0.5f, 0.5f, color)
-                addVertex(ix1, iy1, 0.5f, 0.5f, color)
+                addVertex(p[0], p[1], 0.5f, 0.5f, color)
+                addVertex(p[2], p[3], 0.5f, 0.5f, color)
+                addVertex(p[6], p[7], 0.5f, 0.5f, color)
 
-                addVertex(ox0, oy0, 0.5f, 0.5f, color)
-                addVertex(ix1, iy1, 0.5f, 0.5f, color)
-                addVertex(ix0, iy0, 0.5f, 0.5f, color)
+                addVertex(p[0], p[1], 0.5f, 0.5f, color)
+                addVertex(p[6], p[7], 0.5f, 0.5f, color)
+                addVertex(p[4], p[5], 0.5f, 0.5f, color)
             }
         }
     }
@@ -628,10 +668,13 @@ abstract class GraphicsRenderer {
     ) {
         // The texture shader only reads the uniforms for rounded corners, so plain textures share
         // an empty set and consecutive ones from the same texture end up in one draw call.
-        val uniformSet = GraphicsShader.UniformSet()
-        if (radius > 0f) {
-            uniformSet["uRadius"] = radius
-            uniformSet["uSize"] = Vec2(width, height)
+        val uniformSet = if (radius > 0f) {
+            GraphicsShader.UniformSet().apply {
+                set("uRadius", radius)
+                set("uSize", Vec2(width, height))
+            }
+        } else {
+            EMPTY_UNIFORMS
         }
 
         setState(
@@ -643,20 +686,22 @@ abstract class GraphicsRenderer {
         drawGeometry { transform, baseColor ->
             val color = transformColor(color)
 
-            val (x0, y0) = transform.transform(x, y)
-            val (x1, y1) = transform.transform(x + width, y)
-            val (x2, y2) = transform.transform(x + width, y + height)
-            val (x3, y3) = transform.transform(x, y + height)
+            val p = points
+
+            transform.transform(x, y, p, 0)
+            transform.transform(x + width, y, p, 2)
+            transform.transform(x + width, y + height, p, 4)
+            transform.transform(x, y + height, p, 6)
 
             // Triangle 1
-            addVertex(x0, y0, uv.x, uv.y, color)
-            addVertex(x1, y1, uv.z, uv.y, color)
-            addVertex(x2, y2, uv.z, uv.w, color)
+            addVertex(p[0], p[1], uv.x, uv.y, color)
+            addVertex(p[2], p[3], uv.z, uv.y, color)
+            addVertex(p[4], p[5], uv.z, uv.w, color)
 
             // Triangle 2
-            addVertex(x0, y0, uv.x, uv.y, color)
-            addVertex(x2, y2, uv.z, uv.w, color)
-            addVertex(x3, y3, uv.x, uv.w, color)
+            addVertex(p[0], p[1], uv.x, uv.y, color)
+            addVertex(p[4], p[5], uv.z, uv.w, color)
+            addVertex(p[6], p[7], uv.x, uv.w, color)
         }
     }
 
@@ -706,7 +751,7 @@ abstract class GraphicsRenderer {
                     setState(
                         shader = BuiltIn.Shaders.TextureQuad,
                         texture = page,
-                        uniformSet = GraphicsShader.UniformSet()
+                        uniformSet = EMPTY_UNIFORMS
                     )
                     buffer = activeBuffer
                 }
@@ -722,19 +767,21 @@ abstract class GraphicsRenderer {
                 val u1 = glyph.region.u1
                 val v1 = glyph.region.v1
 
-                val (x0, y0) = transform.transform(left, top)
-                val (x1, y1) = transform.transform(left, bottom)
-                val (x2, y2) = transform.transform(right, bottom)
-                val (x3, y3) = transform.transform(right, top)
+                val p = points
+
+                transform.transform(left, top, p, 0)
+                transform.transform(left, bottom, p, 2)
+                transform.transform(right, bottom, p, 4)
+                transform.transform(right, top, p, 6)
 
                 buffer!!.apply {
-                    addVertex(x0, y0, u0, v0, color)
-                    addVertex(x1, y1, u0, v1, color)
-                    addVertex(x2, y2, u1, v1, color)
+                    addVertex(p[0], p[1], u0, v0, color)
+                    addVertex(p[2], p[3], u0, v1, color)
+                    addVertex(p[4], p[5], u1, v1, color)
 
-                    addVertex(x2, y2, u1, v1, color)
-                    addVertex(x3, y3, u1, v0, color)
-                    addVertex(x0, y0, u0, v0, color)
+                    addVertex(p[4], p[5], u1, v1, color)
+                    addVertex(p[6], p[7], u1, v0, color)
+                    addVertex(p[0], p[1], u0, v0, color)
                 }
             }
 
@@ -759,7 +806,7 @@ abstract class GraphicsRenderer {
         activeShader = null
         activeTexture = null
         activeScissor = null
-        activeUniformSet = GraphicsShader.UniformSet()
+        activeUniformSet = EMPTY_UNIFORMS
 
         // Should not happen but just in case, clear the command batch to avoid rendering stale commands.
         commandBatch.clear()
@@ -781,6 +828,10 @@ abstract class GraphicsRenderer {
 
     companion object {
         const val VERTEX_2D_STRIDE = 20 // 8 bytes for position, 8 bytes for UV, 4 bytes for color
+
+        // Shared by every draw without uniforms of its own. Nothing writes to it, commands and
+        // shaders only read their set.
+        private val EMPTY_UNIFORMS = GraphicsShader.UniformSet()
     }
 
 }

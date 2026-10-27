@@ -1,6 +1,8 @@
 package com.osudroid.verktex
 
 import com.reco1l.verktex.BuiltIn
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.Mat2
 import com.reco1l.verktex.graphics.DrawCommand
 import com.reco1l.verktex.graphics.GraphicsBuffer
 import com.reco1l.verktex.graphics.GraphicsContext
@@ -9,6 +11,7 @@ import com.reco1l.verktex.graphics.GraphicsRenderer
 import com.reco1l.verktex.graphics.GraphicsShader
 import com.reco1l.verktex.graphics.GraphicsTexture
 import com.reco1l.verktex.graphics.GraphicsWindow
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
@@ -25,9 +28,10 @@ class GraphicsRendererCommandsTest {
     private class FakeBuffer : GraphicsBuffer() {
         override val capacity get() = Int.MAX_VALUE
         override var position = 0
-        override fun clear() { position = 0 }
+        val floats = mutableListOf<Float>()
+        override fun clear() { position = 0; floats.clear() }
         override fun requireCapacity(requiredBytes: Int) = Unit
-        override fun putFloat(float: Float) { position += 4 }
+        override fun putFloat(float: Float) { position += 4; floats += float }
         override fun putByte(byte: Byte) { position += 1 }
         override fun uploadDataToGPU() = Unit
         override fun onBind() = Unit
@@ -70,10 +74,18 @@ class GraphicsRendererCommandsTest {
     }
 
     private val solidQuad = FakeShader()
+    private var previousSolidQuad: GraphicsShader? = null
 
     @Before
     fun setUp() {
+        // The built-in shaders are lateinit, reading one that was never set throws.
+        previousSolidQuad = try { BuiltIn.Shaders.SolidQuad } catch (_: UninitializedPropertyAccessException) { null }
         BuiltIn.Shaders.SolidQuad = solidQuad
+    }
+
+    @After
+    fun tearDown() {
+        previousSolidQuad?.let { BuiltIn.Shaders.SolidQuad = it }
     }
 
     @Test
@@ -124,6 +136,29 @@ class GraphicsRendererCommandsTest {
         assertEquals(1, renderer.commands.size)
         assertTrue(renderer.commands[0].clearDepth)
         assertNull(renderer.commands[0].buffer)
+    }
+
+    @Test
+    fun drawTrianglesEmitsTheGivenVertexCount() {
+        val renderer = RecordingRenderer()
+        val vertices = floatArrayOf(0f, 0f, 10f, 0f, 0f, 10f)
+
+        renderer.begin()
+        renderer.pushMatrix(Mat2(a = 2f, d = 2f, tx = 5f, ty = 7f))
+        renderer.setState(shader = solidQuad)
+        renderer.drawTriangles(vertices, 3, Color4.White)
+        renderer.popMatrix()
+        renderer.end()
+
+        assertEquals(1, renderer.commands.size)
+
+        val buffer = renderer.commands[0].buffer as FakeBuffer
+        assertEquals(3 * GraphicsRenderer.VERTEX_2D_STRIDE, buffer.position)
+
+        // Every vertex writes x, y, u and v as floats, the pushed matrix is applied to the positions.
+        val positions = buffer.floats.chunked(4).map { (x, y) -> x to y }
+        assertEquals(listOf(5f to 7f, 25f to 7f, 5f to 27f), positions)
+        assertTrue(buffer.floats.chunked(4).all { it[2] == 0.5f && it[3] == 0.5f })
     }
 
     private companion object {

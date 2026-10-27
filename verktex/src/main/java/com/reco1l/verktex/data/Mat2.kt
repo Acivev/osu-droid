@@ -139,6 +139,15 @@ data class Mat2(
     }
 
     /**
+     * Transforms a point (x, y) using this matrix and writes the result into [out] at [offset] and
+     * [offset] + 1, without allocating.
+     */
+    fun transform(x: Float, y: Float, out: FloatArray, offset: Int = 0) {
+        out[offset] = a * x + c * y + tx
+        out[offset + 1] = b * x + d * y + ty
+    }
+
+    /**
      * Transforms a 4D vector (x, y, w, z) using this matrix and returns the resulting vector as a Vec4.
      * The transformation is applied in the order of scaling, rotation, and translation.
      */

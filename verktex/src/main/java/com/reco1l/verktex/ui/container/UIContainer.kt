@@ -32,6 +32,24 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
      */
     protected val children: MutableList<UIComponent> = mutableListOf()
 
+    /**
+     * Whether this container lays out its children only when something changed: a measure pass
+     * (size, position or children), an invalidated layout below it or other bounds given by its
+     * parent. Otherwise it lays out every frame.
+     *
+     * Only for content that stays still, children positioned by an ongoing layout (like a
+     * scrolling container) would stop moving.
+     */
+    var staticLayout = false
+        set(value) {
+            if (field == value) return
+            field = value
+            invalidateLayout()
+        }
+
+    override val isLayoutStatic
+        get() = staticLayout
+
 
     init {
         width = Dimension.WrapContent
@@ -335,6 +353,8 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
         }
         children.remove(this)
         children.add(this)
+        // The order can matter to the layout, e.g. in a linear container.
+        invalidateLayout()
     }
 
     /**
@@ -347,6 +367,7 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
         }
         children.remove(this)
         children.add(0, this)
+        invalidateLayout()
     }
 
 

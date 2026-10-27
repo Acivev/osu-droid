@@ -490,9 +490,16 @@ abstract class UIComponent {
      * Whether the component's layout is invalid and needs to be processed next frame.
      */
     // Laying out is cheap, so it runs every frame and this flag is never reset. Scrolling and
-    // animated positions rely on it.
+    // animated positions rely on it. Only a static layout resets it, see [isLayoutStatic].
     var layoutInvalid = true
         private set
+
+    /**
+     * Whether this component keeps its layout until it is invalidated, instead of laying out every
+     * frame. See [UIContainer.staticLayout].
+     */
+    protected open val isLayoutStatic
+        get() = false
 
     /**
      * Whether the component's measurement is invalid and needs to be processed next frame.
@@ -512,6 +519,9 @@ abstract class UIComponent {
      */
     fun invalidateLayout() {
         layoutInvalid = true
+        // A static ancestor skips its pass while valid, so the change has to reach it to lay this
+        // component out again. Every other component is always invalid, there it changes nothing.
+        parent?.invalidateLayout()
     }
 
     /**
@@ -789,6 +799,8 @@ abstract class UIComponent {
 
     private var lastMeasureConstraints: LayoutConstraints? = null
 
+    private var lastLayoutBounds: Vec4? = null
+
     /**
      * Measures the component with the given layout constraints. This method will call [onMeasure]
      * to perform the actual measurement.
@@ -802,6 +814,11 @@ abstract class UIComponent {
         // Reset before measuring, invalidations made meanwhile must trigger another pass.
         measureInvalid = false
         lastMeasureConstraints = parentContraints
+
+        // A measure pass means a size, position or child changed, which a static layout must apply.
+        if (isLayoutStatic) {
+            layoutInvalid = true
+        }
 
         val ownConstraints = parentContraints.resolve(width, height)
         val contentConstraints = ownConstraints.shrink(padding)
@@ -827,7 +844,15 @@ abstract class UIComponent {
      * the actual layout of the component. The bounds are expected to be in the parent's coordinate system.
      */
     open fun layout(assignedBounds: Vec4) {
-        if (!layoutInvalid) {
+        if (isLayoutStatic) {
+            if (!layoutInvalid && assignedBounds == lastLayoutBounds) {
+                return
+            }
+
+            // Reset before laying out, invalidations made meanwhile must trigger another pass.
+            layoutInvalid = false
+            lastLayoutBounds = assignedBounds
+        } else if (!layoutInvalid) {
             return
         }
 
