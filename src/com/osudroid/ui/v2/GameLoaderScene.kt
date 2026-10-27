@@ -123,7 +123,7 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                         height = 24f.vu.px
                         y = 2f.vu.px
                         color = warningColor
-                        textureRegion = SkinTextures.get("warning", "warning.png")
+                        textureRegion = SkinTextures.getAsset("warning", "warning.png")
                     }
 
                     text {

@@ -1067,10 +1067,12 @@ public class MainActivity extends BaseGameActivity implements
                 Execution.updateThread(gameScene::pause);
             }
 
+            var roomScene = Multiplayer.roomScene;
+
             if (Multiplayer.isConnected()
-                    && (Multiplayer.roomScene != null && Multiplayer.roomScene.isShown()
+                    && (roomScene != null && roomScene.isShown()
                     || GlobalManager.getInstance().getSongMenu().isShown())) {
-                Execution.async(() -> Execution.runSafe(Multiplayer.roomScene::invalidateStatus));
+                Execution.async(() -> Execution.runSafe(roomScene::invalidateStatus));
             }
         }
 

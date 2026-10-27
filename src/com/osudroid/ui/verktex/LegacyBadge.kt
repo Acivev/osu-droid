@@ -65,6 +65,7 @@ open class LegacyBadge : UIText() {
     private var icon: GraphicsTexture.Region? = null
     private var isIconInvalid = false
     private var iconSize = 0f
+    private var horizontalPadding = 0f
 
     var sizeVariant = SizeVariant.Medium
         set(value) {
@@ -128,7 +129,7 @@ open class LegacyBadge : UIText() {
         renderer.drawTexture(
             texture = icon.texture,
             region = icon,
-            x = BadgeSizes(sizeVariant).horizontal.vu + (iconSize - width) / 2f,
+            x = horizontalPadding.vu + (iconSize - width) / 2f,
             y = contentTop + (contentHeight - height) / 2f,
             width = width,
             height = height,
@@ -141,6 +142,7 @@ open class LegacyBadge : UIText() {
         fontSize = sizes.fontSize.vu.px
         padding = sizes.padding
         radius = sizes.radius.vu.px
+        horizontalPadding = sizes.horizontal
 
         // The icon and its padding follow on the next update.
         if (iconName != null) {

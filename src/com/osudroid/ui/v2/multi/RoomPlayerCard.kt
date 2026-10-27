@@ -428,7 +428,11 @@ class RoomPlayerCard : UILinearContainer() {
 
                         updateThread {
                             Verktex.withTreeLock {
-                                val texture = SkinTextures.register(avatar.first, avatar.second, true)
+                                // A detached card is a stale job of a rebuilt list.
+                                if (parent == null) return@withTreeLock
+
+                                // Registering over a live key would dispose the texture other cards draw.
+                                val texture = Textures[avatar.first] ?: SkinTextures.register(avatar.first, avatar.second, true)
 
                                 if (lastPlayerId == userId) {
                                     avatarSprite.textureRegion = texture ?: defaultAvatar
@@ -474,7 +478,9 @@ class RoomPlayerCard : UILinearContainer() {
 
                         updateThread {
                             Verktex.withTreeLock {
-                                val texture = SkinTextures.register(bannerKey, source, true)
+                                if (parent == null) return@withTreeLock
+
+                                val texture = Textures[bannerKey] ?: SkinTextures.register(bannerKey, source, true)
 
                                 if (lastPlayerId == userId) {
                                     bannerSprite.textureRegion = texture

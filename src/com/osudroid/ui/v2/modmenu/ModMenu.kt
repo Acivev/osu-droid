@@ -154,7 +154,7 @@ object ModMenu : UIContainer() {
                     anchor = Anchor.CenterLeft
                     origin = Anchor.CenterLeft
 
-                    +LegacyTextButton("Back", "back-arrow", "back-arrow.png").apply {
+                    +LegacyTextButton("Back", "back-arrow", "back-arrow.png", SkinTextures::getAsset).apply {
                         onActionUp = {
                             ResourceManager.getInstance().getSound("click-short-confirm")?.play()
                             back()
