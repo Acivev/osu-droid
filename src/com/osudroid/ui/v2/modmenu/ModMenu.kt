@@ -792,7 +792,7 @@ object ModMenu : UIContainer() {
 
         // The AndEngine child scene was modal for touches. Cancel events are dispatched to every
         // component, so they are not consumed.
-        return event is ScrollEvent || event is PointerEvent && event.action != PointerEvent.Action.Unknown
+        return event is ScrollEvent || event is PointerEvent && event.action != PointerEvent.Action.Unknown && event.action != PointerEvent.Action.Cancel
     }
 
     //endregion

@@ -1293,7 +1293,7 @@ class MainMenuV2 : UIScene(), ISkinnable, RoutedScene {
                     if (!isHidden && containsScenePoint(event.x, event.y)) onRelease()
                     return true
                 }
-                PointerEvent.Action.Unknown -> {
+                PointerEvent.Action.Unknown, PointerEvent.Action.Cancel -> {
                     // Cancel events are dispatched to every component, so they are not consumed.
                     cancelPress()
                     return false

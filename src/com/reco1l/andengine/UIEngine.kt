@@ -207,7 +207,10 @@ class UIEngine(val context: Activity, options: EngineOptions) : Engine(options),
 
         return InputRouter.routeTouch(
             hud = { onTouchHUD(camera, event) },
-            verktex = { VerktexBridge.dispatchPointer(event.action, event.pointerID, surfaceX, surfaceY, event.motionEvent?.buttonState ?: 0) },
+            verktex = { VerktexBridge.dispatchPointer(
+                event.action, event.pointerID, surfaceX, surfaceY,
+                event.motionEvent?.buttonState ?: 0, event.motionEvent?.eventTime ?: 0L
+            ) },
             scene = { onTouchScene(scene, event) }
         )
     }

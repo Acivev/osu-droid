@@ -933,8 +933,8 @@ public class ScoreBoard extends UIContainer {
                 listener.openScore(scoreID, showOnline, username);
                 GlobalManager.getInstance().getScoring().setReplayID(scoreID);
                 return true;
-            } else if (action == PointerEvent.Action.Unknown || action == PointerEvent.Action.Move && MathUtils.distance(dx, dy, localX, localY) > 10) {
-                // Unknown stands for AndEngine's ACTION_OUTSIDE (and cancel).
+            } else if (action == PointerEvent.Action.Unknown || action == PointerEvent.Action.Cancel || action == PointerEvent.Action.Move && MathUtils.distance(dx, dy, localX, localY) > 10) {
+                // Unknown stands for AndEngine's ACTION_OUTSIDE, Cancel for its ACTION_CANCEL.
                 downTime = -1;
                 sprite.setAlpha(0.5f);
                 moved = true;

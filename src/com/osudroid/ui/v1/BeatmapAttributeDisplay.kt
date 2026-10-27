@@ -337,7 +337,7 @@ open class BeatmapAttributeDisplay(difficulty: BeatmapDifficulty, mods: Iterable
         override fun onInputEvent(event: InputEvent): Boolean {
             if (!isShown) {
                 // Cancel events are dispatched to every component, so they must not be consumed.
-                return isVisible && event is PointerEvent && event.action != PointerEvent.Action.Unknown
+                return isVisible && event is PointerEvent && event.action != PointerEvent.Action.Unknown && event.action != PointerEvent.Action.Cancel
             }
 
             if (event is PointerEvent

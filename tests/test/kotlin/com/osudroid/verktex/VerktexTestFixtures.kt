@@ -82,6 +82,21 @@ object VerktexTestFixtures {
         override fun createShader(source: GraphicsShader.Source): GraphicsShader = FakeShader(source)
 
         override fun createTexture(width: Float, height: Float): GraphicsTexture = FakeTexture(width, height)
+
+        override fun createExternalTexture(width: Float, height: Float): GraphicsTexture = FakeExternalTexture(width, height)
+    }
+
+    class FakeExternalTexture(override val width: Float, override val height: Float) : GraphicsTexture() {
+        override val isExternal get() = true
+
+        // Identity mat4, column-major.
+        override val transform = FloatArray(16).apply { this[0] = 1f; this[5] = 1f; this[10] = 1f; this[15] = 1f }
+
+        override fun onCreateTexture() = Unit
+
+        override fun onBindTexture() = Unit
+
+        override fun onUnload() = Unit
     }
 
     private object FakeContext : GraphicsContext {

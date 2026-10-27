@@ -132,6 +132,14 @@ class HostedRenderer(
             ) ?: throw IllegalStateException("Failed to load built-in shader source: verktex/texture.frag and verktex/main.vert")
         )
 
+        BuiltIn.Shaders.Video = createShader(
+            Platform.provider.createShaderSource(
+                vertexShaderPath = "verktex/shaders/main.vert",
+                fragmentShaderPath = "verktex/shaders/video.frag",
+                isExternal = false
+            ) ?: throw IllegalStateException("Failed to load built-in shader source: verktex/video.frag and verktex/main.vert")
+        )
+
         version = GLES32.glGetString(GLES32.GL_VERSION) ?: run {
             Logger.w("HostedRenderer", "Couldn't retrieve OpenGL ES version.")
             "Unknown OpenGL ES version"

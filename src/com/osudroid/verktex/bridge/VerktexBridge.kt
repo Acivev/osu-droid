@@ -150,10 +150,10 @@ object VerktexBridge {
 
     /**
      * Dispatches an AndEngine touch to Verktex, [action] being one of `TouchEvent.ACTION_*` and
-     * [x], [y] being surface coordinates.
+     * [x], [y] being surface coordinates and [eventTime] the `MotionEvent` uptime in milliseconds.
      */
     @JvmStatic
-    fun dispatchPointer(action: Int, pointerId: Int, x: Float, y: Float, buttonState: Int): Boolean {
+    fun dispatchPointer(action: Int, pointerId: Int, x: Float, y: Float, buttonState: Int, eventTime: Long): Boolean {
         if (!isInitialized) {
             return false
         }
@@ -162,6 +162,7 @@ object VerktexBridge {
             TouchEvent.ACTION_DOWN -> PointerEvent.Action.Down
             TouchEvent.ACTION_UP -> PointerEvent.Action.Up
             TouchEvent.ACTION_MOVE -> PointerEvent.Action.Move
+            TouchEvent.ACTION_CANCEL -> PointerEvent.Action.Cancel
             else -> PointerEvent.Action.Unknown
         }
 
@@ -171,7 +172,7 @@ object VerktexBridge {
             else -> PointerEvent.Button.Unknown
         }
 
-        return Input.dispatchPointerEvent(pointerAction, button, pointerId, x, y)
+        return Input.dispatchPointerEvent(pointerAction, button, pointerId, x, y, time = eventTime)
     }
 
     @JvmStatic

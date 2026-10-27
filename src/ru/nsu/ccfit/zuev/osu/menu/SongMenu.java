@@ -2142,7 +2142,8 @@ public class SongMenu extends UIScene implements ISkinnable, RoutedScene, MenuIt
                 final UIComponent bound = bindings.get(pointerEvent.getPointerId());
 
                 if (bound != null) {
-                    if (pointerEvent.getAction() == PointerEvent.Action.Up || pointerEvent.getAction() == PointerEvent.Action.Unknown) {
+                    if (pointerEvent.getAction() == PointerEvent.Action.Up || pointerEvent.getAction() == PointerEvent.Action.Unknown
+                            || pointerEvent.getAction() == PointerEvent.Action.Cancel) {
                         bindings.remove(pointerEvent.getPointerId());
                     }
 

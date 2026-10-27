@@ -23,11 +23,13 @@ class VerktexBridgeDispatchTest {
     private class RecordingScene : UIScene() {
         var action: PointerEvent.Action? = null
         var button: PointerEvent.Button? = null
+        var time: Long? = null
 
         override fun onInputEvent(event: InputEvent): Boolean {
             if (event is PointerEvent) {
                 action = event.action
                 button = event.button
+                time = event.time
             }
             return true
         }
@@ -50,8 +52,8 @@ class VerktexBridgeDispatchTest {
         initializedField.setBoolean(null, false)
     }
 
-    private fun dispatch(action: Int, buttonState: Int = MotionEvent.BUTTON_PRIMARY) {
-        assertTrue(VerktexBridge.dispatchPointer(action, 0, 10f, 10f, buttonState))
+    private fun dispatch(action: Int, buttonState: Int = MotionEvent.BUTTON_PRIMARY, eventTime: Long = 0L) {
+        assertTrue(VerktexBridge.dispatchPointer(action, 0, 10f, 10f, buttonState, eventTime))
     }
 
     @Test
@@ -62,10 +64,23 @@ class VerktexBridgeDispatchTest {
         assertEquals(PointerEvent.Action.Move, scene.action)
         dispatch(TouchEvent.ACTION_UP)
         assertEquals(PointerEvent.Action.Up, scene.action)
-        dispatch(TouchEvent.ACTION_CANCEL)
-        assertEquals(PointerEvent.Action.Unknown, scene.action)
         dispatch(TouchEvent.ACTION_OUTSIDE)
         assertEquals(PointerEvent.Action.Unknown, scene.action)
+    }
+
+    @Test
+    fun cancelIsDispatchedAsCancel() {
+        dispatch(TouchEvent.ACTION_DOWN)
+        dispatch(TouchEvent.ACTION_CANCEL)
+        assertEquals(PointerEvent.Action.Cancel, scene.action)
+    }
+
+    @Test
+    fun eventTimeIsForwarded() {
+        dispatch(TouchEvent.ACTION_DOWN, eventTime = 1234L)
+        assertEquals(1234L, scene.time)
+        dispatch(TouchEvent.ACTION_MOVE, eventTime = 1250L)
+        assertEquals(1250L, scene.time)
     }
 
     @Test

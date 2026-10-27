@@ -79,7 +79,7 @@ abstract class ScrollableList : UIContainer()
                     }
                 }
 
-            PointerEvent.Action.Up, PointerEvent.Action.Unknown ->
+            PointerEvent.Action.Up, PointerEvent.Action.Unknown, PointerEvent.Action.Cancel ->
                 if (scrollDetectorPointerId == event.pointerId)
                 {
                     if (scrollDetectorTriggering)
@@ -111,7 +111,7 @@ abstract class ScrollableList : UIContainer()
         {
             inputBinding.onInputEvent(event)
 
-            if (event.action == PointerEvent.Action.Up || event.action == PointerEvent.Action.Unknown)
+            if (event.action == PointerEvent.Action.Up || event.action == PointerEvent.Action.Unknown || event.action == PointerEvent.Action.Cancel)
                 inputBindings[event.pointerId] = null
 
             return true

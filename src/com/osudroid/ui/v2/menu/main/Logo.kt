@@ -201,7 +201,7 @@ class Logo(
                 if (!triggered) onTap()
                 return true
             }
-            PointerEvent.Action.Unknown -> {
+            PointerEvent.Action.Unknown, PointerEvent.Action.Cancel -> {
                 // Cancel events are dispatched to every component, so they are not consumed.
                 cancelPress()
                 return false

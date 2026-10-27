@@ -178,7 +178,7 @@ class SkinButton(
             }
 
             // Cancel events are dispatched to every component, so they are not consumed.
-            PointerEvent.Action.Unknown -> {
+            PointerEvent.Action.Unknown, PointerEvent.Action.Cancel -> {
                 cancelPress()
                 false
             }

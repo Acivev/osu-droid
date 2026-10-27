@@ -294,7 +294,7 @@ public class BeatmapItem extends UIContainer implements ISkinnable, IPressable {
             setDeselectColor();
             moved = true;
             return false;
-        } else if (action == PointerEvent.Action.Unknown) {
+        } else if (action == PointerEvent.Action.Unknown || action == PointerEvent.Action.Cancel) {
             // Cancel events are dispatched to every component, so they are not consumed.
             return false;
         } else {

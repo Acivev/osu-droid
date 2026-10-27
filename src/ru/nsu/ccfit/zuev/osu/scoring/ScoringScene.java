@@ -763,7 +763,8 @@ public class ScoringScene extends UIScene implements RoutedScene, ISkinnable {
         if (pointerEvent.getAction() != PointerEvent.Action.Down) {
             final UIComponent bound = touchAreaBindings.get(pointerEvent.getPointerId());
 
-            if (pointerEvent.getAction() == PointerEvent.Action.Up || pointerEvent.getAction() == PointerEvent.Action.Unknown) {
+            if (pointerEvent.getAction() == PointerEvent.Action.Up || pointerEvent.getAction() == PointerEvent.Action.Unknown
+                    || pointerEvent.getAction() == PointerEvent.Action.Cancel) {
                 touchAreaBindings.remove(pointerEvent.getPointerId());
             }
 
