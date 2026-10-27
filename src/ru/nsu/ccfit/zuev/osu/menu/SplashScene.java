@@ -1,45 +1,45 @@
 package ru.nsu.ccfit.zuev.osu.menu;
 
+import com.osudroid.ui.verktex.LegacyUnits;
+import com.osudroid.ui.verktex.SkinTextures;
 import com.osudroid.utils.Execution;
 
-import org.andengine.engine.handler.IUpdateHandler;
-import org.andengine.entity.modifier.FadeInModifier;
-import org.andengine.entity.modifier.FadeOutModifier;
-import org.andengine.entity.modifier.LoopEntityModifier;
-import org.andengine.entity.modifier.ParallelEntityModifier;
-import org.andengine.entity.modifier.RotationByModifier;
-import org.andengine.entity.modifier.ScaleModifier;
-import org.andengine.entity.modifier.SequenceEntityModifier;
-import org.andengine.entity.scene.Scene;
-import org.andengine.entity.sprite.Sprite;
-import org.andengine.entity.text.Text;
-import org.andengine.entity.text.TextOptions;
+import com.reco1l.verktex.data.Anchor;
+import com.reco1l.verktex.data.Color4;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.data.Padding;
+import com.reco1l.verktex.graphics.GraphicsTexture;
+import com.reco1l.verktex.math.Easing;
+import com.reco1l.verktex.math.FloatAnimation;
+import com.reco1l.verktex.time.TickingClock;
+import com.reco1l.verktex.ui.UIScene;
+import com.reco1l.verktex.ui.UISprite;
+import com.reco1l.verktex.ui.text.UIText;
 
-import org.andengine.util.HorizontalAlign;
-import org.andengine.opengl.vbo.VertexBufferObjectManager;
-import ru.nsu.ccfit.zuev.osu.Config;
 import ru.nsu.ccfit.zuev.osu.GlobalManager;
 import ru.nsu.ccfit.zuev.osu.ResourceManager;
 
 /**
  * Created by Fuuko on 2015/4/25.
  */
-public class SplashScene implements IUpdateHandler {
+public class SplashScene extends UIScene {
 
     public static final SplashScene INSTANCE = new SplashScene();
-    private final Scene scene;
-    private Text infoText;
-    private Text progressText;
-    private Sprite mLoading;
+    private UIText infoText;
+    private UIText progressText;
+    private UISprite mLoading;
+    private UISprite welcomeSprite;
     private boolean mStarting = true;
 
+    private final FloatAnimation loadingAlpha = new FloatAnimation(0f, 0.2f, Easing.Companion.getNone());
+    private final FloatAnimation welcomeAlpha = new FloatAnimation(0f, 2.5f, Easing.Companion.getNone());
+    private final FloatAnimation welcomeScaleY = new FloatAnimation(0f, 0.25f, Easing.Companion.getNone());
+    private final FloatAnimation welcomeScale = new FloatAnimation(1f, 2.25f, Easing.Companion.getNone());
+
     public SplashScene() {
-        scene = new Scene();
         // GL-bound entities (Sprite, Text) are NOT created here because this constructor
         // runs as a Java static field initializer at class-load time, before any engine or
         // ResourceManager is set up.  Call initialize() explicitly once resources are ready.
-        // The update handler is also intentionally NOT registered here for the same reason —
-        // initialze() registers it once GL entities are in place.
     }
 
     /**
@@ -52,52 +52,53 @@ public class SplashScene implements IUpdateHandler {
      * preventing black fonts and broken textures caused by stale GL references.
      */
     public void initialize() {
-        scene.detachChildren();
-        // Guard against double-registration: unregister before (re-)registering so that
-        // calling initialize() multiple times never installs duplicate update handlers.
-        scene.unregisterUpdateHandler(this);
+        clearChildren();
+        welcomeSprite = null;
         mStarting = true;
+        loadingAlpha.jumpTo(0f);
+        welcomeAlpha.jumpTo(0f);
+        welcomeScaleY.jumpTo(0f);
+        welcomeScale.jumpTo(1f);
         initializeLoading();
         initializeProgress();
         initializeInfo();
-        scene.registerUpdateHandler(this);
     }
 
     private void initializeLoading() {
-        var loadTex = ResourceManager.getInstance().getTexture("loading_start");
-        final VertexBufferObjectManager vbo = GlobalManager.getInstance().getEngine().getVertexBufferObjectManager();
+        var loadTex = SkinTextures.get("loading_start", "gfx/loading.png");
 
-        mLoading = new Sprite(0, 0, loadTex, vbo);
-        mLoading.setPosition((Config.getRES_WIDTH() - mLoading.getWidth()) / 2f, (Config.getRES_HEIGHT() - mLoading.getHeight()) / 2f);
-        mLoading.setRotationCenter(mLoading.getWidth() / 2f, mLoading.getHeight() / 2f);
+        mLoading = new UISprite(loadTex);
+        mLoading.setAnchor(Anchor.Center);
+        mLoading.setOrigin(Anchor.Center);
         mLoading.setScale(0.4f);
         mLoading.setAlpha(0);
 
-        mLoading.registerEntityModifier(new LoopEntityModifier(new RotationByModifier(2f, 360)));
-        scene.attachChild(mLoading);
+        plusAssign(mLoading);
     }
 
     private void initializeInfo() {
-        final VertexBufferObjectManager vbo = GlobalManager.getInstance().getEngine().getVertexBufferObjectManager();
-        infoText = new Text(0, 0, ResourceManager.getInstance().getFont("font"), "", 1024, new TextOptions(HorizontalAlign.CENTER), vbo);
-        infoText.setPosition((Config.getRES_WIDTH() - infoText.getWidth()) / 2, Config.getRES_HEIGHT() - infoText.getHeight() - 20);
-        infoText.setAlpha(0);
+        infoText = new UIText();
+        infoText.setColor(Color4.Companion.getWhite());
+        infoText.setAlignment(Anchor.TopCenter);
+        infoText.setWrapText(false);
+        infoText.setAnchor(Anchor.BottomCenter);
+        infoText.setOrigin(Anchor.BottomCenter);
         infoText.setScale(0.6f);
-        scene.attachChild(infoText);
+        plusAssign(infoText);
     }
 
-    public Scene getScene() { return scene; }
+    public UIScene getScene() { return this; }
 
     public void playWelcomeAnimation()
     {
-        mStarting = false;
-
-        mLoading.registerEntityModifier(new FadeOutModifier(0.2f));
-
-        // ChangeableText isn't compatible with animations unfortunately (still valid?)
         Execution.updateThread(() -> {
-            infoText.detachSelf();
-            progressText.detachSelf();
+            mStarting = false;
+
+            loadingAlpha.animateTo(0f, 0.2f, Easing.Companion.getNone());
+
+            // ChangeableText isn't compatible with animations unfortunately (still valid?)
+            infoText.removeSelf();
+            progressText.removeSelf();
         });
 
         try
@@ -108,63 +109,106 @@ public class SplashScene implements IUpdateHandler {
         {
         }
 
-        var welcomeTex = ResourceManager.getInstance().getTexture("welcome");
-        final VertexBufferObjectManager vbo = GlobalManager.getInstance().getEngine().getVertexBufferObjectManager();
-        var welcomeSprite = new Sprite(0, 0, ResourceManager.getInstance().getTexture("welcome"), vbo);
+        Execution.updateThread(() -> {
+            var welcomeTex = SkinTextures.get("welcome", "gfx/welcome.png");
+            welcomeSprite = new UISprite(welcomeTex);
 
-        var welcomeSound = ResourceManager.getInstance().getSound("welcome");
-        var welcomePiano = ResourceManager.getInstance().getSound("welcome_piano");
+            var welcomeSound = ResourceManager.getInstance().getSound("welcome");
+            var welcomePiano = ResourceManager.getInstance().getSound("welcome_piano");
 
-        welcomeSprite.setPosition((Config.getRES_WIDTH() - welcomeTex.getWidth()) / 2f, (Config.getRES_HEIGHT() - welcomeTex.getHeight()) / 2f);
-        welcomeSprite.setAlpha(0);
-        welcomeSprite.setScaleY(0);
-        scene.attachChild(welcomeSprite);
-        welcomeSound.play();
-        welcomePiano.play();
+            welcomeSprite.setAnchor(Anchor.Center);
+            welcomeSprite.setOrigin(Anchor.Center);
+            welcomeSprite.setAlpha(0);
+            welcomeSprite.setScaleY(0);
+            plusAssign(welcomeSprite);
+            welcomeSound.play();
+            welcomePiano.play();
 
-        welcomeSprite.registerEntityModifier(new ParallelEntityModifier(
-                new FadeInModifier(2.5f),
-                new SequenceEntityModifier(
-                        new ScaleModifier(0.25f, 1f, 1f, 0f, 1f),
-                        new ScaleModifier(2.25f, 1f, 1.1f)
-                )
-        ));
+            welcomeAlpha.animateTo(1f, 2.5f, Easing.Companion.getNone());
+            welcomeScaleY.animateTo(1f, 0.25f, Easing.Companion.getNone());
+        });
     }
 
     private void initializeProgress() {
-        final VertexBufferObjectManager vbo = GlobalManager.getInstance().getEngine().getVertexBufferObjectManager();
-        progressText = new Text(0, 0, ResourceManager.getInstance().getFont("font"), "0 %", 10, new TextOptions(HorizontalAlign.CENTER), vbo);
-        progressText.setPosition((Config.getRES_WIDTH() - progressText.getWidth()) / 2f, (Config.getRES_HEIGHT() + mLoading.getHeight()) / 2f - mLoading.getHeight() / 4f);
-        progressText.setAlpha(0);
+        progressText = new UIText();
+        progressText.setColor(Color4.Companion.getWhite());
+        progressText.setAlignment(Anchor.TopCenter);
+        progressText.setWrapText(false);
+        progressText.setAnchor(Anchor.Center);
+        progressText.setOrigin(Anchor.TopCenter);
+        progressText.setText("0 %");
         progressText.setScale(0.5f);
-        scene.attachChild(progressText);
+        plusAssign(progressText);
     }
 
     @Override
-    public void onUpdate(float pSecondsElapsed) {
+    public void onPerformLayout() {
+        // The legacy scene covers the whole window, the safe area is not applied.
+        setPadding(Padding.Companion.getZero());
+
+        final float scale = LegacyUnits.getScale();
+        final var fontSize = DimensionKt.getPx(LegacyUnits.fontSize("font") * scale);
+        progressText.setFontSize(fontSize);
+        infoText.setFontSize(fontSize);
+        infoText.setY(DimensionKt.getPx(-20 * scale));
+
+        setLegacySize(mLoading);
+        final GraphicsTexture.Region loadTex = mLoading.getTextureRegion();
+        progressText.setY(DimensionKt.getPx((loadTex != null ? loadTex.getHeight() : 0f) / 4f * scale));
+
+        if (welcomeSprite != null) {
+            setLegacySize(welcomeSprite);
+        }
+
+        super.onPerformLayout();
+    }
+
+    private static void setLegacySize(final UISprite sprite) {
+        final GraphicsTexture.Region region = sprite.getTextureRegion();
+        sprite.setWidth(DimensionKt.getPx((region != null ? region.getWidth() : 0f) * LegacyUnits.getScale()));
+        sprite.setHeight(DimensionKt.getPx((region != null ? region.getHeight() : 0f) * LegacyUnits.getScale()));
+    }
+
+    @Override
+    public void onUpdate(final TickingClock clock) {
         if (progressText == null || infoText == null || mLoading == null) {
             // initialize() has not been called yet; nothing to update.
             return;
         }
+        // Looked up again on every update: a skin change unloads the regions (GlobalManager.init loads the skin during the splash).
+        mLoading.setTextureRegion(SkinTextures.get("loading_start", "gfx/loading.png"));
+        if (welcomeSprite != null) {
+            welcomeSprite.setTextureRegion(SkinTextures.get("welcome", "gfx/welcome.png"));
+        }
+
+        mLoading.setRotationZ((mLoading.getRotationZ() + 360f / 2f * clock.getElapsedTickTime()) % 360f);
+
         float progress = GlobalManager.getInstance().getLoadingProgress();
         if (mStarting)
         {
-            mLoading.setAlpha(Math.min(1f, mLoading.getAlpha() + 0.1f));
+            loadingAlpha.jumpTo(Math.min(1f, loadingAlpha.getValue() + 0.1f));
         }
+        mLoading.setAlpha(loadingAlpha.update(clock));
 
         progressText.setText(String.format("%.0f %%", progress));
-        progressText.setPosition((Config.getRES_WIDTH() - progressText.getWidth()) / 2f, (Config.getRES_HEIGHT() + mLoading.getHeight()) / 2f - mLoading.getHeight() / 4f);
 
         if (GlobalManager.getInstance().getInfo() != null) {
             infoText.setText(GlobalManager.getInstance().getInfo());
-            infoText.setPosition((Config.getRES_WIDTH() - infoText.getWidth()) / 2, Config.getRES_HEIGHT() - infoText.getHeight() - 20);
         }
-    }
 
-    @Override
-    public void reset()
-    {
+        if (welcomeSprite != null) {
+            welcomeSprite.setAlpha(welcomeAlpha.update(clock));
 
+            final float stretch = welcomeScaleY.update(clock);
+            if (stretch >= 1f) {
+                welcomeScale.animateTo(1.1f, 2.25f, Easing.Companion.getNone());
+            }
+            final float grow = welcomeScale.update(clock);
+            welcomeSprite.setScaleX(grow);
+            welcomeSprite.setScaleY(stretch * grow);
+        }
+
+        super.onUpdate(clock);
     }
 }
 

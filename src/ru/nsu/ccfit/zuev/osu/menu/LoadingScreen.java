@@ -2,26 +2,33 @@ package ru.nsu.ccfit.zuev.osu.menu;
 
 import android.annotation.SuppressLint;
 
-import com.reco1l.andengine.sprite.UISprite;
-import com.reco1l.andengine.sprite.ScaleType;
-import com.reco1l.andengine.text.UIText;
-import com.reco1l.andengine.Anchor;
+import com.reco1l.verktex.ui.UISprite;
+import com.reco1l.verktex.ui.UISprite.ScaleType;
+import com.reco1l.verktex.ui.text.UIText;
+import com.reco1l.verktex.data.Anchor;
 
-import org.andengine.engine.handler.IUpdateHandler;
-import org.andengine.entity.modifier.LoopEntityModifier;
-import org.andengine.entity.modifier.RotationByModifier;
-import org.andengine.entity.scene.Scene;
-import org.andengine.entity.scene.background.Background;
-import org.andengine.opengl.texture.region.TextureRegion;
+import com.osudroid.ui.verktex.LegacyUnits;
+import com.osudroid.ui.verktex.SkinTextures;
+import com.osudroid.verktex.bridge.EngineRouter;
+import com.reco1l.verktex.Verktex;
+import com.reco1l.verktex.data.Color4;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.data.Padding;
+import com.reco1l.verktex.graphics.GraphicsTexture;
+import com.reco1l.verktex.time.TickingClock;
+import com.reco1l.verktex.ui.UIScene;
 
 import java.util.ArrayList;
 
 import ru.nsu.ccfit.zuev.osu.*;
 import ru.nsu.ccfit.zuev.osu.GlobalManager;
 
-public class LoadingScreen implements IUpdateHandler {
+public class LoadingScreen {
     private final LoadingScene scene;
     private final UIText logText;
+    private final UISprite menuBg;
+    private final UISprite loadingTitle;
+    private final UISprite circle;
     private float percentage;
 
     public LoadingScreen() {
@@ -33,70 +40,96 @@ public class LoadingScreen implements IUpdateHandler {
 
         scene = new LoadingScene();
         // Default solid-color background (shown when no menu-background texture)
-        scene.setBackground(new Background(70 / 255f, 129 / 255f, 252 / 255f));
+        scene.setBackgroundColor(new Color4(70 / 255f, 129 / 255f, 252 / 255f, 1f));
 
         // Background sprite
-        final TextureRegion tex = ResourceManager.getInstance().getTexture("menu-background");
-        if (tex != null) {
-            var menuBg = new UISprite();
-            menuBg.setTextureRegion(tex);
-            menuBg.setScaleType(ScaleType.Crop);
-            menuBg.setSize(Config.getRES_WIDTH(), Config.getRES_HEIGHT());
-            scene.attachChild(menuBg);
-        }
+        menuBg = new UISprite();
+        menuBg.setScaleType(ScaleType.Crop);
+        menuBg.setWidth(DimensionKt.fill(1f));
+        menuBg.setHeight(DimensionKt.fill(1f));
+        scene.plusAssign(menuBg);
 
         // Loading title sprite
-        final TextureRegion loadingTexture = ResourceManager.getInstance().getTexture("loading-title");
-        if (loadingTexture != null) {
-            var loadingTitle = new UISprite();
-            loadingTitle.setTextureRegion(loadingTexture);
-            loadingTitle.setScaleType(ScaleType.Fit);
-            loadingTitle.setSize((float) Config.getRES_WIDTH(), loadingTexture.getHeight());
-            scene.attachChild(loadingTitle);
-        }
+        loadingTitle = new UISprite();
+        loadingTitle.setScaleType(ScaleType.Fit);
+        loadingTitle.setWidth(DimensionKt.fill(1f));
+        scene.plusAssign(loadingTitle);
 
         // Percentage log text
         logText = new UIText();
-        logText.setFont(ResourceManager.getInstance().getFont("logFont"));
-        scene.attachChild(logText);
+        logText.setColor(Color4.Companion.getWhite());
+        logText.setAlignment(Anchor.TopCenter);
+        logText.setWrapText(false);
+        logText.setAnchor(Anchor.BottomCenter);
+        logText.setOrigin(Anchor.TopCenter);
+        scene.plusAssign(logText);
         ToastLogger.setPercentage(-1);
         percentage = -1;
 
         // Spinning loading circle
-        var circle = new UISprite();
+        circle = new UISprite();
+        circle.setAnchor(Anchor.Center);
         circle.setOrigin(Anchor.Center);
-        circle.setPosition(Config.getRES_WIDTH() / 2f, Config.getRES_HEIGHT() / 2f);
-        circle.setTextureRegion(ResourceManager.getInstance().getTexture("loading"));
-        circle.registerEntityModifier(new LoopEntityModifier(new RotationByModifier(2.0f, 360)));
-        scene.attachChild(circle);
-
-        scene.registerUpdateHandler(this);
+        scene.plusAssign(circle);
     }
 
-    public Scene getScene() {
+    public UIScene getScene() {
         return scene;
     }
 
-    public void show() {
-        GlobalManager.getInstance().getEngine().setScene(scene);
+    /**
+     * Shows a new loading screen. Synchronous and callable from any thread, callers usually show it
+     * from a background coroutine right before the heavy work.
+     */
+    public static void show() {
+        // Built under the tree lock: the components' constructors read engine state (fonts, theme)
+        // that the draw and update workers use.
+        EngineRouter.showVerktex(Verktex.INSTANCE.withTreeLock(() -> new LoadingScreen().getScene()));
     }
 
     @SuppressLint("DefaultLocale")
     public void onUpdate(final float pSecondsElapsed) {
+        // Fetched here rather than at construction, which can happen off the update thread; looked up
+        // again on every update since a skin change unloads the regions.
+        menuBg.setTextureRegion(SkinTextures.get("menu-background"));
+        loadingTitle.setTextureRegion(SkinTextures.get("loading-title"));
+        circle.setTextureRegion(SkinTextures.get("loading"));
+
+        circle.setRotationZ((circle.getRotationZ() + 360f / 2f * pSecondsElapsed) % 360f);
+
         if (ToastLogger.getPercentage() != percentage) {
             percentage = ToastLogger.getPercentage();
             logText.setText(String.format("%d%%", (int) percentage));
-            logText.setPosition(
-                    Config.getRES_WIDTH() / 2f - logText.getWidth() / 2f,
-                    Config.getRES_HEIGHT() - Utils.toRes(100));
         }
     }
 
 
-    public void reset() {
-        // TODO Auto-generated method stub
+    public class LoadingScene extends UIScene {
+
+        @Override
+        public void onPerformLayout() {
+            // The legacy scene covers the whole window, the safe area is not applied.
+            setPadding(Padding.Companion.getZero());
+
+            final float scale = LegacyUnits.getScale();
+
+            final GraphicsTexture.Region title = loadingTitle.getTextureRegion();
+            loadingTitle.setHeight(DimensionKt.getPx((title != null ? title.getHeight() : 0f) * scale));
+
+            logText.setFontSize(DimensionKt.getPx(LegacyUnits.fontSize("logFont") * scale));
+            logText.setY(DimensionKt.getPx(-100 * scale));
+
+            final GraphicsTexture.Region loading = circle.getTextureRegion();
+            circle.setWidth(DimensionKt.getPx((loading != null ? loading.getWidth() : 0f) * scale));
+            circle.setHeight(DimensionKt.getPx((loading != null ? loading.getHeight() : 0f) * scale));
+
+            super.onPerformLayout();
+        }
+
+        @Override
+        protected void onUpdate(final TickingClock clock) {
+            LoadingScreen.this.onUpdate(clock.getElapsedTickTime());
+            super.onUpdate(clock);
+        }
     }
-
-
-    public static class LoadingScene extends Scene { }
 }

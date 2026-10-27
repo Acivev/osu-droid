@@ -28,7 +28,7 @@ class RoomCreateDialog(lobbyScene: LobbyScene) : UIDialog<UIScrollableContainer>
 
             onSubmit = { data ->
                 async {
-                    LoadingScreen().show()
+                    LoadingScreen.show()
 
                     val name = data.getString("name") ?: StringTable.format(string.multiplayer_lobby_create_room_name_default, OnlineManager.getInstance().username)
                     val password = data.optString("password").takeUnless(String::isBlank)
