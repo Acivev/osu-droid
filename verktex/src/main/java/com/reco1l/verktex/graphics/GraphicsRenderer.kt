@@ -293,21 +293,24 @@ abstract class GraphicsRenderer {
      * Registers a GPU resource with the renderer. This allows the renderer to manage the resource's
      * lifecycle and handle context loss events.
      */
-    fun registerResource(resource: GraphicsResource) {
+    fun registerResource(resource: GraphicsResource) = synchronized(gpuResources) {
         gpuResources.addLast(resource)
     }
 
     /**
      * Unregisters a GPU resource from the renderer.
      */
-    fun unregisterResource(resource: GraphicsResource) {
+    fun unregisterResource(resource: GraphicsResource) = synchronized(gpuResources) {
         gpuResources.remove(resource)
     }
 
     /**
      * Marks all registered GPU resources as lost due to a context loss event and should be recreated.
+     *
+     * Resources are registered from the update worker while the GL thread marks them, so the list is
+     * locked while it is iterated.
      */
-    fun markContextLoss() {
+    fun markContextLoss() = synchronized(gpuResources) {
         for (resource in gpuResources) {
             resource.markContextLost()
         }
