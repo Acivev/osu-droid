@@ -7,13 +7,17 @@ import com.reco1l.verktex.Platform
 import com.reco1l.verktex.input.KeyboardEvent
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.android.bass.BASSAudioDriver
+import com.reco1l.verktex.audio.AudioDriver
 import com.reco1l.verktex.fonts.Font
 import com.reco1l.verktex.android.gles.ESContext
 import com.reco1l.verktex.android.gles.ESDevice
 import com.reco1l.verktex.android.gles.ESRenderer
 import com.reco1l.verktex.android.gles.ESWindow
 
-fun Verktex.initializeAndroid(host: AndroidGameHost): ESWindow {
+fun Verktex.initializeAndroid(
+    host: AndroidGameHost,
+    audioDriver: AudioDriver = BASSAudioDriver()
+): ESWindow {
 
     Platform.implementation = AndroidPlatform(host)
     Logger.implementation = AndroidLogger()
@@ -29,7 +33,7 @@ fun Verktex.initializeAndroid(host: AndroidGameHost): ESWindow {
             device = device,
             window = window
         ),
-        audio = BASSAudioDriver()
+        audio = audioDriver
     )
 
     return window
