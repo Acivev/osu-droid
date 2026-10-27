@@ -16,6 +16,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -160,6 +161,24 @@ class GraphicsRendererCommandsTest {
         val positions = buffer.floats.chunked(4).map { (x, y) -> x to y }
         assertEquals(listOf(5f to 7f, 25f to 7f, 5f to 27f), positions)
         assertTrue(buffer.floats.chunked(4).all { it[2] == 0.5f && it[3] == 0.5f })
+    }
+
+    @Test
+    fun drawTrianglesUsesTheSolidStateAfterARect() {
+        val renderer = RecordingRenderer()
+
+        renderer.begin()
+        renderer.drawRect(0f, 0f, 10f, 10f, radius = 4f)
+        renderer.drawTriangles(floatArrayOf(0f, 0f, 10f, 0f, 0f, 10f), 3, Color4.White)
+        renderer.end()
+
+        // The mesh did not merge into the rect's command and does not inherit its uniforms.
+        assertEquals(2, renderer.commands.size)
+
+        val command = renderer.commands.last()
+        assertSame(BuiltIn.Shaders.SolidQuad, command.shader)
+        assertEquals(GraphicsShader.UniformSet(), command.uniformSet)
+        assertNull(command.texture)
     }
 
     private companion object {

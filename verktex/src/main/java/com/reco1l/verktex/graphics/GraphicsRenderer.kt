@@ -470,12 +470,17 @@ abstract class GraphicsRenderer {
      * Draws a triangle mesh, [vertices] holds [vertexCount] positions in local space as x, y pairs
      * and every three of them form a triangle.
      *
-     * Like [drawGeometry] it writes into the active state, so [setState] must have been called
-     * before. Every vertex samples the center of the UV space and uses [color].
+     * It draws with the solid shader and every vertex samples the center of the UV space (0.5) and
+     * uses [color]. A shader pushed with [pushShader] replaces the solid one.
      */
     fun drawTriangles(vertices: FloatArray, vertexCount: Int, color: Color4) {
         require(vertexCount % 3 == 0) { "The vertex count must be a multiple of 3, got $vertexCount." }
         require(vertices.size >= vertexCount * 2) { "Expected ${vertexCount * 2} floats, got ${vertices.size}." }
+
+        setState(
+            shader = BuiltIn.Shaders.SolidQuad,
+            uniformSet = EMPTY_UNIFORMS
+        )
 
         drawGeometry { transform, _ ->
             val color = transformColor(color)
