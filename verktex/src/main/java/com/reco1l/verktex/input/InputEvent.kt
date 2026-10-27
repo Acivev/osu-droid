@@ -106,6 +106,8 @@ data class KeyboardEvent(
         Backspace,
         Enter,
         Escape,
+        Back,
+        Menu,
         Tab,
         Space,
 

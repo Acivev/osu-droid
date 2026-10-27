@@ -84,6 +84,8 @@ fun KeyEvent.toInputKey(): KeyboardEvent.Key {
         KeyEvent.KEYCODE_META_LEFT, KeyEvent.KEYCODE_META_RIGHT -> KeyboardEvent.Key.Meta
 
         KeyEvent.KEYCODE_ESCAPE -> KeyboardEvent.Key.Escape
+        KeyEvent.KEYCODE_BACK -> KeyboardEvent.Key.Back
+        KeyEvent.KEYCODE_MENU -> KeyboardEvent.Key.Menu
         KeyEvent.KEYCODE_FORWARD_DEL -> KeyboardEvent.Key.Delete
         KeyEvent.KEYCODE_MOVE_HOME -> KeyboardEvent.Key.Home
         KeyEvent.KEYCODE_MOVE_END -> KeyboardEvent.Key.End
