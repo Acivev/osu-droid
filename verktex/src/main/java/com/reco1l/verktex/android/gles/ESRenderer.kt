@@ -43,8 +43,17 @@ class ESRenderer(
         }
     }
 
+    private var capabilitiesRefreshed = false
+
     override fun prepareFrame(): Boolean {
-        return context.prepare()
+        if (!context.prepare()) return false
+
+        // The context is current on the draw thread from here on, the device was created without one.
+        if (!capabilitiesRefreshed) {
+            capabilitiesRefreshed = true
+            device.refreshCapabilities()
+        }
+        return true
     }
 
     override fun begin() {
