@@ -667,7 +667,7 @@ abstract class GraphicsRenderer {
 
     /**
      * Draws text using the specified font, position, and color. The text is rendered using the
-     * font's texture atlas.
+     * font's atlas pages, each run of glyphs on the same page is one draw command.
      */
     fun drawText(
         text: String,
@@ -676,54 +676,63 @@ abstract class GraphicsRenderer {
         y: Float,
         color: Color4 = Color4.White
     ) {
-        setState(
-            shader = BuiltIn.Shaders.TextureQuad,
-            texture = font.texture,
-            uniformSet = GraphicsShader.UniformSet()
-        )
+        val transform = matrixStack.lastOrNull() ?: Mat2.Identity
+        val color = transformColor(color)
 
-        drawGeometry { transform, baseColor ->
-            val color = transformColor(color)
+        // Glyphs are laid out in local space and every corner is transformed, so rotation and
+        // scale apply to text as well.
+        val baseline = y - font.metrics.ascent
 
-            // Glyphs are laid out in local space and every corner is transformed, so rotation and
-            // scale apply to text as well.
-            val baseline = y - font.metrics.ascent
+        var charIndex = 0
+        var cursor = x
+        var previousCodePoint = -1
 
-            var charIndex = 0
-            var cursor = x
-            var previousCodePoint = -1
+        // The page the current draw command samples from; a glyph on another page starts a new one.
+        var page: GraphicsTexture? = null
+        var buffer: GraphicsBuffer? = null
 
-            while (charIndex < text.length) {
+        while (charIndex < text.length) {
 
-                val codePoint = text.codePointAt(charIndex)
-                val charCount = Character.charCount(codePoint)
+            val codePoint = text.codePointAt(charIndex)
+            val charCount = Character.charCount(codePoint)
 
-                if (previousCodePoint != -1) {
-                    cursor += font.getKerning(previousCodePoint, codePoint)
+            if (previousCodePoint != -1) {
+                cursor += font.getKerning(previousCodePoint, codePoint)
+            }
+            previousCodePoint = codePoint
+
+            val glyph = font[codePoint]
+
+            // Some glyphs may not have a texture region if they not need a visible representation
+            // (like a space). In such cases, we skip rendering but still advance the cursor.
+            if (glyph.region != null) {
+                if (glyph.region.texture !== page) {
+                    page = glyph.region.texture
+                    setState(
+                        shader = BuiltIn.Shaders.TextureQuad,
+                        texture = page,
+                        uniformSet = GraphicsShader.UniformSet()
+                    )
+                    buffer = activeBuffer
                 }
-                previousCodePoint = codePoint
 
-                val glyph = font[codePoint]
+                val left = cursor + glyph.bearingX
+                val top = baseline + glyph.bearingY
 
-                // Some glyphs may not have a texture region if they not need a visible representation
-                // (like a space). In such cases, we skip rendering but still advance the cursor.
-                if (glyph.region != null) {
-                    val left = cursor + glyph.bearingX
-                    val top = baseline + glyph.bearingY
+                val right = left + glyph.width
+                val bottom = top + glyph.height
 
-                    val right = left + glyph.width
-                    val bottom = top + glyph.height
+                val u0 = glyph.region.u0
+                val v0 = glyph.region.v0
+                val u1 = glyph.region.u1
+                val v1 = glyph.region.v1
 
-                    val u0 = glyph.region.u0
-                    val v0 = glyph.region.v0
-                    val u1 = glyph.region.u1
-                    val v1 = glyph.region.v1
+                val (x0, y0) = transform.transform(left, top)
+                val (x1, y1) = transform.transform(left, bottom)
+                val (x2, y2) = transform.transform(right, bottom)
+                val (x3, y3) = transform.transform(right, top)
 
-                    val (x0, y0) = transform.transform(left, top)
-                    val (x1, y1) = transform.transform(left, bottom)
-                    val (x2, y2) = transform.transform(right, bottom)
-                    val (x3, y3) = transform.transform(right, top)
-
+                buffer!!.apply {
                     addVertex(x0, y0, u0, v0, color)
                     addVertex(x1, y1, u0, v1, color)
                     addVertex(x2, y2, u1, v1, color)
@@ -732,11 +741,10 @@ abstract class GraphicsRenderer {
                     addVertex(x3, y3, u1, v0, color)
                     addVertex(x0, y0, u0, v0, color)
                 }
-
-                cursor += glyph.advance
-                charIndex += charCount
             }
 
+            cursor += glyph.advance
+            charIndex += charCount
         }
     }
 

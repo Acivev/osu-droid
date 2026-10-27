@@ -60,7 +60,7 @@ class FontFamily(
         while (fonts.isNotEmpty()) {
             val font = fonts.values.first()
             fonts.remove(font.descriptor)
-            font.texture.dispose()
+            font.dispose()
         }
     }
 
