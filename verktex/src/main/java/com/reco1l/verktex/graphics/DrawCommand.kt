@@ -42,7 +42,24 @@ data class DrawCommand(
      * The set of uniform variables to be passed to the shader program during rendering.
      */
     val uniformSet: GraphicsShader.UniformSet
-)
+) {
 
-
-
+    /**
+     * Whether a draw with the given state can be appended to this command instead of starting a new one.
+     */
+    fun canReuse(
+        shader: GraphicsShader?,
+        texture: GraphicsTexture?,
+        scissor: Vec4?,
+        blendMode: BlendMode,
+        depthState: DepthState,
+        uniformSet: GraphicsShader.UniformSet,
+    ): Boolean {
+        return this.shader == shader &&
+                this.uniformSet == uniformSet &&
+                this.texture == texture &&
+                this.blendMode == blendMode &&
+                this.depthState == depthState &&
+                this.scissor == scissor
+    }
+}

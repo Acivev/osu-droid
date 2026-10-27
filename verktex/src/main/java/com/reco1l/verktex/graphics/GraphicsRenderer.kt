@@ -75,22 +75,6 @@ abstract class GraphicsRenderer {
     private var activeUniformSet: GraphicsShader.UniformSet = GraphicsShader.UniformSet()
 
 
-    private fun DrawCommand.canReuse(
-        shader: GraphicsShader?,
-        texture: GraphicsTexture?,
-        scissor: Vec4?,
-        blendMode: BlendMode,
-        depthState: DepthState,
-        uniformSet: GraphicsShader.UniformSet,
-    ): Boolean {
-        return this.shader == shader &&
-                this.uniformSet == uniformSet &&
-                this.texture == texture &&
-                this.blendMode == blendMode &&
-                this.depthState == depthState &&
-                this.scissor == scissor
-    }
-
 
     /**
      * Sets the current rendering state, including shader, texture, scissor rectangle, blend mode,

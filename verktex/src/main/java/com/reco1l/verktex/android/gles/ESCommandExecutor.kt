@@ -34,9 +34,12 @@ object ESCommandExecutor {
 
         // Blend
         GLES32.glEnable(GLES32.GL_BLEND)
-        GLES32.glBlendFunc(
-            command.blendMode.toGLESSource(),
-            command.blendMode.toGLESDestination()
+        val blendMode = command.blendMode
+        GLES32.glBlendFuncSeparate(
+            blendMode.sourceRGB.toGLES(),
+            blendMode.destinationRGB.toGLES(),
+            blendMode.sourceAlpha.toGLES(),
+            blendMode.destinationAlpha.toGLES()
         )
 
         // Depth testing
