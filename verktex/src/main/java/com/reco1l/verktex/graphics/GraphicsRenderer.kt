@@ -186,6 +186,9 @@ abstract class GraphicsRenderer {
      * Pushes a shader onto the shader stack. It replaces the shader of subsequent drawing operations,
      * so it must use the built-in vertex layout: position at location 0, UV at 1 and color at 2.
      * Uniforms it does not declare are skipped.
+     *
+     * It also replaces `BuiltIn.Shaders.Video` for external textures, so a shader with a 2D sampler
+     * must not be pushed while an external texture is drawn.
      */
     fun pushShader(shader: GraphicsShader) {
         shaderStack.addLast(shader)
@@ -706,6 +709,7 @@ abstract class GraphicsRenderer {
             EMPTY_UNIFORMS
         }
 
+        // A pushed shader replaces the video one too, see pushShader.
         setState(
             shader = if (texture.isExternal) BuiltIn.Shaders.Video else BuiltIn.Shaders.TextureQuad,
             uniformSet = uniformSet,

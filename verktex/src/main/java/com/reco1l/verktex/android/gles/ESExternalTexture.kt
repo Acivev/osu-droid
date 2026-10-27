@@ -55,7 +55,10 @@ open class ESExternalTexture(
     /**
      * Called every time the surface is (re)created, i.e. on the first load and after a context loss,
      * so the producer can attach to the new [surface]. It runs on the draw thread in the middle of a
-     * draw (outside the texture's lock), so it must stay cheap.
+     * draw (outside the texture's lock), so it must stay cheap. A handler that touches the component
+     * tree must hop to the update thread first.
+     *
+     * After a context loss it fires late, see [onContextLost].
      */
     var onSurfaceRecreated: (() -> Unit)? = null
 
@@ -131,6 +134,11 @@ open class ESExternalTexture(
         foldVerticalFlip(transform)
     }
 
+    /**
+     * Releases the [surface] right away, but the new one is only created, and [onSurfaceRecreated]
+     * only fired (on the draw thread), on the next bind, i.e. when the sprite draws again. Until then
+     * the producer keeps writing into the abandoned surface and its frames are lost.
+     */
     override fun onContextLost() {
         // The GL name died with the context, the surface is recreated on the next load.
         releaseSurface()
