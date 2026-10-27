@@ -113,6 +113,7 @@ object SkinTextures {
         Verktex.scheduleOnUpdate {
             Textures.unloadAll { key, _ -> key.startsWith(KEY_PREFIX) }
             misses.clear()
+            SharedBackground.invalidate()
         }
     }
 }

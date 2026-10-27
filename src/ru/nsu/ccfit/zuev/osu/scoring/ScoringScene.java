@@ -11,6 +11,7 @@ import com.osudroid.ui.verktex.ISkinnable;
 import com.osudroid.ui.verktex.LegacyUnits;
 import com.osudroid.ui.verktex.ModIcon;
 import com.osudroid.ui.verktex.ScoreNumber;
+import com.osudroid.ui.verktex.SharedBackground;
 import com.osudroid.ui.verktex.SkinTextures;
 import com.osudroid.ui.v2.multi.LobbyScene;
 import com.osudroid.utils.Execution;
@@ -32,7 +33,6 @@ import com.reco1l.verktex.input.KeyboardEvent;
 import com.reco1l.verktex.input.PointerEvent;
 import com.reco1l.verktex.math.Easing;
 import com.reco1l.verktex.math.FloatAnimation;
-import com.reco1l.verktex.texture.Textures;
 import com.reco1l.verktex.time.TickingClock;
 import com.reco1l.verktex.ui.UIComponent;
 import com.reco1l.verktex.ui.UIScene;
@@ -62,7 +62,6 @@ import com.osudroid.ui.SendingPanel;
 
 import org.apache.commons.io.FilenameUtils;
 
-import java.io.File;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Date;
@@ -88,8 +87,6 @@ import ru.nsu.ccfit.zuev.osu.online.OnlineScoring;
 import ru.nsu.ccfit.zuev.osuplus.BuildConfig;
 
 public class ScoringScene extends UIScene implements RoutedScene, ISkinnable {
-    public static final String BACKGROUND_KEY = "::background#results";
-
     private final Engine engine;
     private final GameScene game;
     private final SongMenu menu;
@@ -127,7 +124,7 @@ public class ScoringScene extends UIScene implements RoutedScene, ISkinnable {
         if (replayPath != null && beatmap == null) {
             replayStat = stat;
         }
-        GraphicsTexture.Region tex = loadResultsBackground(ResourceManager.getInstance().getBackgroundFile());
+        GraphicsTexture.Region tex = SharedBackground.region();
         if (tex == null) {
             tex = SkinTextures.get("menu-background");
         }
@@ -789,24 +786,6 @@ public class ScoringScene extends UIScene implements RoutedScene, ISkinnable {
             }
         }
         return false;
-    }
-
-    /**
-     * Decodes the results background from {@code file} into {@link #BACKGROUND_KEY}, releasing the
-     * previous one. Null for a null, missing or undecodable file. Update thread only.
-     */
-    public static GraphicsTexture.Region loadResultsBackground(final String file) {
-        Textures.INSTANCE.unload(BACKGROUND_KEY);
-
-        if (file == null) {
-            return null;
-        }
-
-        final GraphicsTexture.Source source = SkinTextures.decode(new File(file));
-        if (source == null) {
-            return null;
-        }
-        return SkinTextures.register(BACKGROUND_KEY, source, true);
     }
 
     public void stopMusic() {

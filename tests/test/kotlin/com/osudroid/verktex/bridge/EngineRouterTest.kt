@@ -25,6 +25,19 @@ class EngineRouterTest {
         }
     }
 
+    private class RecordingScene : UIScene(), RoutedScene {
+        var shown = 0
+        var hidden = 0
+
+        override fun onShown() {
+            shown++
+        }
+
+        override fun onHidden() {
+            hidden++
+        }
+    }
+
     @Before
     fun setUp() {
         VerktexTestFixtures.ensureInitialized()
@@ -152,5 +165,34 @@ class EngineRouterTest {
         EngineRouter.showOverlay(o)
         EngineRouter.hideOverlay(o)
         assertFalse(EngineRouter.isVerktexActive)
+    }
+
+    @Test
+    fun showingAnotherVerktexSceneHidesThePrevious() {
+        val a = RecordingScene()
+        val b = RecordingScene()
+        EngineRouter.showVerktex(a)
+        EngineRouter.showVerktex(b)
+        assertEquals(1, a.hidden)
+        assertEquals(1, b.shown)
+        assertEquals(0, b.hidden)
+    }
+
+    @Test
+    fun showingAndEngineHidesTheVerktexScene() {
+        val a = RecordingScene()
+        EngineRouter.showVerktex(a)
+        EngineRouter.showAndEngine(Scene())
+        assertEquals(1, a.hidden)
+    }
+
+    @Test
+    fun leaveVerktexHidesTheVerktexScene() {
+        val a = RecordingScene()
+        EngineRouter.showVerktex(a)
+        EngineRouter.leaveVerktex()
+        assertEquals(1, a.hidden)
+        EngineRouter.leaveVerktex()
+        assertEquals(1, a.hidden)
     }
 }

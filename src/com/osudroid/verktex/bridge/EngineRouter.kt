@@ -15,8 +15,13 @@ sealed class Destination {
     data class Verktex(val scene: UIScene) : Destination()
 }
 
-/** A Verktex scene that wants to know when the router made it the shown scene. */
-interface RoutedScene { fun onShown() }
+/** A Verktex scene that wants to know when the router made it, or stopped it being, the shown scene. */
+interface RoutedScene {
+    fun onShown()
+
+    /** The scene stopped being Verktex's scene: another Verktex scene, AndEngine, or [EngineRouter.leaveVerktex]. */
+    fun onHidden() {}
+}
 
 /**
  * The only switch between AndEngine and Verktex. Verktex is kept at its base scene whenever
@@ -83,7 +88,7 @@ object EngineRouter {
 
         Verktex.withTreeLock {
             hideTrackedOverlays()
-            popToBase()
+            popToBase()?.onHidden()
             Verktex.pushScene(scene)
             (scene as? RoutedScene)?.onShown()
         }
@@ -96,18 +101,23 @@ object EngineRouter {
     }
 
     @JvmStatic
-    fun leaveVerktex() = Verktex.withTreeLock {
-        hideTrackedOverlays()
-        popToBase()
+    fun leaveVerktex() {
+        Verktex.withTreeLock {
+            hideTrackedOverlays()
+            popToBase()?.onHidden()
+        }
     }
 
     private fun hideTrackedOverlays() {
         trackedOverlays.toList().forEach(::hideOverlay)
     }
 
-    private fun popToBase() {
+    /** Pops every scene above the base; returns the previously shown scene when it is a [RoutedScene]. */
+    private fun popToBase(): RoutedScene? {
+        val shown = Verktex.scene as? RoutedScene
         while (Verktex.scene !== UIScene.EmptyScene) {
             Verktex.popScene()
         }
+        return shown
     }
 }

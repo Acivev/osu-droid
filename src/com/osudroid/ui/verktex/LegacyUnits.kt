@@ -32,6 +32,7 @@ object LegacyUnits {
         "smallFont" -> 21f
         "xs" -> 16f
         "strokeFont" -> 36f
+        "bigFont" -> 36f
         "CaptionFont" -> 35f
         else -> 35f
     }
