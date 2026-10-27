@@ -1,0 +1,113 @@
+package com.osudroid.verktex.bridge
+
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.ui.UIComponent
+import com.reco1l.verktex.ui.UIScene
+import org.andengine.entity.scene.Scene
+import org.andengine.entity.scene.background.Background
+import ru.nsu.ccfit.zuev.osu.GlobalManager
+
+/**
+ * Where the screen is shown: an AndEngine scene or a Verktex scene.
+ */
+sealed class Destination {
+    data class AndEngine(val scene: Scene) : Destination()
+    data class Verktex(val scene: UIScene) : Destination()
+}
+
+/** A Verktex scene that wants to know when the router made it the shown scene. */
+interface RoutedScene { fun onShown() }
+
+/**
+ * The only switch between AndEngine and Verktex. Verktex is kept at its base scene whenever
+ * AndEngine owns the screen; `UIEngine.setScene` calls [leaveVerktex] to guarantee that.
+ *
+ * Components passed to [showOverlay] are tracked overlays: they make Verktex active over an
+ * AndEngine scene, and every scene change ([leaveVerktex], [showVerktex]) hides them. Verktex
+ * modals add themselves through `Verktex.addOverlay` and belong to their scene, so the router
+ * neither tracks nor touches them.
+ */
+object EngineRouter {
+
+    /**
+     * Sets the active AndEngine scene. Replaceable for tests.
+     */
+    @JvmStatic
+    var andEngineSceneSetter: (Scene) -> Unit = { GlobalManager.getInstance().engine.scene = it }
+
+    /**
+     * The scene AndEngine shows while Verktex owns the screen.
+     */
+    @JvmStatic
+    val emptyAndEngineScene: Scene by lazy {
+        Scene().apply { background = Background(0f, 0f, 0f) }
+    }
+
+    private val trackedOverlays = mutableSetOf<UIComponent>()
+
+    @JvmStatic
+    val isVerktexActive: Boolean
+        get() = Verktex.scene !== UIScene.EmptyScene || hasShownOverlay
+
+    @JvmStatic
+    val hasShownOverlay: Boolean
+        get() = Verktex.withTreeLock { trackedOverlays.isNotEmpty() }
+
+    @JvmStatic
+    fun isOverlayShown(component: UIComponent): Boolean =
+        Verktex.withTreeLock { component in trackedOverlays }
+
+    @JvmStatic
+    fun showOverlay(component: UIComponent) = Verktex.withTreeLock {
+        if (trackedOverlays.add(component)) {
+            Verktex.addOverlay(component)
+        }
+    }
+
+    @JvmStatic
+    fun hideOverlay(component: UIComponent) = Verktex.withTreeLock {
+        if (trackedOverlays.remove(component)) {
+            Verktex.removeOverlay(component)
+        }
+    }
+
+    @JvmStatic
+    fun show(destination: Destination) = when (destination) {
+        is Destination.AndEngine -> showAndEngine(destination.scene)
+        is Destination.Verktex -> showVerktex(destination.scene)
+    }
+
+    @JvmStatic
+    fun showVerktex(scene: UIScene) {
+        andEngineSceneSetter(emptyAndEngineScene)
+
+        Verktex.withTreeLock {
+            hideTrackedOverlays()
+            popToBase()
+            Verktex.pushScene(scene)
+            (scene as? RoutedScene)?.onShown()
+        }
+    }
+
+    @JvmStatic
+    fun showAndEngine(scene: Scene) {
+        leaveVerktex()
+        andEngineSceneSetter(scene)
+    }
+
+    @JvmStatic
+    fun leaveVerktex() = Verktex.withTreeLock {
+        hideTrackedOverlays()
+        popToBase()
+    }
+
+    private fun hideTrackedOverlays() {
+        trackedOverlays.toList().forEach(::hideOverlay)
+    }
+
+    private fun popToBase() {
+        while (Verktex.scene !== UIScene.EmptyScene) {
+            Verktex.popScene()
+        }
+    }
+}

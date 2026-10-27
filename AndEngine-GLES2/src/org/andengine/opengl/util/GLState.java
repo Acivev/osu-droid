@@ -175,6 +175,54 @@ public class GLState {
 		this.mLineWidth = 1;
 	}
 
+	/**
+	 * Called after a renderer that bypasses this {@link GLState} (Verktex) has drawn. It invalidates
+	 * every cached binding and re-applies the cached state to GL, so the next AndEngine draw does not
+	 * trust values the external renderer has since changed. The scissor rectangle and vertex attribute
+	 * pointers are deliberately not restored because AndEngine re-specifies both on every bind/clip, so
+	 * this must not be called while an AndEngine clip is active. Removed together with the Verktex bridge.
+	 */
+	public void resyncAfterExternalDraw() {
+		this.mCurrentArrayBufferID = -1;
+		this.mCurrentIndexBufferID = -1;
+		this.mCurrentShaderProgramID = -1;
+		this.mCurrentFramebufferID = -1;
+		Arrays.fill(this.mCurrentBoundTextureIDs, -1);
+
+		GLES32.glActiveTexture(GLES32.GL_TEXTURE0);
+		this.mCurrentActiveTextureIndex = 0;
+
+		this.mCurrentSourceBlendMode = -1;
+		this.mCurrentDestinationBlendMode = -1;
+
+		setCapability(GLES32.GL_BLEND, this.mBlendEnabled);
+		setCapability(GLES32.GL_DEPTH_TEST, this.mDepthTestEnabled);
+		setCapability(GLES32.GL_SCISSOR_TEST, this.mScissorTestEnabled);
+		setCapability(GLES32.GL_CULL_FACE, this.mCullingEnabled);
+		setCapability(GLES32.GL_DITHER, this.mDitherEnabled);
+
+		// What EngineRenderer.onSurfaceCreated sets.
+		GLES32.glDepthMask(true);
+		GLES32.glDepthFunc(GLES32.GL_LESS);
+
+		GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_POSITION_LOCATION);
+		GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_COLOR_LOCATION);
+		GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_TEXTURECOORDINATES_LOCATION);
+
+		// Verktex's colour attribute, AndEngine's unused normal slot.
+		GLES32.glDisableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_NORMAL_LOCATION);
+
+		GLES32.glLineWidth(this.mLineWidth);
+	}
+
+	private static void setCapability(final int pCapability, final boolean pEnabled) {
+		if(pEnabled) {
+			GLES32.glEnable(pCapability);
+		} else {
+			GLES32.glDisable(pCapability);
+		}
+	}
+
 	public boolean isScissorTestEnabled() {
 		return this.mScissorTestEnabled;
 	}
