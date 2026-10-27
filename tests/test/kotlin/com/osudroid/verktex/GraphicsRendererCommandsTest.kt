@@ -54,6 +54,16 @@ class GraphicsRendererCommandsTest {
         override fun onUnload() = Unit
     }
 
+    private class FakeExternalTexture : GraphicsTexture() {
+        override val width = 16f
+        override val height = 16f
+        override val isExternal get() = true
+        override val transform = FloatArray(16) { if (it % 5 == 0) 1f else 0f }
+        override fun onCreateTexture() = Unit
+        override fun onBindTexture() = Unit
+        override fun onUnload() = Unit
+    }
+
     private object FakeDevice : GraphicsDevice {
         override val capabilities = GraphicsDevice.Capabilities(maxTextureSize = 4096f)
         override fun createBuffer(): GraphicsBuffer = FakeBuffer()
@@ -76,18 +86,23 @@ class GraphicsRendererCommandsTest {
     }
 
     private val solidQuad = FakeShader()
+    private val video = FakeShader()
     private var previousSolidQuad: GraphicsShader? = null
+    private var previousVideo: GraphicsShader? = null
 
     @Before
     fun setUp() {
         // The built-in shaders are lateinit, reading one that was never set throws.
         previousSolidQuad = try { BuiltIn.Shaders.SolidQuad } catch (_: UninitializedPropertyAccessException) { null }
         BuiltIn.Shaders.SolidQuad = solidQuad
+        previousVideo = try { BuiltIn.Shaders.Video } catch (_: UninitializedPropertyAccessException) { null }
+        BuiltIn.Shaders.Video = video
     }
 
     @After
     fun tearDown() {
         previousSolidQuad?.let { BuiltIn.Shaders.SolidQuad = it }
+        previousVideo?.let { BuiltIn.Shaders.Video = it }
     }
 
     @Test
@@ -179,6 +194,31 @@ class GraphicsRendererCommandsTest {
         assertSame(BuiltIn.Shaders.SolidQuad, command.shader)
         assertEquals(GraphicsShader.UniformSet(), command.uniformSet)
         assertNull(command.texture)
+    }
+
+    @Test
+    fun externalTexturesDrawWithTheVideoShaderAndMerge() {
+        val renderer = RecordingRenderer()
+        val texture = FakeExternalTexture()
+        val region = GraphicsTexture.Region(texture, FakeSource, 0f, 0f, 16f, 16f)
+
+        renderer.begin()
+        renderer.drawTexture(texture, region, 0f, 0f, 16f, 16f)
+        renderer.drawTexture(texture, region, 16f, 0f, 16f, 16f)
+        renderer.end()
+
+        assertEquals(1, renderer.commands.size)
+
+        val command = renderer.commands[0]
+        assertSame(video, command.shader)
+        assertSame(texture.transform, command.uniformSet.entries["uTransform"])
+        assertEquals(2 * VERTICES_PER_RECT * GraphicsRenderer.VERTEX_2D_STRIDE, command.buffer!!.position)
+    }
+
+    private object FakeSource : GraphicsTexture.Source {
+        override val width = 16f
+        override val height = 16f
+        override fun uploadToHardware(texturePositionX: Float, texturePositionY: Float) = Unit
     }
 
     private companion object {
