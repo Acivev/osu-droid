@@ -19,6 +19,34 @@ object ESCommandExecutor {
         0f, 0f, 0f, 1f
     )
 
+    // The defaults every draw starts from, rebuilt only when the viewport size changes. Commands are
+    // executed on the draw thread only, so one set is shared.
+    private var defaultUniformsWidth = -1
+    private var defaultUniformsHeight = -1
+    private var defaultUniforms = GraphicsShader.UniformSet()
+
+    private fun defaultUniforms(viewportWidth: Int, viewportHeight: Int): GraphicsShader.UniformSet {
+        if (viewportWidth != defaultUniformsWidth || viewportHeight != defaultUniformsHeight) {
+            defaultUniformsWidth = viewportWidth
+            defaultUniformsHeight = viewportHeight
+
+            val viewportSize = Vec2(viewportWidth.toFloat(), viewportHeight.toFloat())
+
+            defaultUniforms = GraphicsShader.UniformSet().apply {
+                set("uViewportSize", viewportSize)
+                set("uColor", Color4.White)
+                set("uTexture", 0)
+                set("uRadius", 0f)
+                set("uBorderWidth", 0f)
+                set("uBorderColor", Color4.Transparent)
+                set("uSize", viewportSize)
+                set("uTransform", IDENTITY_MAT4)
+            }
+        }
+
+        return defaultUniforms
+    }
+
     fun execute(command: DrawCommand, viewportWidth: Int, viewportHeight: Int) {
 
         if (command.clearDepth) {
@@ -74,18 +102,8 @@ object ESCommandExecutor {
             command.texture.bind()
         }
 
-        command.shader.applyUniforms(GraphicsShader.UniformSet().apply {
-            // Uniform values persist per program, so reset them to defaults before every draw.
-            val viewportSize = Vec2(viewportWidth.toFloat(), viewportHeight.toFloat())
-            set("uViewportSize", viewportSize)
-            set("uColor", Color4.White)
-            set("uTexture", 0)
-            set("uRadius", 0f)
-            set("uBorderWidth", 0f)
-            set("uBorderColor", Color4.Transparent)
-            set("uSize", viewportSize)
-            set("uTransform", IDENTITY_MAT4)
-        })
+        // Uniform values persist per program, so reset them to defaults before every draw.
+        command.shader.applyUniforms(defaultUniforms(viewportWidth, viewportHeight))
         command.shader.applyUniforms(command.uniformSet)
 
         command.buffer.bind()
