@@ -1,6 +1,7 @@
 package com.osudroid.ui.v2.modmenu
 
-import com.reco1l.andengine.ui.*
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.control.UITextInput
 
 /**
  * A search input field for filtering mods and mod presets in the mod menu.
@@ -22,13 +23,13 @@ class ModMenuSearchInput : UITextInput("") {
         super.onValueChanged()
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    override fun onUpdate(clock: TickingClock) {
         if (lastValueChange != Long.MAX_VALUE && System.currentTimeMillis() - lastValueChange >= DEBOUNCE_MS) {
             onSearchTermUpdate(value)
             lastValueChange = Long.MAX_VALUE
         }
 
-        super.onManagedUpdate(deltaTimeSec)
+        super.onUpdate(clock)
     }
 
     companion object {

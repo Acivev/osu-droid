@@ -1,33 +1,39 @@
 package com.osudroid.ui.v2.modmenu
 
 import com.osudroid.data.*
-import com.osudroid.ui.v2.*
 import com.osudroid.ui.v2.modmenu.ModMenu.addMod
 import com.osudroid.ui.v2.modmenu.ModMenu.removeMod
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.ModsIndicator
 import com.osudroid.utils.deserializeMods
 import com.osudroid.utils.searchContiguously
-import com.reco1l.andengine.*
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.container.*
-import com.reco1l.andengine.sprite.*
-import com.reco1l.andengine.ui.*
-import ru.nsu.ccfit.zuev.osu.*
+import com.osudroid.utils.updateThread
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.ui.UITextButton
+import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.dialog.UIMessageDialog
+import com.reco1l.verktex.ui.text.UIText
 
 class ModMenuPresetsSection : ModMenuSection("Presets") {
 
 
-    private val addButton: UITextButton
+    override val sectionWidth = 300f
+
+    private val addButton: LegacyTextButton
 
     private var modPresets = listOf<ModPreset>()
 
+    // The toggles of the last loadPresets(), they reach toggleContainer on the update thread.
+    private var presetToggles = listOf<ModPresetToggle>()
+
 
     init {
-        width = 300f
-
-        addButton = UITextButton().apply {
-            width = FillParent
-            text = "Add preset"
-            leadingIcon = UISprite(ResourceManager.getInstance().getTexture("plus"))
+        addButton = LegacyTextButton("Add preset", "plus", "plus.png").apply {
+            width = fill()
             onActionUp = {
                 ModPresetsForm(this@ModMenuPresetsSection).show()
             }
@@ -53,14 +59,23 @@ class ModMenuPresetsSection : ModMenuSection("Presets") {
     }
 
     fun loadPresets() {
-        toggleContainer.detachChildren { it is ModPresetToggle }
+        val previousToggles = presetToggles
 
         modPresets = DatabaseManager.modPresetTable.getAll()
 
-        for (preset in modPresets) {
-
+        presetToggles = modPresets.map { preset ->
             preset.mods = deserializeMods(preset.serializedMods)
-            toggleContainer += ModPresetToggle(preset)
+            ModPresetToggle(preset)
+        }
+
+        val newToggles = presetToggles
+
+        // ModMenu loads the presets when it is first created, which may be off the update thread.
+        updateThread {
+            Verktex.withTreeLock {
+                previousToggles.forEach { toggleContainer -= it }
+                newToggles.forEach { toggleContainer += it }
+            }
         }
     }
 
@@ -70,28 +85,38 @@ class ModMenuPresetsSection : ModMenuSection("Presets") {
 
         addButton.isEnabled = enabledMods.isNotEmpty()
 
-        toggleContainer.callOnChildren { toggle ->
-            if (toggle is ModPresetToggle) {
-                toggle.isSelected = toggle.preset.mods == enabledMods
-            }
+        presetToggles.forEach { toggle ->
+            toggle.isSelected = toggle.preset.mods == enabledMods
         }
     }
 
     override fun onSearchTermUpdate(searchTerm: String) {
-        toggleContainer.callOnChildren { toggle ->
-            if (toggle is ModPresetToggle) {
-                toggle.isVisible = toggle.preset.name.searchContiguously(searchTerm)
-            }
+        presetToggles.forEach { toggle ->
+            toggle.isVisible = toggle.preset.name.searchContiguously(searchTerm)
         }
     }
 
-    inner class ModPresetToggle(val preset: ModPreset) : UIButton() {
+    inner class ModPresetToggle(val preset: ModPreset) : LegacyButton() {
+
+        private val nameText = UIText().apply {
+            text = preset.name
+        }
+
+        private val modsIndicator = ModsIndicator().apply {
+            iconSize = 21f
+            mods = preset.mods.values
+        }
+
+        private val content = UILinearContainer().apply {
+            orientation = UILinearContainer.Orientation.Vertical
+            width = fill()
+
+            +nameText
+            +modsIndicator
+        }
 
         init {
-            orientation = Orientation.Vertical
-            spacing = 8f
-            width = FillParent
-            cullingMode = CullingMode.CameraBounds
+            width = fill()
 
             onActionUp = {
                 if (isSelected) {
@@ -135,16 +160,17 @@ class ModMenuPresetsSection : ModMenuSection("Presets") {
                 }
             }
 
-            text {
-                text = preset.name
-                font = ResourceManager.getInstance().getFont("smallFont")
-            }
-
-            +ModsIndicator().apply {
-                iconSize = 21f
-                mods = preset.mods.values
-            }
+            +content
         }
 
+        override fun onApplyLegacySizes() {
+            content.spacing = 8f.vu.px
+            nameText.fontSize = LegacyUnits.fontSize("smallFont").vu.px
+        }
+
+        // ModIcon does not take the button colour, as inheritAncestorsColor = false did.
+        override fun applyTint(tint: Color4) {
+            nameText.color = tint
+        }
     }
 }

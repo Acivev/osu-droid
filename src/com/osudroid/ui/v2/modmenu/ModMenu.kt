@@ -1,31 +1,22 @@
 package com.osudroid.ui.v2.modmenu
 
-import com.edlplan.framework.easing.Easing
 import com.osudroid.GameMode
 import com.osudroid.beatmaps.BeatmapCache
 import com.osudroid.data.BeatmapInfo
 import com.osudroid.data.DatabaseManager
-import com.reco1l.andengine.*
-import com.reco1l.andengine.component.UIComponent.Companion.MatchContent
-import com.reco1l.andengine.component.UIComponent.Companion.FillParent
-import com.reco1l.andengine.container.*
-import com.reco1l.andengine.shape.*
-import com.reco1l.andengine.sprite.*
-import com.reco1l.andengine.ui.*
-import com.reco1l.framework.*
-import com.reco1l.framework.math.*
 import com.osudroid.multiplayer.api.RoomAPI.setPlayerMods
 import com.osudroid.multiplayer.api.RoomAPI.setRoomMods
 import com.osudroid.multiplayer.api.data.RoomMods
 import com.osudroid.multiplayer.Multiplayer
-import com.osudroid.ui.v2.ModsIndicator
-import com.osudroid.ui.v2.StarRatingBadge
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.ModsIndicator
+import com.osudroid.ui.verktex.SkinTextures
+import com.osudroid.ui.verktex.StarRatingBadge
+import com.osudroid.ui.verktex.times
 import com.osudroid.utils.ModHashMap
 import com.osudroid.utils.async
 import com.osudroid.utils.updateThread
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.ui.UITextButton
-import com.rian.framework.RollingFloatCounter
 import com.osudroid.difficulty.BeatmapDifficultyCalculator.calculateDroidDifficulty
 import com.osudroid.difficulty.BeatmapDifficultyCalculator.calculateStandardDifficulty
 import com.osudroid.mods.*
@@ -33,18 +24,41 @@ import com.osudroid.scoring.ScoreMultiplierCalculator
 import com.osudroid.utils.allModsInstances
 import com.osudroid.utils.applyMods
 import com.osudroid.utils.calculateRate
+import com.osudroid.verktex.bridge.EngineRouter
+import com.osudroid.verktex.bridge.VerktexBridge
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Axis
+import com.reco1l.verktex.data.ClipMode
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.LayoutConstraints
+import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.Vec2
+import com.reco1l.verktex.data.Vec4
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.KeyboardEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.input.ScrollEvent
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UIBadge
+import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.UIScrollableContainer
 import java.io.IOException
 import kotlinx.coroutines.*
 import ru.nsu.ccfit.zuev.osu.*
 import ru.nsu.ccfit.zuev.osu.DifficultyAlgorithm.*
-import ru.nsu.ccfit.zuev.osu.helper.*
+import ru.nsu.ccfit.zuev.osu.helper.StringTable
 import java.util.LinkedList
 import java.util.concurrent.CancellationException
 import kotlin.math.*
 import kotlin.reflect.KClass
 import kotlin.reflect.full.createInstance
 
-object ModMenu : UIScene() {
+object ModMenu : UIContainer() {
 
 
     /**
@@ -62,16 +76,23 @@ object ModMenu : UIScene() {
      */
     val modToggles = mutableListOf<ModMenuToggle>()
 
+    /**
+     * Whether the mod menu is shown.
+     */
+    @JvmStatic
+    val isShown: Boolean
+        get() = EngineRouter.isOverlayShown(this)
+
 
     private val modChangeQueue = LinkedList<Mod>()
     private val modPresetsSection: ModMenuPresetsSection
 
-    private val customizeButton: UITextButton
+    private val customizeButton: LegacyTextButton
     private val customizationMenu: ModCustomizationMenu
     private val selectedModsIndicator: ModsIndicator
     private val searchInput: ModMenuSearchInput
 
-    private val rankedBadge: UIBadge
+    private val rankedBadge: RankedBadge
     private val arBadge: StatisticsBadge
     private val odBadge: StatisticsBadge
     private val csBadge: StatisticsBadge
@@ -82,10 +103,31 @@ object ModMenu : UIScene() {
 
     private var calculationJob: Job? = null
 
+    // The components sized in virtual units, kept to apply the sizes again on a scale change.
+    private val topBar: UIContainer
+    private val topButtons: UILinearContainer
+    private val selectedModsScroll: UIScrollableContainer
+    private val searchIcon: UISprite
+    private val sectionsRow: VisibleChildrenContainer
+    private val bottomBar: UIContainer
+    private val statisticsRow: UILinearContainer
+    private val difficultyRow: UILinearContainer
+
+    private var shouldLoadSearchIcon = true
+
+    // LegacyUnits.scale the sizes were last applied for.
+    private var appliedScale = 0f
+
+    // The bottom padding of the bottom bar in virtual units and the scale it was last applied for.
+    private var appliedBottomPadding = -1f
+    private var bottomPaddingScale = 0f
+
 
     init {
-        isBackgroundEnabled = false
+        width = fill()
+        height = fill()
 
+        // Other AndEngine scenes take these textures from ResourceManager.
         ResourceManager.getInstance().loadHighQualityAsset("back-arrow", "back-arrow.png")
         ResourceManager.getInstance().loadHighQualityAsset("tune", "tune.png")
         ResourceManager.getInstance().loadHighQualityAsset("backspace", "backspace.png")
@@ -94,36 +136,25 @@ object ModMenu : UIScene() {
 
         customizationMenu = ModCustomizationMenu()
 
-        attachChild(UIFlexContainer().apply {
-            width = FillParent
-            height = FillParent
-            direction = FlexDirection.Column
-            justifyContent = JustifyContent.SpaceBetween
-            background = UIBox().apply {
-                applyTheme = {
-                    color = it.accentColor * 0.1f
-                    alpha = 0.9f
-                }
+        // The AndEngine flex column spread its three children with SpaceBetween: the top and
+        // bottom bars wrap their content and the sections take the height left between them.
+        +UILinearContainer().apply {
+            orientation = UILinearContainer.Orientation.Vertical
+            width = fill()
+            height = fill()
+            style = Style { theme ->
+                backgroundColor = (theme.palette.accent * 0.1f).copy(alpha = 0.9f)
             }
 
-            +UIContainer().apply {
-                width = FillParent
-                height = MatchContent
-                padding = Vec4(60f, 12f)
+            topBar = UIContainer().apply {
+                width = fill()
 
-                +UILinearContainer().apply {
-                    orientation = Orientation.Horizontal
+                topButtons = UILinearContainer().apply {
+                    orientation = UILinearContainer.Orientation.Horizontal
                     anchor = Anchor.CenterLeft
                     origin = Anchor.CenterLeft
-                    spacing = 10f
 
-                    +UITextButton().apply {
-                        text = "Back"
-                        leadingIcon = UISprite().apply {
-                            textureRegion = ResourceManager.getInstance().getTexture("back-arrow")
-                            width = 28f
-                            height = 28f
-                        }
+                    +LegacyTextButton("Back", "back-arrow", "back-arrow.png").apply {
                         onActionUp = {
                             ResourceManager.getInstance().getSound("click-short-confirm")?.play()
                             back()
@@ -131,14 +162,8 @@ object ModMenu : UIScene() {
                         onActionCancel = { ResourceManager.getInstance().getSound("click-short")?.play() }
                     }
 
-                    customizeButton = UITextButton().apply {
-                        text = "Customize"
+                    customizeButton = LegacyTextButton("Customize", "tune", "tune.png").apply {
                         isEnabled = false
-                        leadingIcon = UISprite().apply {
-                            textureRegion = ResourceManager.getInstance().getTexture("tune")
-                            width = 28f
-                            height = 28f
-                        }
                         onActionUp = {
                             ResourceManager.getInstance().getSound("click-short-confirm")?.play()
                             if (customizationMenu.isVisible) {
@@ -152,16 +177,7 @@ object ModMenu : UIScene() {
 
                     +customizeButton
 
-                    +UITextButton().apply {
-                        text = "Clear"
-                        applyTheme = {}
-                        color = Color4(0xFFFFBFBF)
-                        background?.color = Color4(0xFF342121)
-                        leadingIcon = UISprite().apply {
-                            textureRegion = ResourceManager.getInstance().getTexture("backspace")
-                            width = 28f
-                            height = 28f
-                        }
+                    +ClearButton().apply {
                         onActionUp = {
                             ResourceManager.getInstance().getSound("click-short-confirm")?.play()
                             clear()
@@ -169,27 +185,31 @@ object ModMenu : UIScene() {
                         onActionCancel = { ResourceManager.getInstance().getSound("click-short")?.play() }
                     }
 
-                    +UIScrollableContainer().apply {
-                        width = 340f
-                        height = MatchContent
-                        anchor = Anchor.CenterLeft
-                        origin = Anchor.CenterLeft
-                        scrollAxes = Axes.X
-                        clipToBounds = true
+                    // Verktex linear containers place children at the top of the row, so the
+                    // indicator is centred inside a container as tall as the row.
+                    selectedModsScroll = UIScrollableContainer().apply {
+                        height = fill()
+                        scrollAxes = Axis.X
+                        clipping = ClipMode.Bounds
 
-                        selectedModsIndicator = ModsIndicator()
+                        selectedModsIndicator = ModsIndicator().apply {
+                            anchor = Anchor.CenterLeft
+                            origin = Anchor.CenterLeft
+                        }
                         +selectedModsIndicator
                     }
+
+                    +selectedModsScroll
                 }
+
+                +topButtons
 
                 +UIContainer().apply {
                     anchor = Anchor.CenterRight
                     origin = Anchor.CenterRight
-                    height = FillParent
+                    height = fill()
 
                     searchInput = ModMenuSearchInput().apply {
-                        width = 400f
-                        height = FillParent
                         onSearchTermUpdate = { searchTerm ->
                             modSections.forEach { it.onSearchTermUpdate(searchTerm) }
 
@@ -201,28 +221,27 @@ object ModMenu : UIScene() {
 
                     +searchInput
 
-                    +UISprite().apply {
-                        textureRegion = ResourceManager.getInstance().getTexture("search-small")
-                        size = Vec2(52f, 28f)
+                    searchIcon = UISprite().apply {
                         anchor = Anchor.CenterRight
                         origin = Anchor.CenterRight
-                        applyTheme = { color = it.accentColor }
+                        style = Style { theme -> color = theme.palette.accent }
                     }
+
+                    +searchIcon
                 }
             }
 
-            +UIScrollableContainer().apply {
-                width = FillParent
-                height = FillParent
-                scrollAxes = Axes.X
-                flexRules { grow = 1f }
+            +topBar
 
-                +UILinearContainer().apply {
-                    orientation = Orientation.Horizontal
-                    width = MatchContent
-                    height = FillParent
-                    spacing = 16f
-                    padding = Vec4(60f, 0f)
+            +UIScrollableContainer().apply {
+                width = fill()
+                height = fill()
+                scrollAxes = Axis.X
+
+                // Hidden sections must not take space in the row.
+                sectionsRow = VisibleChildrenContainer().apply {
+                    orientation = UILinearContainer.Orientation.Horizontal
+                    height = fill()
 
                     modPresetsSection = ModMenuPresetsSection()
                     +modPresetsSection
@@ -245,24 +264,17 @@ object ModMenu : UIScene() {
                         modSections.add(section)
                     }
                 }
+
+                +sectionsRow
             }
 
-            +UIContainer().apply {
-                width = FillParent
-                height = MatchContent
-                padding = Vec4(60f, 12f)
+            bottomBar = UIContainer().apply {
+                width = fill()
 
-                onUpdateTick = {
-                    val buttonHeight = Multiplayer.roomScene?.chat?.buttonHeight ?: 0f
-
-                    paddingBottom = if (Multiplayer.isConnected) buttonHeight + 12f else 12f
-                }
-
-                +UILinearContainer().apply {
-                    orientation = Orientation.Horizontal
+                statisticsRow = UILinearContainer().apply {
+                    orientation = UILinearContainer.Orientation.Horizontal
                     anchor = Anchor.CenterLeft
                     origin = Anchor.CenterLeft
-                    spacing = 10f
 
                     arBadge = StatisticsBadge().apply {
                         label = "AR"
@@ -296,21 +308,18 @@ object ModMenu : UIScene() {
                     +bpmBadge
                 }
 
-                +UILinearContainer().apply {
-                    orientation = Orientation.Horizontal
+                +statisticsRow
+
+                difficultyRow = UILinearContainer().apply {
+                    orientation = UILinearContainer.Orientation.Horizontal
                     anchor = Anchor.CenterRight
                     origin = Anchor.CenterRight
-                    spacing = 10f
 
                     starRatingBadge = StarRatingBadge()
                     +starRatingBadge
 
-                    rankedBadge = badge {
-                        text = "Ranked"
-                        background!!.color = Color4(0xFF83DF6B)
-                        color = Color4(0xFF161622)
-                        applyTheme = {}
-                    }
+                    rankedBadge = RankedBadge()
+                    +rankedBadge
 
                     scoreMultiplierBadge = StatisticsBadge { "%.2fx".format(it) }.apply {
                         label = "Score"
@@ -319,15 +328,35 @@ object ModMenu : UIScene() {
 
                     +scoreMultiplierBadge
                 }
+
+                +difficultyRow
             }
-        })
+
+            +bottomBar
+        }
 
         // Customizations menu
-        attachChild(customizationMenu)
+        +customizationMenu
 
         modPresetsSection.loadPresets()
     }
 
+
+    //region Thread
+
+    /**
+     * Runs [block] on the component tree: directly on the update thread, posted to it otherwise.
+     * Mods may change off the update thread, e.g. from multiplayer room events.
+     */
+    private fun onTree(block: () -> Unit) {
+        if (VerktexBridge.isUpdateThread) {
+            Verktex.withTreeLock(block)
+        } else {
+            updateThread { Verktex.withTreeLock(block) }
+        }
+    }
+
+    //endregion
 
     //region Calculation
 
@@ -358,7 +387,7 @@ object ModMenu : UIScene() {
             val songMenu = GlobalManager.getInstance().songMenu
 
             if (beatmap == null) {
-                songMenu.setStarsDisplay(0f)
+                updateThread { songMenu.setStarsDisplay(0f) }
                 return@scope
             }
 
@@ -371,7 +400,7 @@ object ModMenu : UIScene() {
             // This is needed to give the mod a reference to the beatmap's default difficulty values.
             enabledMods.ofType<ModDifficultyAdjust>()?.setDefaultDifficulty(beatmap.difficulty)
 
-            customizationMenu.updateComponents()
+            onTree { customizationMenu.updateComponents() }
 
             // Copy the mods to avoid concurrent modification
             val mods = enabledMods.deepCopy().values
@@ -382,7 +411,7 @@ object ModMenu : UIScene() {
 
             ensureActive()
 
-            updateThread {
+            onTree {
                 arBadge.updateValue(selectedBeatmap.approachRate, difficulty.ar)
                 odBadge.updateValue(selectedBeatmap.overallDifficulty, difficulty.od)
                 csBadge.updateValue(selectedBeatmap.circleSize, difficulty.difficultyCS)
@@ -401,9 +430,11 @@ object ModMenu : UIScene() {
 
             ensureActive()
 
-            starRatingBadge.rating = attributes.starRating
-            songMenu.changeDimensionInfo(selectedBeatmap)
-            songMenu.setStarsDisplay(attributes.starRating.toFloat())
+            updateThread {
+                Verktex.withTreeLock { starRatingBadge.rating = attributes.starRating }
+                songMenu.changeDimensionInfo(selectedBeatmap)
+                songMenu.setStarsDisplay(attributes.starRating.toFloat())
+            }
         }
     }
 
@@ -411,19 +442,16 @@ object ModMenu : UIScene() {
 
     //region Visibility
 
-    override fun show() {
-        GlobalManager.getInstance().engine.scene.setChildScene(
-            this,
-            false,
-            true,
-            true
-        )
+    fun show() {
+        EngineRouter.showOverlay(this)
 
-        // Do not show mod presets in multiplayer.
-        modPresetsSection.isVisible = !Multiplayer.isMultiplayer
+        onTree {
+            // Do not show mod presets in multiplayer.
+            modPresetsSection.isVisible = !Multiplayer.isMultiplayer
 
-        if (modPresetsSection.isVisible) {
-            modPresetsSection.onSearchTermUpdate(searchInput.value)
+            if (modPresetsSection.isVisible) {
+                modPresetsSection.onSearchTermUpdate(searchInput.value)
+            }
         }
 
         // Ensure mods and customizations that can be enabled by the user are displayed and enabled.
@@ -434,7 +462,7 @@ object ModMenu : UIScene() {
         parseBeatmap()
     }
 
-    override fun back() {
+    fun back() {
         back(true)
     }
 
@@ -460,7 +488,14 @@ object ModMenu : UIScene() {
             }
         }
 
-        super.back()
+        onTree { EngineRouter.hideOverlay(this) }
+    }
+
+    override fun onDetached() {
+        super.onDetached()
+
+        // Hidden by back() or by the router leaving Verktex, the search input must not keep the keyboard.
+        searchInput.blur()
     }
 
     //endregion
@@ -514,7 +549,7 @@ object ModMenu : UIScene() {
         updateModButtonVisibility()
     }
 
-    fun updateModButtonVisibility() {
+    fun updateModButtonVisibility() = onTree {
         modToggles.forEach {
             it.updateVisibility(searchInput.value)
             it.applyCompatibilityState()
@@ -524,7 +559,7 @@ object ModMenu : UIScene() {
         modSections.forEach { it.updateVisibility() }
     }
 
-    fun updateCustomizationMenuEnabledStates() {
+    fun updateCustomizationMenuEnabledStates() = onTree {
         customizationMenu.updateComponentEnabledStates()
     }
 
@@ -564,32 +599,17 @@ object ModMenu : UIScene() {
         }
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
-
-        if (modChangeQueue.isNotEmpty()) {
-            onModsChanged()
-        }
-
-        super.onManagedUpdate(deltaTimeSec)
-    }
-
     private fun onModsChanged() = synchronized(modChangeQueue) {
         val enabledMods = enabledMods.values.toList()
+        val enabledModClasses = enabledMods.mapTo(HashSet()) { it::class }
         val isRanked = enabledMods.isEmpty() || enabledMods.none { !it.isRanked }
 
-        rankedBadge.apply {
-            text = if (isRanked) "Ranked" else "Unranked"
-
-            clearEntityModifiers()
-            colorTo(if (isRanked) Color4(0xFF161622) else Theme.current.accentColor, 0.1f)
-
-            background!!.clearEntityModifiers()
-            background!!.colorTo(if (isRanked) Color4(0xFF83DF6B) else Theme.current.accentColor * 0.15f, 0.1f)
-        }
+        rankedBadge.setRanked(isRanked)
 
         modToggles.forEach {
+            // The selection is read from the state, the toggles may not show it yet.
             it.hasIncompatibility =
-                if (!it.isSelected) enabledMods.any { m -> !it.mod.isCompatibleWith(m) } else false
+                if (it.mod::class !in enabledModClasses) enabledMods.any { m -> !it.mod.isCompatibleWith(m) } else false
         }
 
         val selectedBeatmap = GlobalManager.getInstance().selectedBeatmap
@@ -613,19 +633,23 @@ object ModMenu : UIScene() {
         if (mod in enabledMods) {
             return
         }
+
+        // The toggles follow the enabled mods, so their selection before the change is read from the state.
+        val previouslySelected = modToggles.filterTo(HashSet()) { it.mod::class in enabledMods }
+
         enabledMods.put(mod)
 
         modToggles.forEach { button ->
 
-            val wasSelected = button.isSelected
-            button.isSelected = button.mod::class in enabledMods
+            val wasSelected = button in previouslySelected
+            val isSelected = button.mod::class in enabledMods
 
             if (button.mod::class == mod::class) {
                 button.mod = mod
             }
 
             // Handle incompatible mods with the selected mod.
-            if (wasSelected && !button.isSelected) {
+            if (wasSelected && !isSelected) {
                 customizationMenu.onModRemoved(button.mod)
                 button.mod = button.mod::class.createInstance()
             }
@@ -633,6 +657,8 @@ object ModMenu : UIScene() {
 
         customizationMenu.onModAdded(mod)
         queueModChange(mod)
+
+        onTree(::applyToggleSelection)
     }
 
     fun removeMod(mod: Mod) = removeMod(mod::class)
@@ -647,56 +673,215 @@ object ModMenu : UIScene() {
 
         enabledMods.remove(modClass)
 
-        toggle.isSelected = false
-
         customizationMenu.onModRemoved(toggle.mod)
         queueModChange(toggle.mod)
 
         toggle.mod = modClass.createInstance()
+
+        onTree(::applyToggleSelection)
+    }
+
+    /**
+     * Shows the enabled mods on the toggles. Posted calls may run after later changes, so the
+     * selection is taken from [enabledMods] when applied instead of from the change.
+     */
+    private fun applyToggleSelection() {
+        modToggles.forEach { it.isSelected = it.mod::class in enabledMods }
+    }
+
+    //endregion
+
+    //region Update
+
+    override fun onUpdate(clock: TickingClock) {
+        if (appliedScale != LegacyUnits.scale) {
+            appliedScale = LegacyUnits.scale
+
+            topBar.padding = Padding(60f.vu.px, 12f.vu.px)
+            topButtons.spacing = 10f.vu.px
+            selectedModsScroll.width = 340f.vu.px
+            searchInput.width = 400f.vu.px
+            searchInput.height = fill()
+            searchIcon.width = 52f.vu.px
+            searchIcon.height = 28f.vu.px
+            sectionsRow.spacing = 16f.vu.px
+            sectionsRow.padding = Padding(60f.vu.px, 0f.px)
+            statisticsRow.spacing = 10f.vu.px
+            difficultyRow.spacing = 10f.vu.px
+        }
+
+        if (shouldLoadSearchIcon) {
+            shouldLoadSearchIcon = false
+            searchIcon.textureRegion = SkinTextures.get("search-small", "search-small.png")
+        }
+
+        val bottomPaddingBottom = if (Multiplayer.isConnected) (Multiplayer.roomScene?.chat?.buttonHeight ?: 0f) + 12f else 12f
+
+        if (bottomPaddingBottom != appliedBottomPadding || appliedScale != bottomPaddingScale) {
+            appliedBottomPadding = bottomPaddingBottom
+            bottomPaddingScale = appliedScale
+
+            bottomBar.padding = Padding(
+                left = 60f.vu.px,
+                top = 12f.vu.px,
+                right = 60f.vu.px,
+                bottom = bottomPaddingBottom.vu.px
+            )
+        }
+
+        if (modChangeQueue.isNotEmpty()) {
+            onModsChanged()
+        }
+
+        super.onUpdate(clock)
+    }
+
+    //endregion
+
+    //region Layout
+
+    // The overlay container keeps the safe area free, the AndEngine scene covered the whole
+    // screen, so the menu takes the whole window instead of the bounds it is given. This relies
+    // on the overlay container sitting at the window origin.
+
+    override fun onMeasure(parentConstraints: LayoutConstraints, contentConstraints: LayoutConstraints): Vec2 {
+        val windowSize = windowSize()
+        val childConstraints = LayoutConstraints(0f, windowSize.x, 0f, windowSize.y)
+
+        forEach { it.measure(childConstraints) }
+
+        return windowSize
+    }
+
+    override fun layout(assignedBounds: Vec4) {
+        val windowSize = windowSize()
+
+        measuredSize = windowSize
+        super.layout(Vec4(0f, 0f, windowSize.x, windowSize.y))
+    }
+
+    private fun windowSize() = Vec2(
+        Verktex.graphics.window.windowWidth.toFloat(),
+        Verktex.graphics.window.windowHeight.toFloat()
+    )
+
+    //endregion
+
+    //region Input
+
+    override fun onInputEvent(event: InputEvent): Boolean {
+        // Keys first, the customization menu blocks every event while it is shown.
+        if (event is KeyboardEvent) {
+            // The song menu properties menu did not open over the AndEngine child scene.
+            if (event.key == KeyboardEvent.Key.Menu && event.action == KeyboardEvent.Action.Down) {
+                return true
+            }
+
+            // The legacy closed it on Enter only over the song menu.
+            if (event.action == KeyboardEvent.Action.Down && (event.key == KeyboardEvent.Key.Back
+                    || event.key == KeyboardEvent.Key.Enter && !Multiplayer.isMultiplayer)) {
+                back()
+                return true
+            }
+            return super.onInputEvent(event)
+        }
+
+        if (super.onInputEvent(event)) {
+            return true
+        }
+
+        // The AndEngine child scene was modal for touches. Cancel events are dispatched to every
+        // component, so they are not consumed.
+        return event is ScrollEvent || event is PointerEvent && event.action != PointerEvent.Action.Unknown
     }
 
     //endregion
 
     //region Components
 
-    private class StatisticsBadge(
-        private val formatter: (Float) -> String = { "%.2f".format(it) }
-    ) : UILabeledBadge() {
-        private val counter = RollingFloatCounter(0f).apply {
-            rollingEasing = Easing.OutQuint
-            rollingDuration = 0.3f
-        }
+    /**
+     * The "Clear" button, coloured by itself instead of the theme.
+     */
+    private class ClearButton : LegacyTextButton("Clear", "backspace", "backspace.png") {
 
         init {
-            registerUpdateHandler(counter)
+            style = Style {}
+            backgroundColor = Color4(0xFF342121)
         }
 
-        fun updateValue(initialValue: Float, finalValue: Float) {
-            if (counter.targetValue == finalValue) {
-                return
-            }
+        override fun applyTint(tint: Color4) = super.applyTint(Color4(0xFFFFBFBF))
+    }
 
-            counter.targetValue = finalValue
+    /**
+     * The "Ranked" badge, coloured by itself instead of the theme. The colours fade linearly in
+     * 0.1 seconds on a change, like the AndEngine colorTo().
+     */
+    private class RankedBadge : UIBadge() {
 
-            valueEntity.clearEntityModifiers()
-            valueEntity.colorTo(Color4(when {
-                initialValue < finalValue -> 0xFFF78383
-                initialValue > finalValue -> 0xFF40CF5D
-                else -> 0xFFFFFFFF
-            }), counter.rollingDuration, counter.rollingEasing)
+        private var textStart = RANKED_TEXT_COLOR
+        private var textTarget = RANKED_TEXT_COLOR
+        private var backgroundStart = RANKED_BACKGROUND_COLOR
+        private var backgroundTarget = RANKED_BACKGROUND_COLOR
+        private var elapsed = FADE_DURATION
+
+        // LegacyUnits.scale the sizes were last applied for.
+        private var appliedScale = 0f
+
+        init {
+            style = Style {}
+            text = "Ranked"
+            wrapText = false
+            color = RANKED_TEXT_COLOR
+            backgroundColor = RANKED_BACKGROUND_COLOR
         }
 
-        override fun onManagedUpdate(deltaTimeSec: Float) {
-            if (counter.isRolling) {
-                valueEntity.text = formatter(counter.currentValue)
+        fun setRanked(isRanked: Boolean) {
+            val accent = Verktex.theme.palette.accent
+
+            text = if (isRanked) "Ranked" else "Unranked"
+
+            textStart = color
+            textTarget = if (isRanked) RANKED_TEXT_COLOR else accent
+            backgroundStart = backgroundColor
+            backgroundTarget = if (isRanked) RANKED_BACKGROUND_COLOR else accent * 0.15f
+            elapsed = 0f
+        }
+
+        override fun onUpdate(clock: TickingClock) {
+            // Medium size variant of the AndEngine badge, in virtual units.
+            if (appliedScale != LegacyUnits.scale) {
+                appliedScale = LegacyUnits.scale
+
+                fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                padding = Padding(12f.vu.px, 8f.vu.px)
+                radius = 12f.vu.px
             }
 
-            super.onManagedUpdate(deltaTimeSec)
+            if (elapsed < FADE_DURATION) {
+                elapsed = (elapsed + clock.elapsedTickTime).coerceAtMost(FADE_DURATION)
+
+                val progress = elapsed / FADE_DURATION
+
+                color = lerpRgb(textStart, textTarget, progress).copy(alpha = color.alpha)
+                backgroundColor = lerpRgb(backgroundStart, backgroundTarget, progress).copy(alpha = backgroundColor.alpha)
+            }
+
+            super.onUpdate(clock)
+        }
+
+        private fun lerpRgb(start: Color4, end: Color4, progress: Float) = Color4(
+            red = start.red + (end.red - start.red) * progress,
+            green = start.green + (end.green - start.green) * progress,
+            blue = start.blue + (end.blue - start.blue) * progress
+        )
+
+        companion object {
+            private const val FADE_DURATION = 0.1f
+            private val RANKED_TEXT_COLOR = Color4(0xFF161622)
+            private val RANKED_BACKGROUND_COLOR = Color4(0xFF83DF6B)
         }
     }
 
     //endregion
 
 }
-
-

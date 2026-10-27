@@ -1,10 +1,10 @@
 package com.osudroid.ui.v2.modmenu
 
-import com.reco1l.andengine.ui.UIControl
-import com.reco1l.andengine.ui.form.FormControl
-import com.reco1l.andengine.ui.form.FormSlider
 import com.osudroid.mods.Mod
 import com.osudroid.mods.settings.*
+import com.reco1l.verktex.ui.control.UIControl
+import com.reco1l.verktex.ui.form.FormControl
+import com.reco1l.verktex.ui.form.FormSlider
 
 sealed class ModSettingSlider<V : Number?>(mod: Mod, setting: ModSetting<V>) :
     ModSettingComponent<V, Float>(mod, setting) {

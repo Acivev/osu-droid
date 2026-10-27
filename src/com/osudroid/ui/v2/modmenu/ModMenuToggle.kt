@@ -2,18 +2,27 @@ package com.osudroid.ui.v2.modmenu
 
 import com.osudroid.mods.*
 import com.osudroid.multiplayer.*
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+// The explicit import picks the Verktex twin over the same-package AndEngine ModIcon.
+import com.osudroid.ui.verktex.ModIcon
 import com.osudroid.utils.searchContiguously
-import com.reco1l.andengine.*
-import com.reco1l.andengine.buffered.*
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.container.*
-import com.reco1l.andengine.shape.*
-import com.reco1l.andengine.text.*
-import com.reco1l.andengine.ui.*
-import com.rian.andengine.modifier.ModifierType
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Axis
+import com.reco1l.verktex.data.ClipMode
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.math.Easing
+import com.reco1l.verktex.math.FloatAnimation
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.text.UIText
 import ru.nsu.ccfit.zuev.osu.*
 
-class ModMenuToggle(var mod: Mod): UIButton() {
+class ModMenuToggle(var mod: Mod): LegacyButton() {
 
     /**
      * Whether the [Mod] represented by this [ModMenuToggle] is incompatible with one or more enabled [Mod]s.
@@ -26,45 +35,48 @@ class ModMenuToggle(var mod: Mod): UIButton() {
             }
         }
 
+    private val icon = ModIcon(mod).apply {
+        anchor = Anchor.CenterLeft
+        origin = Anchor.CenterLeft
+    }
+
+    private val nameText = UIText().apply {
+        text = mod.name
+        wrapText = false
+    }
+
+    private val descriptionText = UIText().apply {
+        width = fill()
+        text = mod.description
+        wrapText = false
+        clipping = ClipMode.Bounds
+        // The AndEngine UIText scrolled overflowing text horizontally by default.
+        autoScrollAxes = Axis.X
+    }
+
+    // Verktex linear containers place children at the top of the row, so the texts are centred in
+    // a plain container and start after the icon width plus the spacing.
+    private val textColumn = UILinearContainer().apply {
+        orientation = UILinearContainer.Orientation.Vertical
+        width = fill()
+        anchor = Anchor.CenterLeft
+        origin = Anchor.CenterLeft
+
+        +nameText
+        +descriptionText
+    }
+
+    // Fades to 0.5 while incompatible, on top of the enabled fade of LegacyButton.
+    private val compatibilityAlpha = FloatAnimation(1f, 0.2f, Easing.None)
+
     init {
-        orientation = Orientation.Horizontal
-        width = FillParent
-        spacing = 8f
-        cullingMode = CullingMode.CameraBounds
+        width = fill()
 
-        background = UIBox().apply {
-            cornerRadius = 12f
-            // Sharing the same VBO across all toggles to reduce memory usage.
-            buffer = sharedButtonVBO
-        }
+        +UIContainer().apply {
+            width = fill()
 
-        +ModIcon(mod).apply {
-            width = 38f
-            height = 38f
-            anchor = Anchor.CenterLeft
-            origin = Anchor.CenterLeft
-        }
-
-        linearContainer {
-            orientation = Orientation.Vertical
-            width = FillParent
-            anchor = Anchor.CenterLeft
-            origin = Anchor.CenterLeft
-
-            text {
-                text = mod.name
-                font = ResourceManager.getInstance().getFont("smallFont")
-                buffer = sharedTextCB
-            }
-
-            text {
-                width = FillParent
-                font = ResourceManager.getInstance().getFont("xs")
-                text = mod.description
-                clipToBounds = true
-                alpha = 0.75f
-                buffer = sharedTextCB
-            }
+            +icon
+            +textColumn
         }
 
         onActionUp = {
@@ -102,15 +114,24 @@ class ModMenuToggle(var mod: Mod): UIButton() {
 
     fun applyCompatibilityState() {
         // Intentionally not using isEnabled here, otherwise the button will not be clickable.
-        clearModifiers(ModifierType.Alpha)
-        fadeTo(if (hasIncompatibility) 0.5f else 1f, 0.2f)
+        compatibilityAlpha.target = if (hasIncompatibility) 0.5f else 1f
     }
 
-    companion object {
-
-        private val sharedButtonVBO = UIBox.BoxVBO(12f, UICircle.approximateSegments(12f, 12f, 90f), PaintStyle.Fill)
-        private val sharedTextCB = UITextCompoundBuffer(256).asSharedDynamically()
-
+    override fun onApplyLegacySizes() {
+        icon.width = 38f.vu.px
+        icon.height = 38f.vu.px
+        textColumn.padding = Padding(left = (38f + 8f).vu.px)
+        nameText.fontSize = LegacyUnits.fontSize("smallFont").vu.px
+        descriptionText.fontSize = LegacyUnits.fontSize("xs").vu.px
+        descriptionText.autoScrollSpeed = 15f.vu
     }
+
+    // AndEngine tinted the texts with the button colour, Verktex only passes the alpha down.
+    override fun applyTint(tint: Color4) {
+        nameText.color = tint
+        descriptionText.color = tint.copy(alpha = 0.75f)
+    }
+
+    override fun updateAlphaFactor(clock: TickingClock) = compatibilityAlpha.update(clock)
 
 }

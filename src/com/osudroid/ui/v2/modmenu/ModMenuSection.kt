@@ -1,54 +1,63 @@
 package com.osudroid.ui.v2.modmenu
 
-import com.reco1l.andengine.*
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.container.*
-import com.reco1l.andengine.shape.*
-import com.reco1l.andengine.text.*
-import com.reco1l.andengine.ui.*
-import com.reco1l.framework.math.*
-import ru.nsu.ccfit.zuev.osu.*
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.times
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Axis
+import com.reco1l.verktex.data.ClipMode
+import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UIButton
+import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.UIScrollableContainer
+import com.reco1l.verktex.ui.text.UIText
 
 @Suppress("LeakingThis")
 open class ModMenuSection(name: String, private val toggles: List<UIButton> = listOf()) : UILinearContainer() {
 
     protected val toggleContainer: UILinearContainer
 
+    private val titleText = UIText().apply {
+        width = fill()
+        text = name
+        alignment = Anchor.Center
+        wrapText = false
+        style = Style { theme ->
+            color = theme.palette.accent.copy(alpha = 0.75f)
+        }
+    }
+
+    /**
+     * The width of this section in virtual units.
+     */
+    protected open val sectionWidth = 340f
+
+    // LegacyUnits.scale the sizes were last applied for.
+    private var appliedScale = 0f
+
 
     init {
         orientation = Orientation.Vertical
-        width = 340f
-        height = FillParent
-        cullingMode = CullingMode.CameraBounds
+        height = fill()
 
-        background = UIBox().apply {
-            applyTheme = { color = it.accentColor * 0.1f }
-            cornerRadius = 16f
+        style = Style { theme ->
+            backgroundColor = theme.palette.accent * 0.1f
         }
 
-        +UIText().apply {
-            width = FillParent
-            text = name
-            alignment = Anchor.Center
-            font = ResourceManager.getInstance().getFont("smallFont")
-            padding = Vec4(12f)
-            applyTheme = {
-                color = it.accentColor
-                alpha = 0.75f
-            }
-        }
+        +titleText
 
         +UIScrollableContainer().apply {
-            scrollAxes = Axes.Y
-            width = FillParent
-            height = FillParent
-            clipToBounds = true
+            scrollAxes = Axis.Y
+            width = fill()
+            height = fill()
+            clipping = ClipMode.Bounds
 
-            +UILinearContainer().apply {
-                width = FillParent
+            +VisibleChildrenContainer().apply {
                 orientation = Orientation.Vertical
-                padding = Vec4(12f, 0f, 12f, 12f)
-                spacing = 16f
+                width = fill()
                 toggleContainer = this
 
                 toggles.forEach { +it }
@@ -77,6 +86,21 @@ open class ModMenuSection(name: String, private val toggles: List<UIButton> = li
         }
 
         isVisible = anyVisible
+    }
+
+    override fun onUpdate(clock: TickingClock) {
+        if (appliedScale != LegacyUnits.scale) {
+            appliedScale = LegacyUnits.scale
+
+            width = sectionWidth.vu.px
+            radius = 16f.vu.px
+            titleText.fontSize = LegacyUnits.fontSize("smallFont").vu.px
+            titleText.padding = Padding(12f.vu.px)
+            toggleContainer.padding = Padding(12f.vu.px, 0f.px, 12f.vu.px, 12f.vu.px)
+            toggleContainer.spacing = 16f.vu.px
+        }
+
+        super.onUpdate(clock)
     }
 
 }

@@ -1,12 +1,12 @@
 package com.osudroid.ui.v2.modmenu
 
-import com.reco1l.andengine.ui.UIControl
-import com.reco1l.andengine.ui.form.FloatFormInput
-import com.reco1l.andengine.ui.form.FormControl
-import com.reco1l.andengine.ui.form.IntegerFormInput
 import com.osudroid.mods.Mod
 import com.osudroid.mods.settings.ModSetting
 import com.osudroid.mods.settings.RangeConstrainedModSetting
+import com.reco1l.verktex.ui.control.UIControl
+import com.reco1l.verktex.ui.form.FloatFormInput
+import com.reco1l.verktex.ui.form.FormControl
+import com.reco1l.verktex.ui.form.IntegerFormInput
 
 sealed class ModSettingTextInput<V : Any?>(mod: Mod, setting: ModSetting<V>) :
     ModSettingComponent<V, String>(mod, setting) {

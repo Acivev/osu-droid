@@ -1,10 +1,14 @@
 package com.osudroid.ui.v2.modmenu
 
-import com.reco1l.andengine.container.UIContainer
-import com.reco1l.andengine.ui.UIControl
-import com.reco1l.andengine.ui.form.FormControl
 import com.osudroid.mods.Mod
 import com.osudroid.mods.settings.ModSetting
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.math.Easing
+import com.reco1l.verktex.math.FloatAnimation
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.control.UIControl
+import com.reco1l.verktex.ui.form.FormControl
 
 /**
  * Interface for a component that controls a [ModSetting].
@@ -47,7 +51,7 @@ sealed class ModSettingComponent<TSettingValue, TControlValue : Any>(
      * The [FormControl] that is used to display this [ModSettingComponent].
      */
     protected val control = createControl().apply {
-        width = FillParent
+        width = fill()
 
         label = setting.name
 
@@ -63,8 +67,11 @@ sealed class ModSettingComponent<TSettingValue, TControlValue : Any>(
 
     final override var isEnabled by control::isEnabled
 
+    // The linear fade of the AndEngine FormControl, which replaces the Verktex one.
+    private val enabledAlpha = FloatAnimation(1f, 0.2f, Easing.None)
+
     init {
-        width = FillParent
+        width = fill()
         +control
     }
 
@@ -73,6 +80,13 @@ sealed class ModSettingComponent<TSettingValue, TControlValue : Any>(
             defaultValue = convertSettingValue(setting.defaultValue)
             value = convertSettingValue(setting.value)
         }
+    }
+
+    override fun onUpdate(clock: TickingClock) {
+        super.onUpdate(clock)
+
+        enabledAlpha.target = if (isEnabled) 1f else 0.25f
+        control.alpha = enabledAlpha.update(clock)
     }
 
     /**
