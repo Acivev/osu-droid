@@ -104,5 +104,6 @@ class HostedTextInput(private val activity: Activity) {
 
         activity.getSystemService<InputMethodManager>()?.hideSoftInputFromWindow(editTextView.windowToken, 0)
         editTextView.clearFocus()
+        (editTextView.parent as? ViewGroup)?.removeView(editTextView)
     }
 }

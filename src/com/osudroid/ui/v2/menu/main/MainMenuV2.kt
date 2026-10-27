@@ -1049,7 +1049,20 @@ class MainMenuV2 : UIScene(), ISkinnable, RoutedScene {
     fun showExitDialog() {
         if (isOnExitAnim) return
 
-        val dialog = UIConfirmDialog()
+        val dialog = object : UIConfirmDialog() {
+            // Back does what the "No" button does: hide, which runs onCancel.
+            override fun onInputEvent(event: InputEvent): Boolean {
+                if (event is KeyboardEvent
+                    && event.action == KeyboardEvent.Action.Down
+                    && event.key == KeyboardEvent.Key.Back
+                    && !staticBackdrop) {
+                    hide()
+                    return true
+                }
+
+                return super.onInputEvent(event)
+            }
+        }
         dialog.title = "Exit"
         dialog.text = GlobalManager.getInstance().mainActivity.getString(R.string.dialog_exit_message)
         dialog.onConfirm = { exit() }
