@@ -1,14 +1,13 @@
 package com.osudroid.game.cursor.trail
 
-import android.opengl.GLES32
-import com.reco1l.andengine.component.UIComponent
-import org.andengine.engine.camera.Camera
-import org.andengine.opengl.shader.PositionColorShaderProgram
-import org.andengine.opengl.shader.constants.ShaderProgramConstants
-import org.andengine.opengl.util.GLState
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.FloatBuffer
+import com.reco1l.verktex.BuiltIn
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.BlendMode
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.graphics.GraphicsShader
+import com.reco1l.verktex.ui.UICanvas
+import ru.nsu.ccfit.zuev.osu.Config
 import kotlin.math.cos
 import kotlin.math.hypot
 
@@ -17,9 +16,9 @@ import kotlin.math.hypot
  *
  * Each trail control-point is added when the cursor moves ≥ 5 units, then fades
  * out over ~0.5 s. The ribbon is drawn with additive blending and per-vertex
- * rainbow colors using [PositionColorShaderProgram].
+ * rainbow colors.
  */
-class FancyCursorTrail : UIComponent() {
+class FancyCursorTrail : UICanvas() {
 
     /** Half-width of the ribbon at its newest (widest) point, in screen pixels. */
     var trailWidth = 8f
@@ -49,14 +48,24 @@ class FancyCursorTrail : UIComponent() {
 
     // Client-side vertex buffer (interleaved: x, y, r, g, b, a)
 
-    private var stagingBuffer: FloatBuffer? = null
+    private var stagingBuffer: FloatArray? = null
+
+    // Scene-space position of one vertex.
+    private val point = FloatArray(2)
+
+    private val uniforms = GraphicsShader.UniformSet()
 
     // Reusable float array to avoid per-call allocation in rainbowColor()
     private val tempRgb = FloatArray(3)
 
     init {
-        // GameScene drives updates manually; skip the engine's automatic pass.
-        isIgnoreUpdate = true
+        // GameScene drives updates manually; a Verktex canvas has no update of its own.
+        // Additive blending gives a nice neon glow effect
+        blendMode = BlendMode.Additive
+
+        // The ribbon is drawn anywhere in the playfield, Verktex skips a component outside the window by its size.
+        width = Config.getRES_WIDTH().toFloat().px
+        height = Config.getRES_HEIGHT().toFloat().px
     }
 
 
@@ -110,9 +119,7 @@ class FancyCursorTrail : UIComponent() {
 
     // Entity rendering
 
-    override fun doDraw(pGLState: GLState, pCamera: Camera) {
-        super.doDraw(pGLState, pCamera)
-
+    override fun onDraw(renderer: GraphicsRenderer) {
         val n = pieces.size
         if (n < 2) return
 
@@ -123,15 +130,17 @@ class FancyCursorTrail : UIComponent() {
 
         // Grow the staging buffer when needed
         var buf = stagingBuffer
-        if (buf == null || buf.capacity() < totalFloats) {
-            val bb = ByteBuffer.allocateDirect((totalFloats + 12) * 4)
-                .order(ByteOrder.nativeOrder())
-            buf = bb.asFloatBuffer()
+        if (buf == null || buf.size < totalFloats) {
+            buf = FloatArray(totalFloats + 12)
             stagingBuffer = buf
         }
 
         // Fill vertex data
-        buf.position(0)
+        var position = 0
+        fun FloatArray.put(value: Float) {
+            this[position++] = value
+        }
+
         for (idx in 1 until n) {
             val prev = pieces[idx - 1]
             val curr = pieces[idx]
@@ -164,52 +173,21 @@ class FancyCursorTrail : UIComponent() {
             buf.put(curr.alpha)
         }
 
-        // Bind shader (compiles lazily on first call)
-        val shader = PositionColorShaderProgram.getInstance()
-        shader.bindProgram(pGLState)
+        // The solid shader with every vertex at the centre of the UV space, the colours per vertex.
+        renderer.setState(shader = BuiltIn.Shaders.SolidQuad, uniformSet = uniforms)
 
-        // Disable the texture-coord attrib array (PositionColor shader doesn't use it)
-        GLES32.glDisableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_TEXTURECOORDINATES_LOCATION)
+        // The triangle strip as separate triangles: vertices i, i + 1 and i + 2 form one.
+        renderer.drawGeometry { transform, _ ->
+            for (i in 0 until vertCount - 2) {
+                for (j in i..i + 2) {
+                    val base = j * floatsPerVert
+                    transform.transform(buf[base], buf[base + 1], point, 0)
 
-        // Upload the MVP matrix so the ribbon maps to screen coordinates
-        GLES32.glUniformMatrix4fv(
-            shader.uniformMVPMatrixLocation, 1, false,
-            pGLState.modelViewProjectionGLMatrix, 0
-        )
-
-        // Additive blending gives a nice neon glow effect
-        GLES32.glEnable(GLES32.GL_BLEND)
-        GLES32.glBlendFunc(GLES32.GL_SRC_ALPHA, GLES32.GL_ONE)
-
-        // Ensure no VBO is bound so GL uses our client-side buffer
-        GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, 0)
-
-        val stride = floatsPerVert * 4   // 24 bytes between consecutive vertices
-
-        // Position attribute – 2 floats starting at float-offset 0
-        GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_POSITION_LOCATION)
-        buf.position(0)
-        GLES32.glVertexAttribPointer(
-            ShaderProgramConstants.ATTRIBUTE_POSITION_LOCATION,
-            2, GLES32.GL_FLOAT, false, stride, buf
-        )
-
-        // Color attribute – 4 floats starting at float-offset 2 (byte-offset 8)
-        GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_COLOR_LOCATION)
-        buf.position(2)
-        GLES32.glVertexAttribPointer(
-            ShaderProgramConstants.ATTRIBUTE_COLOR_LOCATION,
-            4, GLES32.GL_FLOAT, false, stride, buf
-        )
-
-        GLES32.glDrawArrays(GLES32.GL_TRIANGLE_STRIP, 0, vertCount)
-
-        // Restore state expected by other renderers
-
-        // Restore normal alpha blending
-        GLES32.glBlendFunc(GLES32.GL_SRC_ALPHA, GLES32.GL_ONE_MINUS_SRC_ALPHA)
-        // Re-enable the texture-coord attrib array (PositionColor shader disables it)
-        GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_TEXTURECOORDINATES_LOCATION)
+                    val color = renderer.transformColor(Color4(buf[base + 2], buf[base + 3], buf[base + 4], buf[base + 5]))
+                    with(renderer) { addVertex(point[0], point[1], 0.5f, 0.5f, color) }
+                }
+            }
+        }
     }
 
     // Helpers

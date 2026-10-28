@@ -1,35 +1,47 @@
 package ru.nsu.ccfit.zuev.osu.game.cursor.main;
 
+import androidx.annotation.NonNull;
+
 import com.osudroid.game.cursor.trail.CursorTrail;
 import com.osudroid.game.cursor.trail.FancyCursorTrail;
-import com.reco1l.andengine.Anchor;
-import com.reco1l.andengine.component.UIComponent;
-import com.reco1l.andengine.sprite.UISprite;
-
-import org.andengine.entity.scene.Scene;
-import org.andengine.opengl.texture.region.TextureRegion;
+import com.osudroid.ui.verktex.SkinTextures;
+import com.reco1l.verktex.data.Anchor;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.data.LayoutConstraints;
+import com.reco1l.verktex.data.Vec2;
+import com.reco1l.verktex.graphics.GraphicsTexture;
+import com.reco1l.verktex.time.TickingClock;
+import com.reco1l.verktex.ui.UISprite;
+import com.reco1l.verktex.ui.container.UIContainer;
 
 import ru.nsu.ccfit.zuev.osu.Config;
 import ru.nsu.ccfit.zuev.osu.ResourceManager;
 import ru.nsu.ccfit.zuev.skins.OsuSkin;
 
-public class CursorEntity extends UIComponent {
+public class CursorEntity extends UIContainer {
     protected final CursorSprite cursorSprite;
     private final UISprite cursorMiddleSprite;
     private CursorTrail trail = null;
     private FancyCursorTrail fancyTrail = null;
     private boolean isShowing = false;
 
+    // The position last given to the trail, see onUpdate.
+    private float trailX, trailY;
+
     public CursorEntity() {
         cursorSprite = new CursorSprite();
 
         // "cursormiddle" is drawn statically on top of the cursor, unlike the cursor itself it never
         // rotates or scales on click. its entirely opt in per skin (see OPTIONAL_TEXTURES).
-        var middleTexture = ResourceManager.getInstance().getTextureIfLoaded("cursormiddle");
+        var middleTexture = ResourceManager.getInstance().getTextureIfLoaded("cursormiddle") != null
+                ? SkinTextures.getWithBeatmapSkin("cursormiddle")
+                : null;
         if (middleTexture != null) {
             cursorMiddleSprite = new UISprite();
             cursorMiddleSprite.setAnchor(Anchor.Center);
             cursorMiddleSprite.setOrigin(OsuSkin.get().isCursorCentre() ? Anchor.Center : Anchor.TopLeft);
+            // reco1l scaled around the origin.
+            cursorMiddleSprite.setScaleOrigin(cursorMiddleSprite.getOrigin());
             cursorMiddleSprite.setScale(cursorSprite.baseSize);
             cursorMiddleSprite.setTextureRegion(middleTexture);
         } else {
@@ -39,18 +51,17 @@ public class CursorEntity extends UIComponent {
         if (Config.isUseFancyCursorTrail()) {
             fancyTrail = new FancyCursorTrail();
         } else if (Config.isUseParticles()) {
-            TextureRegion trailTex = ResourceManager.getInstance().getTexture("cursortrail");
+            GraphicsTexture.Region trailTex = SkinTextures.getWithBeatmapSkin("cursortrail");
             trail = new CursorTrail(trailTex, cursorSprite);
         }
 
-        attachChild(cursorSprite);
+        plusAssign(cursorSprite);
         if (cursorMiddleSprite != null) {
-            attachChild(cursorMiddleSprite);
+            plusAssign(cursorMiddleSprite);
         }
         setVisible(false);
 
-        // Not necessary to update by itself since it's done by GameScene.
-        setIgnoreUpdate(true);
+        // Not necessary to update by itself since it's done by GameScene, see onUpdate.
     }
 
     public void setShowing(boolean showing) {
@@ -73,8 +84,8 @@ public class CursorEntity extends UIComponent {
             cursorSprite.update(pSecondsElapsed);
 
             if (fancyTrail != null) {
-                fancyTrail.setCursorX(getX());
-                fancyTrail.setCursorY(getY());
+                fancyTrail.setCursorX(getX().resolve(0f));
+                fancyTrail.setCursorY(getY().resolve(0f));
                 fancyTrail.update(pSecondsElapsed);
             }
         }
@@ -84,26 +95,77 @@ public class CursorEntity extends UIComponent {
         if (trail != null) {
             trail.update(pSecondsElapsed);
         }
-
-        super.onManagedUpdate(pSecondsElapsed);
     }
 
-    public void attachToScene(Scene fgScene) {
+    public void attachToScene(UIContainer fgScene) {
         if (trail != null) {
-            fgScene.attachChild(trail);
+            fgScene.plusAssign(trail);
         }
         if (fancyTrail != null) {
-            fgScene.attachChild(fancyTrail);
+            fgScene.plusAssign(fancyTrail);
         }
-        fgScene.attachChild(this);
+        fgScene.plusAssign(this);
     }
 
-    @Override
     public void setPosition(float pX, float pY) {
+        if (trail != null) {
+            trail.addPosition(pX, pY);
+            trailX = pX;
+            trailY = pY;
+        }
+
+        setX(DimensionKt.getPx(pX));
+        setY(DimensionKt.getPx(pY));
+
+        // The position of the draw thread's fast path is replaced by this one.
+        setTranslationX(DimensionKt.getPx(0f));
+        setTranslationY(DimensionKt.getPx(0f));
+    }
+
+    /**
+     * Places the cursor at a position from the draw thread, the raw pointer's fast path. The position only
+     * applies with the next layout, so it is given as a translation from the last laid-out position, which
+     * applies to this draw; the next {@link #setPosition(float, float)} replaces it.
+     */
+    public void setDrawPosition(float pX, float pY) {
         if (trail != null) {
             trail.addPosition(pX, pY);
         }
 
-        super.setPosition(pX, pY);
+        var bounds = getBounds();
+        setTranslationX(DimensionKt.getPx(pX - bounds.getX()));
+        setTranslationY(DimensionKt.getPx(pY - bounds.getY()));
+    }
+
+    @Override
+    protected void onUpdate(@NonNull TickingClock clock) {
+        // A position set by a modifier (the auto cursor's move) does not go through setPosition, it reaches
+        // the trail here, as the AndEngine modifier's setPosition did.
+        if (trail != null) {
+            float x = getX().resolve(0f);
+            float y = getY().resolve(0f);
+
+            if (x != trailX || y != trailY) {
+                trail.addPosition(x, y);
+                trailX = x;
+                trailY = y;
+            }
+        }
+
+        // The children's own updates, as the AndEngine onManagedUpdate in update() ran them.
+        super.onUpdate(clock);
+    }
+
+    @NonNull
+    @Override
+    protected Vec2 onMeasure(@NonNull LayoutConstraints parentConstraints, @NonNull LayoutConstraints contentConstraints) {
+        // The reco1l component had no size of its own, its children are centred on its position.
+        var unbounded = new LayoutConstraints(0f, Float.POSITIVE_INFINITY, 0f, Float.POSITIVE_INFINITY);
+
+        for (var child : this) {
+            child.measure(unbounded);
+        }
+
+        return new Vec2(0f, 0f);
     }
 }

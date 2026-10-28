@@ -1,19 +1,17 @@
 package com.osudroid.game.cursor.trail
 
-import android.opengl.GLES32
-import com.reco1l.andengine.component.UIComponent
-import org.andengine.engine.camera.Camera
-import org.andengine.opengl.shader.PositionTextureCoordinatesUniformColorShaderProgram
-import org.andengine.opengl.shader.constants.ShaderProgramConstants
-import org.andengine.opengl.texture.region.TextureRegion
-import org.andengine.opengl.util.GLState
+import com.reco1l.verktex.BuiltIn
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.BlendMode
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.graphics.GraphicsShader
+import com.reco1l.verktex.graphics.GraphicsTexture
+import com.reco1l.verktex.ui.UICanvas
 import ru.nsu.ccfit.zuev.osu.Config
 import ru.nsu.ccfit.zuev.osu.ResourceManager
 import ru.nsu.ccfit.zuev.osu.game.cursor.main.CursorSprite
 import ru.nsu.ccfit.zuev.skins.OsuSkin
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.FloatBuffer
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
@@ -28,9 +26,9 @@ private const val DISJOINT_SPAWN_INTERVAL_MS = 1000f / 60f
  * base `osu.Game.Rulesets.Osu/UI/Cursor/CursorTrail.cs`).
  */
 class CursorTrail(
-    private val textureRegion: TextureRegion,
+    private val textureRegion: GraphicsTexture.Region,
     private val cursorSprite: CursorSprite
-) : UIComponent() {
+) : UICanvas() {
 
     private val disjointTrail = !ResourceManager.getInstance().isTextureLoaded("cursormiddle")
     private val allowPartRotation = OsuSkin.get().isRotateCursorTrail
@@ -53,15 +51,22 @@ class CursorTrail(
     private var currentX = 0f
     private var currentY = 0f
 
-    // Interleaved per-vertex: x, y, u, v
-    private val vertexBuffer: FloatBuffer = ByteBuffer
-        .allocateDirect(4 /* vertices */ * 4 /* floats */ * 4 /* bytes */)
-        .order(ByteOrder.nativeOrder())
-        .asFloatBuffer()
+    // Per-vertex of the current part: x, y, u, v
+    private val vertexBuffer = FloatArray(4 /* vertices */ * 4 /* floats */)
+
+    // Scene-space position of one vertex.
+    private val point = FloatArray(2)
+
+    private val uniforms = GraphicsShader.UniformSet()
 
     init {
-        // GameScene drives updates manually (see CursorEntity update), skip the engines automatic pass.
-        isIgnoreUpdate = true
+        // GameScene drives updates manually (see CursorEntity update); a Verktex canvas has no update of its own.
+        // "Attached" (has cursormiddle) trails glow additively "disjoint" ones use normal alpha,
+        blendMode = if (disjointTrail) BlendMode.Alpha else BlendMode.Additive
+
+        // The parts are drawn anywhere in the playfield, Verktex skips a component outside the window by its size.
+        width = Config.getRES_WIDTH().toFloat().px
+        height = Config.getRES_HEIGHT().toFloat().px
     }
 
     /**
@@ -158,9 +163,7 @@ class CursorTrail(
         writeIndex = (writeIndex + 1) % MAX_PARTS
     }
 
-    override fun doDraw(pGLState: GLState, pCamera: Camera) {
-        super.doDraw(pGLState, pCamera)
-
+    override fun onDraw(renderer: GraphicsRenderer) {
         val halfW = textureRegion.width * cursorSprite.scaleX / 2f
         val halfH = textureRegion.height * cursorSprite.scaleY / 2f
 
@@ -169,32 +172,17 @@ class CursorTrail(
         val offsetX = if (originAtTopLeft) halfW else 0f
         val offsetY = if (originAtTopLeft) halfH else 0f
 
-        val angle = if (allowPartRotation) Math.toRadians(cursorSprite.rotation.toDouble()).toFloat() else 0f
+        val angle = if (allowPartRotation) Math.toRadians(cursorSprite.rotationZ.toDouble()).toFloat() else 0f
         val sin = sin(angle)
         val cos = cos(angle)
 
-        val u = textureRegion.u
-        val v = textureRegion.v
-        val u2 = textureRegion.u2
-        val v2 = textureRegion.v2
+        val u = textureRegion.u0
+        val v = textureRegion.v0
+        val u2 = textureRegion.u1
+        val v2 = textureRegion.v1
 
-        val shader = PositionTextureCoordinatesUniformColorShaderProgram.getInstance()
-        shader.bindProgram(pGLState)
-
-        GLES32.glUniformMatrix4fv(shader.uniformMVPMatrixLocation, 1, false, pGLState.modelViewProjectionGLMatrix, 0)
-        GLES32.glUniform1i(shader.uniformTexture0Location, 0)
-
-        GLES32.glDisableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_COLOR_LOCATION)
-        GLES32.glBindBuffer(GLES32.GL_ARRAY_BUFFER, 0)
-
-        textureRegion.texture.bind(pGLState)
-
-        GLES32.glEnable(GLES32.GL_BLEND)
-        // "Attached" (has cursormiddle) trails glow additively "disjoint" ones use normal alpha,
-        GLES32.glBlendFunc(GLES32.GL_SRC_ALPHA, if (disjointTrail) GLES32.GL_ONE_MINUS_SRC_ALPHA else GLES32.GL_ONE)
-
-        GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_POSITION_LOCATION)
-        GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_TEXTURECOORDINATES_LOCATION)
+        // The quads are emitted with the trail's blend mode (set by the canvas) and the texture.
+        renderer.setState(shader = BuiltIn.Shaders.TextureQuad, texture = textureRegion.texture, uniformSet = uniforms)
 
         for (i in 0 until MAX_PARTS) {
             val spawnMs = partSpawnMs[i]
@@ -208,7 +196,8 @@ class CursorTrail(
             }
 
             var alpha = 1f - elapsedSincePart / fadeDurationMs
-            alpha = alpha.coerceIn(0f, 1f) * drawAlpha
+            // The component's own alpha (and its parents') is applied by the renderer.
+            alpha = alpha.coerceIn(0f, 1f)
 
             if (alpha <= 0f) {
                 continue
@@ -222,19 +211,19 @@ class CursorTrail(
             putVertex(2, halfW + offsetX, -halfH + offsetY, cx, cy, sin, cos, u2, v)
             putVertex(3, halfW + offsetX, halfH + offsetY, cx, cy, sin, cos, u2, v2)
 
-            vertexBuffer.position(0)
-            GLES32.glVertexAttribPointer(ShaderProgramConstants.ATTRIBUTE_POSITION_LOCATION, 2, GLES32.GL_FLOAT, false, 16, vertexBuffer)
-            vertexBuffer.position(2)
-            GLES32.glVertexAttribPointer(ShaderProgramConstants.ATTRIBUTE_TEXTURECOORDINATES_LOCATION, 2, GLES32.GL_FLOAT, false, 16, vertexBuffer)
+            val partColor = Color4(color.red, color.green, color.blue, alpha)
 
-            GLES32.glUniform4f(shader.uniformColorLocation, drawRed, drawGreen, drawBlue, alpha)
+            // The triangle strip of the four vertices as two triangles.
+            renderer.drawGeometry { transform, _ ->
+                val vertexColor = renderer.transformColor(partColor)
 
-            GLES32.glDrawArrays(GLES32.GL_TRIANGLE_STRIP, 0, 4)
+                for (index in STRIP_TRIANGLES) {
+                    val base = index * 4
+                    transform.transform(vertexBuffer[base], vertexBuffer[base + 1], point, 0)
+                    with(renderer) { addVertex(point[0], point[1], vertexBuffer[base + 2], vertexBuffer[base + 3], vertexColor) }
+                }
+            }
         }
-
-        // Restore state expected by other renderers.
-        GLES32.glBlendFunc(GLES32.GL_SRC_ALPHA, GLES32.GL_ONE_MINUS_SRC_ALPHA)
-        GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_COLOR_LOCATION)
     }
 
     private fun putVertex(index: Int, dx: Float, dy: Float, cx: Float, cy: Float, sin: Float, cos: Float, texU: Float, texV: Float) {
@@ -242,9 +231,14 @@ class CursorTrail(
         val y = dx * sin + dy * cos + cy
 
         val base = index * 4
-        vertexBuffer.put(base, x)
-        vertexBuffer.put(base + 1, y)
-        vertexBuffer.put(base + 2, texU)
-        vertexBuffer.put(base + 3, texV)
+        vertexBuffer[base] = x
+        vertexBuffer[base + 1] = y
+        vertexBuffer[base + 2] = texU
+        vertexBuffer[base + 3] = texV
+    }
+
+    private companion object {
+        /** The vertex indices of the two triangles of a four-vertex triangle strip. */
+        val STRIP_TRIANGLES = intArrayOf(0, 1, 2, 2, 1, 3)
     }
 }

@@ -1,12 +1,12 @@
 package com.osudroid.ui.v2.game
 
-import com.reco1l.andengine.*
-import com.reco1l.andengine.container.*
-import com.reco1l.andengine.sprite.*
-import com.reco1l.andengine.text.UITextureText
-import org.andengine.opengl.texture.region.TextureRegion
+import com.osudroid.ui.v2.SpriteFont
+import com.osudroid.ui.verktex.SkinTextures
+import com.osudroid.ui.verktex.toVerktex
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.framework.*
-import ru.nsu.ccfit.zuev.osu.*
 import ru.nsu.ccfit.zuev.skins.*
 
 open class CirclePiece(
@@ -19,6 +19,8 @@ open class CirclePiece(
 
     init {
         origin = Anchor.Center
+        // reco1l passed a container's colour down to its children, the dim-hit-objects tint animates it.
+        tintChildren = true
     }
 
 
@@ -26,61 +28,48 @@ open class CirclePiece(
 
         it.origin = Anchor.Center
         it.anchor = Anchor.Center
-        it.textureRegion = ResourceManager.getInstance().getTexture(circleTexture)
+        it.textureRegion = SkinTextures.getWithBeatmapSkin(circleTexture)
 
-        attachChild(it)
+        this += it
     }
 
     private val overlay = UISprite().also {
 
         it.origin = Anchor.Center
         it.anchor = Anchor.Center
-        it.textureRegion = ResourceManager.getInstance().getTexture(overlayTexture)
+        it.textureRegion = SkinTextures.getWithBeatmapSkin(overlayTexture)
 
-        attachChild(it)
+        this += it
     }
 
 
     fun setCircleColor(red: Float, green: Float, blue: Float) {
-        circle.setColor(red, green, blue)
+        circle.color = circle.color.copy(red = red, green = green, blue = blue)
     }
 
     fun setCircleColor(color: Color4) {
-        circle.color = color
+        circle.color = color.toVerktex()
     }
 
     fun setCircleTextureRegion(circleTexture: String) {
-        circle.textureRegion = ResourceManager.getInstance().getTexture(circleTexture)
+        circle.textureRegion = SkinTextures.getWithBeatmapSkin(circleTexture)
     }
 
     fun setOverlayTextureRegion(overlayTexture: String) {
-        overlay.textureRegion = ResourceManager.getInstance().getTexture(overlayTexture)
+        overlay.textureRegion = SkinTextures.getWithBeatmapSkin(overlayTexture)
     }
 }
 
 class NumberedCirclePiece(circleTexture: String, overlayTexture: String) : CirclePiece(circleTexture, overlayTexture) {
 
 
-    // The AndEngine character map of SpriteFont, which moved to Verktex for the HUD; the playfield follows in 5c.
-    private val number = UITextureText(mutableMapOf<Char, TextureRegion>().also { characters ->
-        val prefix = OsuSkin.get().hitCirclePrefix
-
-        for (i in 0..9) {
-            characters['0' + i] = ResourceManager.getInstance().getTextureWithPrefix(prefix, i.toString())
-        }
-
-        characters['.'] = ResourceManager.getInstance().getTextureWithPrefix(prefix, "comma")
-        characters['%'] = ResourceManager.getInstance().getTextureWithPrefix(prefix, "percent")
-        characters['x'] = ResourceManager.getInstance().getTextureWithPrefix(prefix, "x")
-        characters['d'] = ResourceManager.getInstance().getTextureWithPrefix(prefix, "d")
-        characters['p'] = ResourceManager.getInstance().getTextureWithPrefix(prefix, "p")
-    }).also {
+    private val number = SpriteFont(OsuSkin.get().hitCirclePrefix).also {
 
         it.origin = Anchor.Center
         it.anchor = Anchor.Center
         it.spacing = -OsuSkin.get().hitCircleOverlap
 
-        attachChild(it)
+        this += it
     }
 
 

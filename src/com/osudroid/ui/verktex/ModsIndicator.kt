@@ -1,6 +1,7 @@
 package com.osudroid.ui.verktex
 
 import com.osudroid.mods.*
+import com.osudroid.ui.v2.modmenu.ModIcon
 import com.osudroid.ui.verktex.LegacyUnits.vu
 import com.reco1l.verktex.data.px
 import com.reco1l.verktex.time.TickingClock

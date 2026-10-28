@@ -1,8 +1,8 @@
 package com.osudroid.ui.v2
 
-import com.reco1l.andengine.sprite.*
-import com.reco1l.andengine.ui.*
-import ru.nsu.ccfit.zuev.osu.*
+import com.osudroid.ui.verktex.ISkinnable
+import com.osudroid.ui.verktex.SkinTextures
+import com.reco1l.verktex.ui.UISprite
 
 class OsuSkinnableSprite(val textureLookup: String) : UISprite(), ISkinnable {
 
@@ -11,7 +11,7 @@ class OsuSkinnableSprite(val textureLookup: String) : UISprite(), ISkinnable {
     }
 
     override fun onSkinChanged() {
-        textureRegion = ResourceManager.getInstance().getTexture(textureLookup)
+        textureRegion = SkinTextures.getWithBeatmapSkin(textureLookup)
     }
 
 }

@@ -471,7 +471,7 @@ object ModMenu : UIContainer() {
         if (Multiplayer.isConnected) {
             val gameScene = GlobalManager.getInstance().gameScene
             val isInGameplay = gameScene != null &&
-                GlobalManager.getInstance().engine.scene == gameScene.scene
+                gameScene.isInGameplay
 
             if (!isInGameplay) {
                 Multiplayer.roomScene?.chat?.show()

@@ -121,7 +121,7 @@ class RoomChat : FullWindowContainer() {
      */
     @VisibleForTesting
     internal var isInGameplay: () -> Boolean = {
-        GlobalManager.getInstance().engine.scene == GlobalManager.getInstance().gameScene.scene
+        GlobalManager.getInstance().gameScene.isInGameplay
     }
 
     init {

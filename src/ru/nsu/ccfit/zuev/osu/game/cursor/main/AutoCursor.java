@@ -1,6 +1,7 @@
 package ru.nsu.ccfit.zuev.osu.game.cursor.main;
 
 import com.edlplan.framework.easing.Easing;
+import com.rian.andengine.modifier.VerktexModifiers;
 
 import ru.nsu.ccfit.zuev.osu.Config;
 import ru.nsu.ccfit.zuev.osu.game.GameObject;
@@ -21,8 +22,8 @@ public class AutoCursor extends CursorEntity implements ISliderListener {
     }
 
     private void doEasingAutoMove(float pX, float pY, float durationS) {
-        clearEntityModifiers();
-        moveTo(pX, pY, durationS, Easing.Out);
+        VerktexModifiers.clearModifiers(this);
+        VerktexModifiers.moveTo(this, pX, pY, durationS, Easing.Out);
     }
 
     private void doAutoMove(float pX, float pY, float durationS, GameObjectListener listener) {

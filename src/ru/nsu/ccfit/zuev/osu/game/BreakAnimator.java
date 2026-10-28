@@ -7,26 +7,24 @@ import com.reco1l.verktex.data.Anchor;
 import com.reco1l.verktex.data.DimensionKt;
 import com.reco1l.verktex.graphics.GraphicsTexture;
 import com.reco1l.verktex.ui.UISprite;
+import com.reco1l.verktex.ui.container.UIContainer;
+import com.rian.andengine.modifier.ModifierRegistry;
 import com.rian.andengine.modifier.VerktexModifiers;
 import com.reco1l.verktex.Verktex;
 import kotlin.Unit;
 import com.osudroid.multiplayer.Multiplayer;
-import org.andengine.entity.modifier.*;
 import org.andengine.entity.primitive.Rectangle;
-import org.andengine.entity.scene.Scene;
-import org.andengine.entity.sprite.Sprite;
 
 import ru.nsu.ccfit.zuev.osu.Config;
-import ru.nsu.ccfit.zuev.osu.GlobalManager;
 import ru.nsu.ccfit.zuev.osu.ResourceManager;
 import ru.nsu.ccfit.zuev.osu.Utils;
 import ru.nsu.ccfit.zuev.osu.scoring.StatisticV2;
 import ru.nsu.ccfit.zuev.skins.OsuSkin;
 
 public class BreakAnimator extends GameObject {
-    private final Scene scene;
+    private final UIContainer scene;
     private final StatisticV2 stat;
-    private final Sprite[] arrows = new Sprite[4];
+    private final UISprite[] arrows = new UISprite[4];
     private Rectangle dimRectangle;
     private final GameplayHUD hud;
     private float length;
@@ -38,32 +36,30 @@ public class BreakAnimator extends GameObject {
     private boolean over = false;
     private float dimBrightness = Config.getBackgroundBrightness();
 
-    public BreakAnimator(final Scene scene, final StatisticV2 stat, GameplayHUD hud) {
+    public BreakAnimator(final UIContainer scene, final StatisticV2 stat, GameplayHUD hud) {
         length = 0;
         this.scene = scene;
         this.stat = stat;
         this.hud = hud;
 
         for (int i = 0; i < 4; i++) {
-            arrows[i] = new Sprite(0, 0, ResourceManager.getInstance().getTexture("play-warningarrow").deepCopy(), GlobalManager.getInstance().getEngine().getVertexBufferObjectManager());
-            arrows[i]
-                    .registerEntityModifier(new LoopEntityModifier(
-                            new SequenceEntityModifier(
-                                    new FadeInModifier(0.05f),
-                                    new DelayModifier(0.1f),
-                                    new FadeOutModifier(0.1f))));
+            final GraphicsTexture.Region arrowRegion = SkinTextures.getWithBeatmapSkin("play-warningarrow");
+            arrows[i] = new UISprite(new GraphicsTexture.Region(arrowRegion.getTexture(), arrowRegion.getSource(),
+                    arrowRegion.getX(), arrowRegion.getY(), arrowRegion.getWidth(), arrowRegion.getHeight()));
+            // The AndEngine LoopEntityModifier is started with each attach in init(), as Verktex drops the
+            // modifiers of a detached component.
             if (i > 1) {
                 arrows[i].setFlippedHorizontal(true);
             }
         }
-        arrows[0].setPosition(Utils.toRes(64), Utils.toRes(72));
-        arrows[1].setPosition(Utils.toRes(64), Config.getRES_HEIGHT()
-                - arrows[1].getHeight());
-        arrows[2].setPosition(Config.getRES_WIDTH() - arrows[1].getWidth()
+        setArrowPosition(arrows[0], Utils.toRes(64), Utils.toRes(72));
+        setArrowPosition(arrows[1], Utils.toRes(64), Config.getRES_HEIGHT()
+                - arrows[1].getTextureRegion().getHeight());
+        setArrowPosition(arrows[2], Config.getRES_WIDTH() - arrows[1].getTextureRegion().getWidth()
                 - Utils.toRes(64), Utils.toRes(72));
-        arrows[3].setPosition(Config.getRES_WIDTH() - arrows[1].getWidth()
+        setArrowPosition(arrows[3], Config.getRES_WIDTH() - arrows[1].getTextureRegion().getWidth()
                         - Utils.toRes(64),
-                Config.getRES_HEIGHT() - arrows[1].getHeight());
+                Config.getRES_HEIGHT() - arrows[1].getTextureRegion().getHeight());
 
     }
 
@@ -101,8 +97,8 @@ public class BreakAnimator extends GameObject {
             passfail = null;
         }
 
-        for (final Sprite sp : arrows) {
-            sp.detachSelf();
+        for (final UISprite sp : arrows) {
+            sp.removeSelf();
         }
 
         resumeBgFade();
@@ -136,8 +132,10 @@ public class BreakAnimator extends GameObject {
             // the warning arrows should be visible immediately.
             boolean arrowsVisible = length - initialTime <= 1;
             arrows[i].setVisible(arrowsVisible);
-            arrows[i].setIgnoreUpdate(!arrowsVisible);
-            scene.attachChild(arrows[i], 0);
+            ModifierRegistry.setPaused(arrows[i], !arrowsVisible);
+            scene.addToBack(arrows[i]);
+            VerktexModifiers.clearModifiers(arrows[i]);
+            loopArrow(arrows[i]);
         }
 
         final GraphicsTexture.Region zeroRect = SkinTextures.getWithPrefix(OsuSkin.get().getScorePrefix(), "0");
@@ -193,6 +191,26 @@ public class BreakAnimator extends GameObject {
     }
 
     /**
+     * The AndEngine sprite position of a break arrow, which is in the playfield's virtual units.
+     */
+    private static void setArrowPosition(final UISprite arrow, final float x, final float y) {
+        arrow.setX(DimensionKt.getPx(x));
+        arrow.setY(DimensionKt.getPx(y));
+    }
+
+    /**
+     * The AndEngine {@code LoopEntityModifier(Sequence(FadeIn 0.05, Delay 0.1, FadeOut 0.1))}: the
+     * sequence starts again when it ends.
+     */
+    private static void loopArrow(final UISprite arrow) {
+        VerktexModifiers.beginModifierSequence(arrow, sequence -> sequence
+                .fadeInFromZero(0.05f)
+                .then(0.1f)
+                .fadeOutFromOne(0.1f)
+                .after(e -> loopArrow(arrow)));
+    }
+
+    /**
      * The AndEngine sprite position, in virtual units.
      */
     private static void setLegacyPosition(final UISprite sprite, final float x, final float y) {
@@ -235,9 +253,9 @@ public class BreakAnimator extends GameObject {
                 sound.play();
         }
         if (length - time <= 1 && length - time + dt > 1) {
-            for (final Sprite sp : arrows) {
+            for (final UISprite sp : arrows) {
                 sp.setVisible(true);
-                sp.setIgnoreUpdate(false);
+                ModifierRegistry.setPaused(sp, false);
             }
 
             if (Multiplayer.isMultiplayer) {
@@ -262,8 +280,8 @@ public class BreakAnimator extends GameObject {
             if (mark != null) {
                 underTreeLock(mark::removeSelf);
             }
-            for (final Sprite sp : arrows) {
-                sp.detachSelf();
+            for (final UISprite sp : arrows) {
+                sp.removeSelf();
             }
             underTreeLock(passfail::removeSelf);
         }

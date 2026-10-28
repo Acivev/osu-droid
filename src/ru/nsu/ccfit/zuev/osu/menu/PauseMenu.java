@@ -5,7 +5,6 @@ import androidx.annotation.NonNull;
 import com.osudroid.ui.verktex.FullWindowContainer;
 import com.osudroid.ui.verktex.LegacyUnits;
 import com.osudroid.ui.verktex.SkinTextures;
-import com.reco1l.andengine.UIEngine;
 import com.reco1l.verktex.data.DimensionKt;
 import com.reco1l.verktex.data.Vec2;
 import com.reco1l.verktex.graphics.GraphicsTexture;
@@ -95,7 +94,7 @@ public class PauseMenu {
 
             @Override
             protected void onUpdate(@NonNull final TickingClock clock) {
-                if (UIEngine.getCurrent().getScene() != game.getScene()) {
+                if (!game.isInGameplay()) {
                     // Removed on the next tick so the overlay list stays stable throughout this one.
                     GlobalManager.getInstance().getEngine().runOnUpdateThread(PauseMenu.this::close);
                     return;

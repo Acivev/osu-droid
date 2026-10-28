@@ -1,21 +1,20 @@
 package com.osudroid.ui.v2.modmenu
 
-import com.osudroid.ui.v2.*
-import com.reco1l.andengine.*
-import com.reco1l.andengine.buffered.*
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.container.*
-import com.reco1l.andengine.shape.*
-import com.reco1l.andengine.sprite.*
-import com.reco1l.andengine.text.*
-import com.reco1l.andengine.texture.*
-import com.reco1l.andengine.ui.*
-import org.andengine.engine.camera.*
-import org.andengine.opengl.texture.region.*
-import org.andengine.opengl.util.GLState
 import com.osudroid.mods.*
+import com.osudroid.ui.verktex.ISkinnable
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.SkinTextures
 import com.osudroid.utils.allModsInstances
-import ru.nsu.ccfit.zuev.osu.*
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.Vec4
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.text.UIText
 
 /**
  * The icon for a mod in the mod menu.
@@ -24,83 +23,89 @@ class ModIcon(val mod: Mod) : UIContainer(), ISkinnable {
 
     private var shouldUpdateTexture = true
 
+    // LegacyUnits.scale the font size was last applied for.
+    private var appliedScale = 0f
+
+    /**
+     * Whether the icon is in the playfield, whose local space is virtual units, instead of window pixels.
+     * Only the acronym's font raster size depends on it, the acronym is scaled to the icon's height.
+     */
+    var playfieldSpace = false
+
     constructor(acronym: String): this(allModsInstances.find { it.acronym.equals(acronym, ignoreCase = true) }!!)
 
 
+    // Both children exist up front and setupContent() only switches between them, as the texture
+    // lookup has to run on the update thread while the tree is mutated on the draw worker.
+    private val sprite = UISprite().apply {
+        width = fill()
+        height = fill()
+        isVisible = false
+    }
+
+    private val acronymText = UIText().apply {
+        anchor = Anchor.Center
+        origin = Anchor.Center
+        text = mod.acronym
+        wrapText = false
+        isVisible = false
+        style = Style { theme -> color = theme.palette.accent }
+    }
+
     init {
-        inheritAncestorsColor = false
+        // Verktex only passes the alpha down to children, like inheritAncestorsColor = false.
+        style = Style { theme ->
+            val accent = theme.palette.accent
+            backgroundColor = if (sprite.isVisible) Color4.Transparent else accent.copy(
+                red = accent.red * 0.1f,
+                green = accent.green * 0.1f,
+                blue = accent.blue * 0.1f
+            )
+        }
+
+        this += sprite
+        this += acronymText
     }
 
-
-    private fun fetchTextureRegion(): TextureRegion? {
-        return ResourceManager.getInstance().getTexture(mod.iconTextureName)?.takeUnless { it is BlankTextureRegion }
-    }
 
     private fun setupContent() {
-        detachChildren()
+        val texture = SkinTextures.get(mod.iconTextureName)
 
-        val texture = fetchTextureRegion()
-
-        if (texture != null) {
-            background = null
-
-            attachChild(OsuSkinnableSprite(mod.iconTextureName).apply {
-                width = FillParent
-                height = FillParent
-                buffer = sharedSpriteVBO
-            })
-        } else {
-            background = UIBox().apply {
-                applyTheme = { color = it.accentColor * 0.1f }
-            }
-
-            attachChild(UIText().apply {
-                anchor = Anchor.Center
-                origin = Anchor.Center
-                text = mod.acronym
-                font = ResourceManager.getInstance().getFont("smallFont")
-                applyTheme = { color = it.accentColor }
-            })
-        }
+        sprite.textureRegion = texture
+        sprite.isVisible = texture != null
+        acronymText.isVisible = texture == null
+        style()
 
         shouldUpdateTexture = false
     }
 
 
-    override fun onAttached() {
+    override fun onUpdate(clock: TickingClock) {
         if (shouldUpdateTexture) {
             setupContent()
         }
 
-        super.onAttached()
-    }
-
-    override fun onManagedDraw(pGLState: GLState, pCamera: Camera) {
-
-        val acronymText = get<UIComponent>(0)
-        if (acronymText is UIText) {
-            acronymText.setScale(height * 0.6f / acronymText.contentHeight)
+        if (appliedScale != LegacyUnits.scale) {
+            appliedScale = LegacyUnits.scale
+            acronymText.fontSize = if (playfieldSpace) LegacyUnits.fontSize("smallFont").px else LegacyUnits.fontSize("smallFont").vu.px
         }
 
-        (background as? UIBox)?.cornerRadius = height * 0.2f
-
-        super.onManagedDraw(pGLState, pCamera)
+        super.onUpdate(clock)
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
-        if (shouldUpdateTexture) {
-            setupContent()
+    override fun onLayout(bounds: Vec4) {
+        super.onLayout(bounds)
+
+        val height = bounds.height
+
+        if (acronymText.isVisible && acronymText.bounds.height > 0f) {
+            acronymText.scale = height * 0.6f / acronymText.bounds.height
         }
 
-        super.onManagedUpdate(deltaTimeSec)
+        radius = (height * 0.2f).px
     }
 
     override fun onSkinChanged() {
         shouldUpdateTexture = true
-    }
-
-
-    companion object {
-        private val sharedSpriteVBO = UISprite.SpriteVBO().asSharedDynamically()
     }
 }

@@ -5,8 +5,6 @@ import com.osudroid.mods.settings.*
 import com.osudroid.multiplayer.Multiplayer
 import com.osudroid.ui.verktex.LegacyUnits
 import com.osudroid.ui.verktex.LegacyUnits.vu
-// The explicit import picks the Verktex twin over the same-package AndEngine ModIcon.
-import com.osudroid.ui.verktex.ModIcon
 import com.osudroid.ui.verktex.times
 import com.osudroid.utils.updateThread
 import com.reco1l.verktex.Verktex

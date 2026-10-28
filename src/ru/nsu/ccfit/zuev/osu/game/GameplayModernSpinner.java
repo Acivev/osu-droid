@@ -2,13 +2,13 @@ package ru.nsu.ccfit.zuev.osu.game;
 
 import android.graphics.PointF;
 
-import com.reco1l.andengine.UIScene;
-import com.reco1l.andengine.sprite.UISprite;
-import com.reco1l.andengine.Anchor;
+import com.osudroid.ui.verktex.SkinTextures;
+import com.reco1l.verktex.data.Anchor;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.ui.UISprite;
+import com.reco1l.verktex.ui.container.UIContainer;
+import com.rian.andengine.modifier.VerktexModifiers;
 import com.osudroid.beatmaps.hitobjects.Spinner;
-
-import org.andengine.entity.scene.Scene;
-import org.andengine.util.math.MathUtils;
 
 import ru.nsu.ccfit.zuev.osu.Config;
 import ru.nsu.ccfit.zuev.osu.Constants;
@@ -36,28 +36,33 @@ public class GameplayModernSpinner extends GameplaySpinner {
 
         middle = new UISprite();
         middle.setOrigin(Anchor.Center);
-        middle.setPosition(position.x, position.y);
-        middle.setTextureRegion(ResourceManager.getInstance().getTexture("spinner-middle"));
+        middle.setX(DimensionKt.getPx(position.x));
+        middle.setY(DimensionKt.getPx(position.y));
+        middle.setTextureRegion(SkinTextures.getWithBeatmapSkin("spinner-middle"));
 
         middle2 = new UISprite();
         middle2.setOrigin(Anchor.Center);
-        middle2.setPosition(position.x, position.y);
-        middle2.setTextureRegion(ResourceManager.getInstance().getTexture("spinner-middle2"));
+        middle2.setX(DimensionKt.getPx(position.x));
+        middle2.setY(DimensionKt.getPx(position.y));
+        middle2.setTextureRegion(SkinTextures.getWithBeatmapSkin("spinner-middle2"));
 
         bottom = new UISprite();
         bottom.setOrigin(Anchor.Center);
-        bottom.setPosition(position.x, position.y);
-        bottom.setTextureRegion(ResourceManager.getInstance().getTexture("spinner-bottom"));
+        bottom.setX(DimensionKt.getPx(position.x));
+        bottom.setY(DimensionKt.getPx(position.y));
+        bottom.setTextureRegion(SkinTextures.getWithBeatmapSkin("spinner-bottom"));
 
         top = new UISprite();
         top.setOrigin(Anchor.Center);
-        top.setPosition(position.x, position.y);
-        top.setTextureRegion(ResourceManager.getInstance().getTexture("spinner-top"));
+        top.setX(DimensionKt.getPx(position.x));
+        top.setY(DimensionKt.getPx(position.y));
+        top.setTextureRegion(SkinTextures.getWithBeatmapSkin("spinner-top"));
 
         glow = new UISprite();
         glow.setOrigin(Anchor.Center);
-        glow.setPosition(position.x, position.y);
-        glow.setTextureRegion(ResourceManager.getInstance().getTexture("spinner-glow"));
+        glow.setX(DimensionKt.getPx(position.x));
+        glow.setY(DimensionKt.getPx(position.y));
+        glow.setTextureRegion(SkinTextures.getWithBeatmapSkin("spinner-glow"));
 
         bonusScore = new ScoreNumber(position.x, position.y + 100, "", 1.1f, true);
 
@@ -66,7 +71,7 @@ public class GameplayModernSpinner extends GameplaySpinner {
     }
 
     @Override
-    public void init(final GameObjectListener listener, final UIScene scene,
+    public void init(final GameObjectListener listener, final UIContainer scene,
                      final Spinner beatmapSpinner, final float rps, final StatisticV2 stat) {
         this.scene = scene;
         this.beatmapSpinner = beatmapSpinner;
@@ -90,7 +95,7 @@ public class GameplayModernSpinner extends GameplaySpinner {
 
         glow.setAlpha(0f);
         glow.setScale(0.9f);
-        glow.setColor(0f, 0.8f, 1f);
+        glow.setColor(new com.reco1l.verktex.data.Color4(0f, 0.8f, 1f, glow.getAlpha()));
 
         boolean isBackgroundVisible = (!GameHelper.isTraceable() ||
                 (Config.isShowFirstApproachCircle() && GameHelper.getTraceable().getFirstObject() == beatmapSpinner));
@@ -108,13 +113,13 @@ public class GameplayModernSpinner extends GameplaySpinner {
         top.setAlpha(0f);
         top.setScale(0.9f);
 
-        scene.attachChild(glow);
-        scene.attachChild(bottom);
-        scene.attachChild(top);
+        scene.plusAssign(glow);
+        scene.plusAssign(bottom);
+        scene.plusAssign(top);
 
         if (isBackgroundVisible) {
-            scene.attachChild(middle);
-            scene.attachChild(middle2);
+            scene.plusAssign(middle);
+            scene.plusAssign(middle2);
         }
 
         float timePreempt = (float) beatmapSpinner.timePreempt / 1000f;
@@ -134,7 +139,7 @@ public class GameplayModernSpinner extends GameplaySpinner {
     private void fadeIn(UISprite sprite) {
         float timePreempt = (float) beatmapSpinner.timePreempt / 1000;
 
-        sprite.beginAbsoluteSequence(hitTime - timePreempt,
+        VerktexModifiers.beginAbsoluteSequence(sprite, hitTime - timePreempt,
                 sequence -> sequence.fadeIn(timePreempt));
     }
 
@@ -159,7 +164,7 @@ public class GameplayModernSpinner extends GameplaySpinner {
                 // visually on next frame.
                 if (bonusScoreCounter > 1) {
                     bonusScore.setText(String.valueOf((bonusScoreCounter - 1) * 1000));
-                    scene.attachChild(bonusScore);
+                    scene.plusAssign(bonusScore);
                 }
             }
         }
@@ -194,9 +199,9 @@ public class GameplayModernSpinner extends GameplaySpinner {
         }
 
         if (mouse != null) {
-            float degree = MathUtils.radToDeg(Utils.direction(currMouse));
-            top.setRotation(degree);
-            bottom.setRotation(degree / 2);
+            float degree = (180f / (float) Math.PI) * Utils.direction(currMouse);
+            top.setRotationZ(degree);
+            bottom.setRotationZ(degree / 2);
 
             var len1 = Utils.length(currMouse);
             var len2 = Utils.length(oldMouse);
@@ -208,7 +213,7 @@ public class GameplayModernSpinner extends GameplaySpinner {
             if (autoPlay) {
                 dFill = 5 * 4 * dt;
                 degree = (rotations + dFill / 4f) * 360;
-                top.setRotation(degree);
+                top.setRotationZ(degree);
                 //auto时，FL光圈绕中心旋转
                 if (GameHelper.isAutopilot() || GameHelper.isAutoplay()) {
                     float pX = position.x + 50 * (float) Math.sin(degree);
@@ -229,7 +234,7 @@ public class GameplayModernSpinner extends GameplaySpinner {
                 spinnerSpinSample.stopAll();
             }
 
-            middle.setColor(1, 1 - percent, 1 - percent);
+            middle.setColor(new com.reco1l.verktex.data.Color4(1, 1 - percent, 1 - percent, middle.getAlpha()));
             top.setScale(0.9f + percent * 0.1f);
             bottom.setScale(0.9f + percent * 0.1f);
 
@@ -259,12 +264,12 @@ public class GameplayModernSpinner extends GameplaySpinner {
                     bonusScore.setText(String.valueOf(bonusScoreCounter * 1000));
                     listener.onSpinnerHit(id, 1000, false, 0);
                     bonusScoreCounter++;
-                    if (!bonusScore.hasParent()) {
-                        scene.attachChild(bonusScore);
+                    if (bonusScore.getParent() == null) {
+                        scene.plusAssign(bonusScore);
                     }
                     spinnerBonusSample.play();
 
-                    glow.beginModifierSequence(sequence -> sequence
+                    VerktexModifiers.beginModifierSequence(glow, sequence -> sequence
                             .colorTo(0, 1, 0.8f)
                             .colorTo(1, 1, 1, 0.1f)
                             .then()
@@ -306,22 +311,22 @@ public class GameplayModernSpinner extends GameplaySpinner {
 
         setLifetimeEnd((float) beatmapSpinner.getEndTime() / 1000);
 
-        middle.clearEntityModifiers();
-        scene.detachChild(middle);
+        VerktexModifiers.clearModifiers(middle);
+        scene.minusAssign(middle);
 
-        middle2.clearEntityModifiers();
-        scene.detachChild(middle2);
+        VerktexModifiers.clearModifiers(middle2);
+        scene.minusAssign(middle2);
 
-        bottom.clearEntityModifiers();
-        scene.detachChild(bottom);
+        VerktexModifiers.clearModifiers(bottom);
+        scene.minusAssign(bottom);
 
-        top.clearEntityModifiers();
-        scene.detachChild(top);
+        VerktexModifiers.clearModifiers(top);
+        scene.minusAssign(top);
 
-        glow.clearEntityModifiers();
-        scene.detachChild(glow);
+        VerktexModifiers.clearModifiers(glow);
+        scene.minusAssign(glow);
 
-        scene.detachChild(bonusScore);
+        scene.minusAssign(bonusScore);
         scene = null;
     }
 

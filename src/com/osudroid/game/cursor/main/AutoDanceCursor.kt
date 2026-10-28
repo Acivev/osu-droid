@@ -1,6 +1,7 @@
 package com.osudroid.game.cursor.main
 
 import com.osudroid.math.Interpolation
+import com.rian.andengine.modifier.clearModifiers
 import ru.nsu.ccfit.zuev.osu.game.GameObject
 import ru.nsu.ccfit.zuev.osu.game.GameObjectListener
 import ru.nsu.ccfit.zuev.osu.game.GameplaySpinner
@@ -66,8 +67,8 @@ class AutoDanceCursor : AutoCursor() {
         }
 
         // Record from/to for arc interpolation.
-        fromX = x
-        fromY = y
+        fromX = this.x.resolve(0f)
+        fromY = this.y.resolve(0f)
         toX = targetX
         toY = targetY
 
@@ -77,7 +78,7 @@ class AutoDanceCursor : AutoCursor() {
         danceFrameIndex++
 
         // Stop the inherited easing modifier so it cannot interfere.
-        clearEntityModifiers()
+        clearModifiers()
 
         // Immediately notify so that flashlight / other listeners know the destination.
         listener.onUpdatedAutoCursor(targetX, targetY)

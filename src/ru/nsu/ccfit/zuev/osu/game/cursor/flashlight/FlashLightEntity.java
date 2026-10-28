@@ -1,18 +1,20 @@
 package ru.nsu.ccfit.zuev.osu.game.cursor.flashlight;
 
+import androidx.annotation.NonNull;
+
 import com.edlplan.framework.easing.Easing;
 import com.edlplan.framework.math.FMath;
 import com.osudroid.mods.ModFlashlight;
 
-import org.andengine.entity.Entity;
-import org.andengine.entity.modifier.IEntityModifier;
-import com.reco1l.andengine.component.UIComponent;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.time.TickingClock;
+import com.reco1l.verktex.ui.container.UIContainer;
 import com.reco1l.framework.Interpolation;
 
 import ru.nsu.ccfit.zuev.osu.Config;
 
 
-public class FlashLightEntity extends UIComponent {
+public class FlashLightEntity extends UIContainer {
     private final MainFlashLightSprite mainSprite;
     private final FlashLightDimLayerSprite dimLayer;
     private boolean isTrackingSliders = false;
@@ -24,13 +26,14 @@ public class FlashLightEntity extends UIComponent {
     public FlashLightEntity(final ModFlashlight flashlight) {
         super();
 
-        setPosition(Config.getRES_WIDTH() / 2f, Config.getRES_HEIGHT() / 2f);
+        setX(DimensionKt.getPx(Config.getRES_WIDTH() / 2f));
+        setY(DimensionKt.getPx(Config.getRES_HEIGHT() / 2f));
         followDelay = flashlight.getFollowDelay();
         mainSprite = new MainFlashLightSprite(flashlight.getSizeMultiplier(), flashlight.isComboBasedSize());
         dimLayer = new FlashLightDimLayerSprite();
 
-        attachChild(mainSprite);
-        attachChild(dimLayer);
+        plusAssign(mainSprite);
+        plusAssign(dimLayer);
     }
 
     public void onBreak(boolean isBreak) {
@@ -52,18 +55,23 @@ public class FlashLightEntity extends UIComponent {
     }
 
     @Override
-    protected void onManagedUpdate(float deltaTimeSec) {
-        super.onManagedUpdate(deltaTimeSec);
+    protected void onUpdate(@NonNull TickingClock clock) {
+        super.onUpdate(clock);
+
+        // The gameplay delta, as the AndEngine scene's clock gave it.
+        float deltaTimeSec = clock.getElapsedTickTime();
 
         if (followDelay == 0) {
-            setPosition(nextPX, nextPY);
+            setX(DimensionKt.getPx(nextPX));
+            setY(DimensionKt.getPx(nextPY));
             return;
         }
 
-        float x = getInterpolatedPosition(deltaTimeSec, getX(), nextPX);
-        float y = getInterpolatedPosition(deltaTimeSec, getY(), nextPY);
+        float x = getInterpolatedPosition(deltaTimeSec, getX().resolve(0f), nextPX);
+        float y = getInterpolatedPosition(deltaTimeSec, getY().resolve(0f), nextPY);
 
-        setPosition(x, y);
+        setX(DimensionKt.getPx(x));
+        setY(DimensionKt.getPx(y));
     }
 
     private float getInterpolatedPosition(float deltaTime, float current, float next) {

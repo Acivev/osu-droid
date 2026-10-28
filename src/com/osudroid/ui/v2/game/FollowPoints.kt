@@ -5,11 +5,19 @@ import com.osudroid.beatmaps.hitobjects.HitObject
 import com.osudroid.utils.IPoolable
 import com.osudroid.utils.SynchronizedPool
 import com.osudroid.utils.updateThread
-import com.reco1l.andengine.*
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.sprite.*
-import org.andengine.opengl.texture.region.*
+import com.osudroid.ui.v2.hud.GameplayLayer
+import com.osudroid.ui.verktex.SkinTextures
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.GraphicsTexture
+import com.reco1l.verktex.ui.UIAnimatedSprite
+import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.container.UIContainer
 import com.rian.andengine.modifier.OnModifierFinished
+import com.rian.andengine.modifier.VerktexModifierTarget
+import com.rian.andengine.modifier.beginAbsoluteSequence
+import com.rian.andengine.modifier.clearModifiers
 import ru.nsu.ccfit.zuev.osu.*
 import ru.nsu.ccfit.zuev.skins.OsuSkin
 import kotlin.math.*
@@ -32,20 +40,23 @@ object FollowPointConnection {
 
         return if (ResourceManager.getInstance().isTextureLoaded("followpoint-0")) {
             PoolableAnimatedFollowPoint("followpoint", true, OsuSkin.get().animationFramerate).also { sprite ->
-                sprite.frames.forEach { it?.applyFollowPointMaxSize() }
+                sprite.frames.forEach { it.applyFollowPointMaxSize() }
 
-                sprite.invalidate(InvalidationFlag.Content)
+                sprite.invalidateMeasure()
                 sprite.isLoop = false
             }
         } else {
-            PoolableFollowPoint(ResourceManager.getInstance().getTexture("followpoint")).also {
+            PoolableFollowPoint(SkinTextures.getWithBeatmapSkin("followpoint")).also {
                 it.textureRegion?.applyFollowPointMaxSize()
-                it.invalidate(InvalidationFlag.Content)
+                it.invalidateMeasure()
             }
         }
     }
 
-    private val expire = OnModifierFinished { fp ->
+    private val expire = OnModifierFinished { target ->
+        // The finished modifier's target wraps the follow point.
+        val fp = (target as VerktexModifierTarget).component
+
         updateThread {
             val poolable = fp as IPoolable
 
@@ -55,14 +66,14 @@ object FollowPointConnection {
                 return@updateThread
             }
 
-            fp.detachSelf()
+            fp.removeSelf()
             (fp as UISprite).reset()
             pool.release(poolable)
         }
     }
 
 
-    private fun TextureRegion.applyFollowPointMaxSize() {
+    private fun GraphicsTexture.Region.applyFollowPointMaxSize() {
         // Reference: https://github.com/ppy/osu/blob/0811de728e4205a45e485d53ccdaf19a937c6033/osu.Game.Rulesets.Osu/Skinning/Legacy/OsuLegacySkinTransformer.cs#L95-L97
         val newWidth = min(width, HitObject.OBJECT_RADIUS * 2)
         val newHeight = min(height, HitObject.OBJECT_RADIUS)
@@ -70,24 +81,39 @@ object FollowPointConnection {
         if (width != newWidth || height != newHeight) {
 
             // Crop the texture from the center.
-            setTexturePosition(width / 2 - newWidth / 2, height / 2 - newHeight / 2)
+            x += width / 2 - newWidth / 2
+            y += height / 2 - newHeight / 2
 
-            setTextureWidth(newWidth)
-            setTextureHeight(newHeight)
+            width = newWidth
+            height = newHeight
         }
     }
 
     @JvmStatic
-    fun clearAll(scene: UIScene) {
-        for (i in scene.childCount - 1 downTo 0) {
-            val child = scene.getChildByIndex(i)
-
+    fun clearAll(scene: UIContainer) {
+        for (child in scene.toList().asReversed()) {
             if (child is PoolableFollowPoint || child is PoolableAnimatedFollowPoint) {
-                child.clearEntityModifiers()
-                child.detachSelf()
-                child.reset()
+                child.clearModifiers()
+                child.removeSelf()
+                (child as UISprite).reset()
                 pool.release(child as IPoolable)
             }
+        }
+    }
+
+    /**
+     * The AndEngine `reset()` of a pooled follow point: visible, unrotated, unscaled and white again, an
+     * animation restarted.
+     */
+    private fun UISprite.reset() {
+        isVisible = true
+        rotationZ = 0f
+        scale = 1f
+        color = Color4(1f, 1f, 1f, 1f)
+
+        if (this is UIAnimatedSprite) {
+            stop()
+            play()
         }
     }
 
@@ -99,13 +125,13 @@ object FollowPointConnection {
         repeat(size) {
             pool.release(
                 if (isAnimated) PoolableAnimatedFollowPoint("followpoint", true, OsuSkin.get().animationFramerate)
-                else PoolableFollowPoint(ResourceManager.getInstance().getTexture("followpoint"))
+                else PoolableFollowPoint(SkinTextures.getWithBeatmapSkin("followpoint"))
             )
         }
     }
 
     @JvmStatic
-    fun addConnection(scene: UIScene, start: HitObject, end: HitObject) {
+    fun addConnection(scene: UIContainer, start: HitObject, end: HitObject) {
 
         // Reference: https://github.com/ppy/osu/blob/7bc8908ca9c026fed1d831eb6e58df7624a8d614/osu.Game.Rulesets.Osu/Objects/Drawables/Connections/FollowPointConnection.cs
 
@@ -152,14 +178,15 @@ object FollowPointConnection {
 
             val fp = obtainFollowPoint()
 
-            fp.clearEntityModifiers()
-            fp.setPosition(pointStartX, pointStartY)
-            fp.setScale(1.5f * scale)
+            fp.clearModifiers()
+            fp.x = pointStartX.px
+            fp.y = pointStartY.px
+            fp.scale = 1.5f * scale
             fp.origin = Anchor.Center
-            fp.rotation = rotation
+            fp.rotationZ = rotation
             fp.alpha = 0f
 
-            scene.attachChild(fp, 0)
+            scene.addToBack(fp)
 
             fp.beginAbsoluteSequence(fadeInTime) {
                 fadeIn(endFadeInTime)
@@ -175,7 +202,7 @@ object FollowPointConnection {
         }
     }
 
-    private class PoolableFollowPoint(textureRegion: TextureRegion? = null) : UISprite(textureRegion), IPoolable {
+    private class PoolableFollowPoint(textureRegion: GraphicsTexture.Region? = null) : UISprite(textureRegion), IPoolable {
         override var isRecycled = false
     }
 
@@ -183,7 +210,7 @@ object FollowPointConnection {
         textureName: String,
         withHyphen: Boolean,
         framePerSecond: Float
-    ) : UIAnimatedSprite(textureName, withHyphen, framePerSecond), IPoolable {
+    ) : UIAnimatedSprite(GameplayLayer.skinAnimationFrames(textureName), framePerSecond), IPoolable {
         override var isRecycled = false
     }
 }

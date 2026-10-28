@@ -160,7 +160,7 @@ object Multiplayer {
 
     fun onLiveLeaderboard(array: JSONArray) {
 
-        if (GlobalManager.getInstance().engine.scene != GlobalManager.getInstance().gameScene.scene) {
+        if (!GlobalManager.getInstance().gameScene.isInGameplay) {
             return
         }
 
@@ -284,7 +284,7 @@ object Multiplayer {
             // Do not interrupt an active game session; the teardown will happen naturally
             // when the player finishes (or abandons) the game.
             val gameScene = GlobalManager.getInstance().gameScene
-            if (gameScene == null || GlobalManager.getInstance().engine.scene != gameScene.scene) {
+            if (gameScene == null || !gameScene.isInGameplay) {
                 updateThread { roomScene?.back() }
             }
         }

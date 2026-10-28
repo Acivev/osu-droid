@@ -5,24 +5,33 @@ import com.osudroid.beatmaps.hitobjects.Slider
 import com.osudroid.beatmaps.hitobjects.sliderobject.SliderTick
 import com.osudroid.utils.IPoolable
 import com.osudroid.utils.SynchronizedPool
-import com.reco1l.andengine.Anchor
-import com.reco1l.andengine.container.*
-import com.reco1l.andengine.sprite.*
+import com.osudroid.ui.verktex.SkinTextures
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.container.UIContainer
+import com.rian.andengine.modifier.beginAbsoluteSequence
+import com.rian.andengine.modifier.clearModifiers
 import kotlin.math.min
-import ru.nsu.ccfit.zuev.osu.*
 import ru.nsu.ccfit.zuev.osu.game.GameHelper
 
 class SliderTickContainer : UIContainer() {
     private var slider: Slider? = null
 
+    init {
+        // reco1l rotated it around its origin, the top left corner (the fail wind-down rotates it).
+        rotationOrigin = Anchor.TopLeft
+    }
+
     fun init(beatmapSlider: Slider) {
         slider = beatmapSlider
 
-        detachChildren()
+        clearChildren()
 
         val position = beatmapSlider.screenSpaceGameplayStackedPosition
 
-        setPosition(position.x, position.y)
+        x = position.x.px
+        y = position.y.px
 
         for (i in 1 until beatmapSlider.nestedHitObjects.size) {
 
@@ -33,8 +42,9 @@ class SliderTickContainer : UIContainer() {
 
             // We're subtracting the position of the slider because the tick container is
             // already at the position of the slider since it's a child of the slider's body.
-            sprite.setPosition(tickPosition.x - position.x, tickPosition.y - position.y)
-            attachChild(sprite)
+            sprite.x = (tickPosition.x - position.x).px
+            sprite.y = (tickPosition.y - position.y).px
+            this += sprite
 
             sprite.init(tick)
         }
@@ -67,8 +77,19 @@ class SliderTickContainer : UIContainer() {
 
     override fun onDetached() {
         super.onDetached()
-        detachChildren()
+        clearChildren()
     }
+
+    /**
+     * The number of children, the AndEngine `getChildCount`.
+     */
+    val childCount
+        get() = count()
+
+    /**
+     * The child at [index], the AndEngine `getChildByIndex`.
+     */
+    fun getChildByIndex(index: Int) = this[index]
 
 }
 
@@ -78,7 +99,7 @@ class SliderTickSprite : UISprite(), IPoolable {
     private var tick: SliderTick? = null
 
     init {
-        textureRegion = ResourceManager.getInstance().getTexture("sliderscorepoint")
+        textureRegion = SkinTextures.getWithBeatmapSkin("sliderscorepoint")
         origin = Anchor.Center
     }
 
@@ -94,10 +115,10 @@ class SliderTickSprite : UISprite(), IPoolable {
         val timePreempt = (tick.timePreempt / 1000).toFloat()
         val fadeInStartTime = startTime - timePreempt
 
-        clearEntityModifiers()
+        clearModifiers()
 
         alpha = 0f
-        setScale(0.5f)
+        scale = 0.5f
 
         beginAbsoluteSequence(fadeInStartTime) {
             scaleTo(1f, ANIM_DURATION * 4, Easing.OutElasticHalf)
@@ -122,7 +143,7 @@ class SliderTickSprite : UISprite(), IPoolable {
     fun onHit(isSuccessful: Boolean) {
         val tick = tick ?: return
 
-        clearEntityModifiers()
+        clearModifiers()
 
         beginAbsoluteSequence(tick.startTime.toFloat() / 1000) {
             fadeOut(ANIM_DURATION, Easing.OutQuint)
@@ -137,7 +158,7 @@ class SliderTickSprite : UISprite(), IPoolable {
 
     override fun onDetached() {
         super.onDetached()
-        clearEntityModifiers()
+        clearModifiers()
         pool.release(this)
     }
 
@@ -162,7 +183,7 @@ class SliderTickSprite : UISprite(), IPoolable {
         @JvmStatic
         fun obtain(): SliderTickSprite {
             val sprite = pool.acquire() ?: return SliderTickSprite()
-            sprite.textureRegion = ResourceManager.getInstance().getTexture("sliderscorepoint")
+            sprite.textureRegion = SkinTextures.getWithBeatmapSkin("sliderscorepoint")
             return sprite
         }
     }

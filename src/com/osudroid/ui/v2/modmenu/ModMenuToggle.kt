@@ -4,8 +4,6 @@ import com.osudroid.mods.*
 import com.osudroid.multiplayer.*
 import com.osudroid.ui.verktex.LegacyUnits
 import com.osudroid.ui.verktex.LegacyUnits.vu
-// The explicit import picks the Verktex twin over the same-package AndEngine ModIcon.
-import com.osudroid.ui.verktex.ModIcon
 import com.osudroid.utils.searchContiguously
 import com.reco1l.verktex.data.Anchor
 import com.reco1l.verktex.data.Axis

@@ -1,16 +1,19 @@
 package ru.nsu.ccfit.zuev.osu.game.cursor.flashlight;
 
+import com.osudroid.ui.verktex.SkinTextures;
+import com.reco1l.verktex.graphics.GraphicsTexture;
 import com.rian.andengine.modifier.UniversalModifier;
-
-import org.andengine.opengl.texture.region.TextureRegion;
-
-import ru.nsu.ccfit.zuev.osu.ResourceManager;
+import com.rian.andengine.modifier.VerktexModifiers;
 
 
 public class MainFlashLightSprite extends FlashlightAreaSizedSprite {
-    private static final TextureRegion DEFAULT_TEXTURE = ResourceManager.getInstance().getTexture("flashlight_cursor");
-    public static final int TEXTURE_WIDTH = (int) DEFAULT_TEXTURE.getWidth();
-    public static final int TEXTURE_HEIGHT = (int) DEFAULT_TEXTURE.getHeight();
+    // Looked up per sprite: a skin change unloads the skin textures, a region kept in a static would stay
+    // on an unloaded texture.
+    private static GraphicsTexture.Region getDefaultTexture() {
+        return SkinTextures.getWithBeatmapSkin("flashlight_cursor", "flashlight_cursor.png");
+    }
+    public static final int TEXTURE_WIDTH = (int) getDefaultTexture().getWidth();
+    public static final int TEXTURE_HEIGHT = (int) getDefaultTexture().getHeight();
     public final float AREA_CHANGE_FADE_DURATION = 0.8f;
     public float currentSize = BASE_SIZE;
     private UniversalModifier modifier;
@@ -19,20 +22,20 @@ public class MainFlashLightSprite extends FlashlightAreaSizedSprite {
     private boolean isBreak;
 
     public MainFlashLightSprite(final float sizeMultiplier, final boolean comboBasedSize) {
-        super(DEFAULT_TEXTURE);
+        super(getDefaultTexture());
 
         this.sizeMultiplier = sizeMultiplier;
         this.comboBasedSize = comboBasedSize;
     }
 
     private void changeArea(float fromScale, float toScale) {
-        if (modifier != null && modifier.getTarget() == this && !modifier.isAppliedToEnd()) {
-            removeModifier(modifier);
+        if (modifier != null && modifier.getTarget() == VerktexModifiers.getModifierTarget(this) && !modifier.isAppliedToEnd()) {
+            VerktexModifiers.removeModifier(this, modifier);
             modifier = null;
         }
 
         setScale(fromScale * sizeMultiplier);
-        modifier = scaleTo(toScale * sizeMultiplier, AREA_CHANGE_FADE_DURATION).after(e -> modifier = null);
+        modifier = VerktexModifiers.scaleTo(this, toScale * sizeMultiplier, AREA_CHANGE_FADE_DURATION).after(e -> modifier = null);
     }
 
     public void onUpdate(int combo) {

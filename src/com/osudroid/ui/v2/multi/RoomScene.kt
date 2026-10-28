@@ -1144,7 +1144,7 @@ class RoomScene(
         updateThread {
             val global = GlobalManager.getInstance()
 
-            if (player.status != PlayerStatus.MissingBeatmap && global.engine.scene != global.gameScene.scene) {
+            if (player.status != PlayerStatus.MissingBeatmap && !global.gameScene.isInGameplay) {
 
                 if (global.selectedBeatmap == null) {
                     Multiplayer.log("WARNING: Attempt to start match with null track.")
@@ -1174,7 +1174,7 @@ class RoomScene(
     override fun onRoomMatchSkip() {
 
         updateThread {
-            if (GlobalManager.getInstance().engine.scene != GlobalManager.getInstance().gameScene.scene) {
+            if (!GlobalManager.getInstance().gameScene.isInGameplay) {
                 return@updateThread
             }
 
@@ -1227,7 +1227,7 @@ class RoomScene(
             Multiplayer.log("Kicked from room.")
 
             updateThread { Verktex.withTreeLock {
-                if (GlobalManager.getInstance().engine.scene == GlobalManager.getInstance().gameScene.scene) {
+                if (GlobalManager.getInstance().gameScene.isInGameplay) {
                     // Kicked while a game is in progress. We cannot navigate away from the
                     // game scene immediately — doing so would abruptly interrupt gameplay.
                     // Instead:

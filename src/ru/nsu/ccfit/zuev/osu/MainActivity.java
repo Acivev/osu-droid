@@ -785,7 +785,7 @@ public class MainActivity extends BaseGameActivity implements
 
                     // Ensure gameplay is cleaned up before joining the lobby to prevent any potential issues with
                     // lingering game state.
-                    if (scene != null && gameScene != null && scene == gameScene.getScene()) {
+                    if (scene != null && gameScene != null && gameScene.isInGameplay()) {
                         gameScene.quit();
                     }
                 }
@@ -935,7 +935,7 @@ public class MainActivity extends BaseGameActivity implements
 
         var gameScene = GlobalManager.getInstance().getGameScene();
 
-        if (gameScene != null && mEngine.getScene() == gameScene.getScene()) {
+        if (gameScene != null && gameScene.isInGameplay()) {
             mEngine.onReloadResources();
         } else {
             var songService = GlobalManager.getInstance().getSongService();
@@ -992,7 +992,7 @@ public class MainActivity extends BaseGameActivity implements
 
         var gameScene = GlobalManager.getInstance().getGameScene();
 
-        if (gameScene != null && mEngine.getScene() == gameScene.getScene()) {
+        if (gameScene != null && gameScene.isInGameplay()) {
             if (Multiplayer.isMultiplayer) {
                 ToastLogger.showText("You've left the match.", true);
                 Execution.updateThread(gameScene::quit);
@@ -1072,7 +1072,7 @@ public class MainActivity extends BaseGameActivity implements
         if (getEngine() != null && !hasFocus) {
             var gameScene = GlobalManager.getInstance().getGameScene();
 
-            if (gameScene != null && getEngine().getScene() == gameScene.getScene() && !gameScene.isPaused() && !Multiplayer.isMultiplayer) {
+            if (gameScene != null && gameScene.isInGameplay() && !gameScene.isPaused() && !Multiplayer.isMultiplayer) {
                 Execution.updateThread(gameScene::pause);
             }
 
@@ -1185,26 +1185,12 @@ public class MainActivity extends BaseGameActivity implements
             return super.onKeyDown(keyCode, event);
         }
 
-        Scene currentScene = GlobalManager.getInstance().getEngine().getScene();
-
         // Back key / menu key handling reaches here only when action == ACTION_DOWN (guarded above).
         if (keyCode == KeyEvent.KEYCODE_BACK && ActivityOverlay.onBackPress()) {
             return true;
         }
 
         if (EngineRouter.isVerktexActive() && keyCode == KeyEvent.KEYCODE_BACK) { verktexKey.dispatch(); return true; }
-
-        var gameScene = GlobalManager.getInstance().getGameScene();
-
-        if (gameScene != null && currentScene == gameScene.getScene() &&
-                (keyCode == KeyEvent.KEYCODE_BACK || keyCode == KeyEvent.KEYCODE_MENU)) {
-            if (gameScene.isPaused()) {
-                Execution.updateThread(gameScene::resume);
-            } else {
-                Execution.updateThread(gameScene::pause);
-            }
-            return true;
-        }
 
         var songMenu = GlobalManager.getInstance().getSongMenu();
 
@@ -1262,7 +1248,7 @@ public class MainActivity extends BaseGameActivity implements
     }
 
     public void forcedExit() {
-        if (GlobalManager.getInstance().getEngine().getScene() == GlobalManager.getInstance().getGameScene().getScene()) {
+        if (GlobalManager.getInstance().getGameScene().isInGameplay()) {
             GlobalManager.getInstance().getGameScene().quit();
         }
         var mainMenuV2 = GlobalManager.getInstance().getMainMenuV2();

@@ -5,10 +5,13 @@ import com.edlplan.framework.math.FMath;
 import com.edlplan.framework.math.Vec2;
 import com.edlplan.framework.math.line.AbstractPath;
 import com.edlplan.framework.math.line.LinePath;
-import com.reco1l.andengine.component.ClearInfo;
-import com.reco1l.andengine.component.DepthInfo;
-import com.reco1l.andengine.shape.UITriangleMesh;
-import com.reco1l.andengine.container.UIContainer;
+import com.osudroid.ui.verktex.TriangleMeshCanvas;
+import com.reco1l.verktex.data.Anchor;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.graphics.CompareFunction;
+import com.reco1l.verktex.graphics.DepthState;
+import com.reco1l.verktex.time.TickingClock;
+import com.reco1l.verktex.ui.container.UIContainer;
 import com.reco1l.framework.Color4;
 import com.osudroid.math.Vector2;
 
@@ -22,13 +25,17 @@ public class SliderBody extends UIContainer {
     private static final float lengthUpdateEpsilon = 0.001f;
     private static final float pointMergeDistance = 0.01f;
 
+    // reco1l's DepthInfo.Default and DepthInfo.Less both tested with GL_LESS and wrote depth; Verktex's
+    // DepthState.Default does neither.
+    private static final DepthState depthLess = new DepthState(true, true, CompareFunction.Less);
+
     private float maxPathLength;
 
-    private final UITriangleMesh background;
+    private final TriangleMeshCanvas background;
 
-    private final UITriangleMesh border;
+    private final TriangleMeshCanvas border;
 
-    private final UITriangleMesh hint;
+    private final TriangleMeshCanvas hint;
 
     private float backgroundWidth;
 
@@ -60,25 +67,30 @@ public class SliderBody extends UIContainer {
 
     public SliderBody(boolean allowHint) {
 
+        // reco1l passed a container's colour down to its children, the dim-hit-objects tint animates it.
+        setTintChildren(true);
+        // reco1l rotated it around its origin, the top left corner (the fail wind-down rotates it).
+        setRotationOrigin(Anchor.TopLeft);
+
         if (allowHint) {
-            hint = new UITriangleMesh();
+            hint = new TriangleMeshCanvas();
             hint.setVisible(false);
-            hint.setClearInfo(ClearInfo.ClearDepthBuffer);
-            hint.setDepthInfo(DepthInfo.Less);
+            hint.setClearDepthBeforeDraw(true);
+            hint.setDepthState(depthLess);
         } else {
             hint = null;
         }
 
-        border = new UITriangleMesh();
-        border.setDepthInfo(DepthInfo.Default);
-        attachChild(border, 0);
+        border = new TriangleMeshCanvas();
+        border.setDepthState(depthLess);
+        addToBack(border);
 
-        background = new UITriangleMesh();
-        background.setDepthInfo(DepthInfo.Default);
-        attachChild(background, 0);
+        background = new TriangleMeshCanvas();
+        background.setDepthState(depthLess);
+        addToBack(background);
 
         if (hint != null) {
-            attachChild(hint, 0);
+            addToBack(hint);
         }
 
         setHintVisible(false);
@@ -100,7 +112,8 @@ public class SliderBody extends UIContainer {
             lastFastStartSegmentIndex = -1;
             lastFastEndLength = Float.NaN;
             lastFastStartLength = Float.NaN;
-            setPosition(position.x, position.y);
+            setX(DimensionKt.getPx(position.x));
+            setY(DimensionKt.getPx(position.y));
             return;
         }
 
@@ -118,7 +131,8 @@ public class SliderBody extends UIContainer {
         lastFastStartSegmentIndex = -1;
         lastFastEndLength = Float.NaN;
         lastFastStartLength = Float.NaN;
-        setPosition(position.x, position.y);
+        setX(DimensionKt.getPx(position.x));
+        setY(DimensionKt.getPx(position.y));
     }
 
 
@@ -127,11 +141,11 @@ public class SliderBody extends UIContainer {
     }
 
     public void setBackgroundColor(float r, float g, float b, float a) {
-        background.setColor(r, g, b, a);
+        background.setColor(new com.reco1l.verktex.data.Color4(r, g, b, a));
     }
 
     public void setBackgroundColor(Color4 color, float alpha) {
-        background.setColor(color.getRed(), color.getGreen(), color.getBlue());
+        background.setColor(new com.reco1l.verktex.data.Color4(color.getRed(), color.getGreen(), color.getBlue(), background.getAlpha()));
         background.setAlpha(alpha);
     }
 
@@ -139,11 +153,11 @@ public class SliderBody extends UIContainer {
     public void setHintVisible(boolean visible) {
         if (hint != null) {
             hint.setVisible(visible);
-            background.setClearInfo(visible ? ClearInfo.None : ClearInfo.ClearDepthBuffer);
-            background.setDepthInfo(visible ? DepthInfo.Default : DepthInfo.Less);
+            background.setClearDepthBeforeDraw(!visible);
+            background.setDepthState(depthLess);
         } else {
-            background.setClearInfo(ClearInfo.ClearDepthBuffer);
-            background.setDepthInfo(DepthInfo.Less);
+            background.setClearDepthBeforeDraw(true);
+            background.setDepthState(depthLess);
         }
     }
 
@@ -153,13 +167,13 @@ public class SliderBody extends UIContainer {
 
     public void setHintColor(float r, float g, float b, float a) {
         if (hint != null) {
-            hint.setColor(r, g, b, a);
+            hint.setColor(new com.reco1l.verktex.data.Color4(r, g, b, a));
         }
     }
 
     public void setHintColor(Color4 color, float alpha) {
         if (hint != null) {
-            hint.setColor(color.getRed(), color.getGreen(), color.getBlue());
+            hint.setColor(new com.reco1l.verktex.data.Color4(color.getRed(), color.getGreen(), color.getBlue(), hint.getAlpha()));
             hint.setAlpha(alpha);
         }
     }
@@ -170,7 +184,7 @@ public class SliderBody extends UIContainer {
     }
 
     public void setBorderColor(Color4 color) {
-        border.setColor(color.getRed(), color.getGreen(), color.getBlue());
+        border.setColor(new com.reco1l.verktex.data.Color4(color.getRed(), color.getGreen(), color.getBlue(), border.getAlpha()));
     }
 
     private LinePath fitToCachedPath(AbstractPath source, LinePath cache) {
@@ -210,30 +224,27 @@ public class SliderBody extends UIContainer {
         if (hint != null && hint.isVisible()) {
             cache.drawLinePath
                     .reset(subPath, getClampedHintWidth())
-                    .computeTriangles(builder)
-                    .applyVertices(hint.getVertices());
+                    .computeTriangles(builder);
 
-            hint.setContentSize(builder.maxX, builder.maxY);
+            applyVertices(builder, hint);
         }
 
         cache.drawLinePath
                 .reset(subPath, getPlayableWidth())
-                .computeTriangles(builder)
-                .applyVertices(background.getVertices());
+                .computeTriangles(builder);
 
-        background.setContentSize(builder.maxX, builder.maxY);
+        applyVertices(builder, background);
 
         cache.drawLinePath
                 .reset(subPath, getClampedBackgroundWidth())
-                .computeTriangles(builder)
-                .applyVertices(border.getVertices());
+                .computeTriangles(builder);
 
-        border.setContentSize(builder.maxX, builder.maxY);
+        applyVertices(builder, border);
     }
 
 
     @Override
-    protected void onManagedUpdate(float deltaTimeSec) {
+    protected void onUpdate(@NotNull TickingClock clock) {
 
         if (cache != null && shouldRebuildVertices) {
             shouldRebuildVertices = false;
@@ -259,7 +270,7 @@ public class SliderBody extends UIContainer {
             }
         }
 
-        super.onManagedUpdate(deltaTimeSec);
+        super.onUpdate(clock);
     }
 
     public void setStartLength(float length) {
@@ -463,7 +474,7 @@ public class SliderBody extends UIContainer {
             segmentIndex, segmentEnd, cutPoint, segmentTheta);
     }
 
-    private boolean buildFastLayer(UITriangleMesh target,
+    private boolean buildFastLayer(TriangleMeshCanvas target,
                                    RenderPathCache.ComponentCache cache,
                                    float width,
                                    int segmentIndex,
@@ -492,12 +503,11 @@ public class SliderBody extends UIContainer {
             addEndCap(builder, cutPoint, segmentTheta - FMath.PiHalf, width);
         }
 
-        builder.applyVertices(target.getVertices());
-        target.setContentSize(builder.maxX, builder.maxY);
+        applyVertices(builder, target);
         return true;
     }
 
-    private boolean buildFastLayerFromStart(UITriangleMesh target,
+    private boolean buildFastLayerFromStart(TriangleMeshCanvas target,
                                             RenderPathCache.ComponentCache cache,
                                             float width,
                                             int segmentIndex,
@@ -540,18 +550,28 @@ public class SliderBody extends UIContainer {
             addEndCap(builder, segmentEnd, segmentTheta - FMath.PiHalf, width);
         }
 
-        builder.applyVertices(target.getVertices());
-        target.setContentSize(builder.maxX, builder.maxY);
+        applyVertices(builder, target);
         return true;
     }
 
-    private void clearLayer(UITriangleMesh target) {
+    private void clearLayer(TriangleMeshCanvas target) {
         if (target == null) {
             return;
         }
 
-        target.getVertices().length = 0;
-        target.setContentSize(0, 0);
+        target.clear();
+        target.setWidth(DimensionKt.getPx(0));
+        target.setHeight(DimensionKt.getPx(0));
+    }
+
+    /**
+     * Gives a layer the triangles of {@code builder} and their extent as its size, as the reco1l mesh's
+     * {@code applyVertices} and {@code setContentSize} did.
+     */
+    private static void applyVertices(TriangleBuilder builder, TriangleMeshCanvas target) {
+        target.setVertices(builder.ary, builder.length / 2);
+        target.setWidth(DimensionKt.getPx(builder.maxX));
+        target.setHeight(DimensionKt.getPx(builder.maxY));
     }
 
     private int getSegmentIndexForEndLength(float length) {

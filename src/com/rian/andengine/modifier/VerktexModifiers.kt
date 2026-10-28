@@ -533,6 +533,27 @@ private inline fun UIComponent.appendModifier(
 }
 
 /**
+ * Whether this component has an active [UniversalModifier], as the reco1l `UIComponent.isAnimating`.
+ */
+val UIComponent.isAnimating: Boolean
+    get() = ModifierRegistry.existingTargetFor(this)?.isEmpty == false
+
+/**
+ * Removes a [UniversalModifier] of this component, as the reco1l `UIComponent.removeModifier`.
+ *
+ * @return Whether it was removed.
+ */
+fun UIComponent.removeModifier(modifier: UniversalModifier): Boolean {
+    val target = ModifierRegistry.existingTargetFor(this) ?: return false
+
+    if (modifier.target !== target) {
+        return false
+    }
+
+    return target.trackerFor(modifier.type)?.remove(modifier) ?: false
+}
+
+/**
  * Clears every [UniversalModifier] of this component.
  */
 fun UIComponent.clearModifiers() {
@@ -743,6 +764,37 @@ fun UIComponent.beginAbsoluteSequence(
     propagateChildren: Boolean = true,
     block: Consumer<UniversalModifierSequence>
 ) = beginAbsoluteSequence(newModifierStartTime, propagateChildren) { block.accept(this) }
+
+/**
+ * Starts a sequence of [UniversalModifier]s with a (cumulative) relative delay applied, as the reco1l
+ * `UIComponent.beginDelayedSequence`.
+ *
+ * @param delay The offset in seconds from current time. Note that this stacks with other nested sequences.
+ * @param propagateChildren Whether this should be applied to children. `true` by default.
+ * @param block The block to execute with the [UniversalModifierSequence] to add [UniversalModifier]s to.
+ */
+@JvmOverloads
+fun UIComponent.beginDelayedSequence(
+    delay: Float,
+    propagateChildren: Boolean = true,
+    block: Consumer<UniversalModifierSequence>
+) {
+    val oldDelay = modifierDelay
+    addDelay(delay, propagateChildren)
+
+    try {
+        beginModifierSequence { block.accept(this) }
+    } finally {
+        addDelay(-delay, propagateChildren)
+
+        val newDelay = modifierDelay
+
+        if (!Precision.almostEquals(oldDelay, newDelay)) {
+            throw IllegalStateException("${this::class.simpleName}'s modifierDelay at the end of delayed sequence " +
+                "is not the same as at the beginning (begin=$oldDelay end=$newDelay)")
+        }
+    }
+}
 
 /**
  * Adjusts [modifierStartTime] to a new absolute time value. **This is used internally for [beginAbsoluteSequence]

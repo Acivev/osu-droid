@@ -7,6 +7,8 @@ import android.os.SystemClock;
 import android.util.DisplayMetrics;
 import android.util.Log;
 
+import androidx.annotation.NonNull;
+
 import kotlin.Unit;
 import kotlin.random.Random;
 import kotlinx.coroutines.CoroutineScope;
@@ -41,16 +43,26 @@ import com.osudroid.utils.Execution;
 import com.osudroid.verktex.bridge.Destination;
 import com.osudroid.verktex.bridge.EngineRouter;
 import com.osudroid.verktex.bridge.VerktexBridge;
-import com.reco1l.andengine.Cameras;
+import com.osudroid.game.GameplayTickingClock;
+import com.osudroid.game.PlayfieldTransform;
+import com.osudroid.verktex.bridge.RoutedScene;
+import com.osudroid.ui.verktex.SkinTextures;
 import com.reco1l.andengine.UIEngine;
 import com.reco1l.andengine.component.ComponentsKt;
-import com.reco1l.andengine.shape.PaintStyle;
-import com.reco1l.andengine.shape.UIBox;
-import com.reco1l.andengine.sprite.UIAnimatedSprite;
-import com.reco1l.andengine.sprite.UISprite;
-import com.reco1l.andengine.Anchor;
+import com.reco1l.verktex.data.Anchor;
+import com.reco1l.verktex.data.ClipMode;
+import com.reco1l.verktex.data.Vec2;
+import com.reco1l.verktex.data.Vec4;
+import com.reco1l.verktex.graphics.BlendMode;
+import com.reco1l.verktex.graphics.GraphicsRenderer;
+import com.reco1l.verktex.input.KeyboardEvent;
+import com.reco1l.verktex.time.TickingClock;
+import com.reco1l.verktex.ui.UIAnimatedSprite;
+import com.reco1l.verktex.ui.UIScene;
+import com.reco1l.verktex.ui.UISprite;
+import com.reco1l.verktex.ui.container.UIContainer;
+import com.reco1l.verktex.ui.shape.UIBox;
 import com.reco1l.andengine.sprite.UIVideoSprite;
-import com.reco1l.andengine.UIScene;
 import com.osudroid.resources.R;
 import com.osudroid.ui.v2.game.FollowPointConnection;
 import com.osudroid.ui.v2.hud.GameplayHUD;
@@ -68,6 +80,7 @@ import com.reco1l.verktex.input.PointerEvent;
 import com.reco1l.verktex.ui.UIComponent;
 import com.reco1l.verktex.ui.text.UIText;
 import com.rian.andengine.modifier.ModifierRegistry;
+import com.rian.andengine.modifier.ModifierTicker;
 import com.rian.andengine.modifier.VerktexModifiers;
 import com.osudroid.GameMode;
 import com.osudroid.beatmaps.Beatmap;
@@ -100,26 +113,19 @@ import com.osudroid.math.Interpolation;
 import com.osudroid.mods.*;
 import com.osudroid.utils.ModHashMap;
 import com.osudroid.utils.ModUtils;
+import com.rian.andengine.timing.IFrameBasedClock;
 import com.rian.andengine.timing.Stopwatch;
 
-import android.opengl.GLES32;
-
-import org.andengine.engine.camera.Camera;
 import org.andengine.engine.camera.SmoothCamera;
-import org.andengine.engine.handler.IUpdateHandler;
 import org.andengine.engine.options.TouchOptions;
 import org.andengine.engine.options.WakeLockOptions;
-import org.andengine.entity.IEntity;
 import org.andengine.entity.primitive.Rectangle;
 import org.andengine.entity.scene.Scene;
-import org.andengine.entity.scene.IOnSceneTouchListener;
 import org.andengine.entity.scene.background.Background;
 import org.andengine.entity.scene.background.EntityBackground;
 import org.andengine.entity.shape.RectangularShape;
 import org.andengine.entity.sprite.Sprite;
-import org.andengine.input.touch.TouchEvent;
 import org.andengine.opengl.texture.region.TextureRegion;
-import org.andengine.opengl.util.GLState;
 import org.andengine.util.debug.Debug;
 
 import java.io.File;
@@ -129,6 +135,7 @@ import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntConsumer;
 
 import javax.annotation.Nullable;
@@ -157,14 +164,41 @@ import ru.nsu.ccfit.zuev.osu.scoring.TouchType;
 import ru.nsu.ccfit.zuev.skins.OsuSkin;
 import ru.nsu.ccfit.zuev.skins.BeatmapSkinManager;
 
-public class GameScene implements GameObjectListener, IOnSceneTouchListener {
+public class GameScene implements GameObjectListener {
     public static final int CursorCount = 10;
     private final int maximumActiveCursorCount = 3;
     private final UIEngine engine;
     private Cursor[] cursors = new Cursor[CursorCount];
     public String audioFilePath = null;
     private GameUIScene scene;
-    private UIScene bgScene, mgScene, fgScene;
+    private UIContainer bgScene, mgScene, fgScene;
+
+    /**
+     * The container of the three layers, in the playfield space: its local space is virtual units and it
+     * is scaled and placed by the playfield size setting, see {@link PlayfieldTransform}.
+     */
+    private UIContainer playfield;
+
+    /**
+     * The scale and the offset of {@link #playfield} in window pixels.
+     */
+    private final float[] playfieldTransform = new float[3];
+
+    /**
+     * The time base of the modifiers under {@link #playfield}: the gameplay clock's time.
+     */
+    private final ModifierTicker playfieldTicker = new ModifierTicker();
+
+    /**
+     * A reused buffer for the playfield point of a touch.
+     */
+    private final float[] touchPoint = new float[2];
+
+    /**
+     * The AndEngine scene shown under the playfield: the beatmap background or video with the dim, and the
+     * storyboard.
+     */
+    private Scene backdrop;
     private Destination oldScene;
     private UIBox sceneBorder;
     private RectangularShape beatmapBackground;
@@ -366,12 +400,15 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         this.engine = engine;
         gameplayClock = new GameplayFrameStabilityClock(new FramedBeatmapClock(true, true));
         scene = new GameUIScene();
-        bgScene = new UIScene();
-        fgScene = new UIScene();
-        mgScene = new UIScene();
-        scene.attachChild(bgScene);
-        scene.attachChild(mgScene);
-        scene.attachChild(fgScene);
+        playfield = new PlayfieldLayer();
+        bgScene = new PlayfieldLayer();
+        fgScene = new PlayfieldLayer();
+        mgScene = new PlayfieldLayer();
+        playfield.plusAssign(bgScene);
+        playfield.plusAssign(mgScene);
+        playfield.plusAssign(fgScene);
+        scene.plusAssign(playfield);
+        backdrop = new Scene();
     }
 
     public void setScoringScene(final ScoringScene sc) {
@@ -389,7 +426,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         }
 
         if (sceneBorder != null) {
-            sceneBorder.detachSelf();
+            removeUnderTreeLock(sceneBorder);
             sceneBorder = null;
         }
 
@@ -624,15 +661,20 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                 {
                     setAnchor(Anchor.Center);
                     setOrigin(Anchor.Center);
-                    setPaintStyle(PaintStyle.Outline);
-                    setLineWidth(5f);
-                    setColor(1f, 1f, 1f);
+                    // The AndEngine outline was a 5 pixel line, the playfield's local space is virtual units.
+                    setBorderWidth(DimensionKt.getPx(5f / playfieldTransform[0]));
+                    setBorderColor(new com.reco1l.verktex.data.Color4(1f, 1f, 1f, 1f));
                     setAlpha(Interpolation.linear(0.2f, 0.8f, brightness));
-                    setSize(Config.getRES_WIDTH(), Config.getRES_HEIGHT());
+                    setWidth(DimensionKt.getPx(Config.getRES_WIDTH()));
+                    setHeight(DimensionKt.getPx(Config.getRES_HEIGHT()));
                 }
             };
 
-            scene.attachChild(sceneBorder, 0);
+            final UIBox border = sceneBorder;
+            Verktex.INSTANCE.withTreeLock(() -> {
+                playfield.addToBack(border);
+                return Unit.INSTANCE;
+            });
             this.sceneBorder = sceneBorder;
         }
 
@@ -661,7 +703,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
         background.setScale(factor);
         background.setPosition((Config.getRES_WIDTH() - backgroundW) / 2f, (Config.getRES_HEIGHT() - backgroundH) / 2f);
-        scene.setBackground(new EntityBackground(background));
+        backdrop.setBackground(new EntityBackground(background));
 
         if (storyboardComponent != null) {
             if (isStoryboardEnabled) {
@@ -669,11 +711,12 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                 storyboardComponent.brightness = brightness;
 
                 if (!storyboardComponent.hasParent()) {
-                    scene.attachChild(storyboardComponent, 0);
+                    backdrop.attachChild(storyboardComponent, 0);
                 }
 
+                // Until the storyboard moves to Verktex, its overlay layer is drawn under the whole playfield.
                 if (!storyboardComponent.overlayComponent.hasParent()) {
-                    scene.attachChild(storyboardComponent.overlayComponent, scene.getChildCount() - 1);
+                    backdrop.attachChild(storyboardComponent.overlayComponent);
                 }
             } else {
                 storyboardComponent.detachSelf();
@@ -971,14 +1014,12 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         GameHelper.setCurrentBeatTime(0);
         GameHelper.setSamplesMatchPlaybackRate(playableBeatmap.getGeneral().samplesMatchPlaybackRate);
 
-        GameObjectPool.getInstance().purge();
+        // The object pools are purged, renewed and preloaded on the update thread in prepareScene, the
+        // objects hold Verktex components with skin textures.
 
         if (scope != null) {
             ensureActive(scope.getCoroutineContext());
         }
-
-        FollowPointConnection.renew(16);
-        SliderTickSprite.renew(16);
 
         // TODO replay
         replaying = false;
@@ -1026,8 +1067,6 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             ensureActive(scope.getCoroutineContext());
         }
 
-        GameObjectPool.getInstance().preload();
-
         sliderIndex = 0;
 
         if (sliderPaths == null || sliderRenderPaths == null || differentPlayableBeatmap) {
@@ -1053,8 +1092,15 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         return true;
     }
 
-    public Scene getScene() {
+    public UIScene getScene() {
         return scene;
+    }
+
+    /**
+     * Whether the game scene is the shown scene, as {@code engine.getScene() == getScene()} was on AndEngine.
+     */
+    public boolean isInGameplay() {
+        return Verktex.INSTANCE.getScene() == scene;
     }
 
     public void restartGame() {
@@ -1073,19 +1119,42 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         startedFromHUDEditor = isHUDEditor;
         resetPlayfieldSizeScale();
 
+        // The modifiers of the previous playfield are dropped with it.
+        var oldPlayfield = playfield;
+        Verktex.INSTANCE.withTreeLock(() -> {
+            ModifierRegistry.bindTicker(oldPlayfield, null);
+            ModifierRegistry.release(oldPlayfield);
+            return Unit.INSTANCE;
+        });
+
         scene = new GameUIScene();
-        bgScene = new UIScene();
-        mgScene = new UIScene();
-        mgScene.setClipToBounds(true);
-        fgScene = new UIScene();
-        scene.attachChild(bgScene);
-        scene.attachChild(mgScene);
-        scene.attachChild(fgScene);
-        scene.setBackground(new Background(0, 0, 0));
-        bgScene.setBackgroundEnabled(false);
-        mgScene.setBackgroundEnabled(false);
-        fgScene.setBackgroundEnabled(false);
+        playfield = new PlayfieldLayer();
+        bgScene = new PlayfieldLayer();
+        mgScene = new PlayfieldLayer();
+        mgScene.setClipping(ClipMode.Bounds);
+        fgScene = new PlayfieldLayer();
+        playfield.plusAssign(bgScene);
+        playfield.plusAssign(mgScene);
+        playfield.plusAssign(fgScene);
+        scene.plusAssign(playfield);
+        backdrop = new Scene();
+        backdrop.setBackground(new Background(0, 0, 0));
         failcount = 0;
+
+        var window = Verktex.INSTANCE.getGraphics().getWindow();
+        PlayfieldTransform.compute(Config.getPlayfieldSize(), Config.getPlayfieldHorizontalPosition(), Config.getPlayfieldVerticalPosition(),
+                Config.getRES_WIDTH(), Config.getRES_HEIGHT(), window.getWindowWidth(), window.getWindowHeight(), LegacyUnits.getScale(), playfieldTransform);
+        // Scaled around its top left corner, so a playfield point maps to point * scale + offset.
+        playfield.setScaleOrigin(Anchor.TopLeft);
+        playfield.setScale(playfieldTransform[0]);
+        playfield.setX(DimensionKt.getPx(playfieldTransform[1]));
+        playfield.setY(DimensionKt.getPx(playfieldTransform[2]));
+
+        var newPlayfield = playfield;
+        Verktex.INSTANCE.withTreeLock(() -> {
+            ModifierRegistry.bindTicker(newPlayfield, playfieldTicker);
+            return Unit.INSTANCE;
+        });
         mainCursorId = -1;
         gameplayClock.changeSource(null);
         modIcons.clear();
@@ -1205,7 +1274,6 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     }
 
     private void prepareScene() {
-        scene.setOnSceneTouchListener(this);
         var playableBeatmap = this.playableBeatmap;
 
         if (playableBeatmap == null) {
@@ -1271,6 +1339,35 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
         distToNextObject = 0;
 
+        // The playfield is a Verktex tree with skin textures, built on the update thread while loading waits. The
+        // HUD should be to the last so we ensure everything is initialized and ready to be used by the HUD
+        // elements in their constructors.
+        runOnUpdateThreadAndWait(() -> Verktex.INSTANCE.withTreeLock(() -> {
+            preparePlayfield(playableBeatmap, cursorCount);
+            prepareHUD(playableBeatmap);
+            return Unit.INSTANCE;
+        }));
+
+        isBeatmapLoaded = true;
+
+        if (Multiplayer.isMultiplayer) {
+            RoomAPI.INSTANCE.notifyBeatmapLoaded();
+        } else {
+            isReadyToStart = true;
+        }
+    }
+
+    private void preparePlayfield(final DroidPlayableBeatmap playableBeatmap, final int cursorCount) {
+        GameObjectPool.getInstance().purge();
+
+        FollowPointConnection.renew(16);
+        SliderTickSprite.renew(16);
+
+        GameObjectPool.getInstance().preload();
+
+        // The skin textures the playfield looks up during play, so none is decoded then.
+        preloadGameplayTextures();
+
         // TODO passive objects
         if ((replaying || Config.isShowCursor()) && !GameHelper.isAutoplay() && !GameHelper.isAutopilot()) {
             cursorSprites = new CursorEntity[cursorCount];
@@ -1309,12 +1406,15 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             }
 
             var icon = new ModIcon(mod);
-            icon.setPosition(position.x, position.y);
+            icon.setPlayfieldSpace(true);
+            icon.setX(DimensionKt.getPx(position.x));
+            icon.setY(DimensionKt.getPx(position.y));
             icon.setOrigin(Anchor.Center);
-            icon.setSize(68, 66);
+            icon.setWidth(DimensionKt.getPx(68));
+            icon.setHeight(DimensionKt.getPx(66));
             icon.setScale(1.2f);
 
-            fgScene.attachChild(icon);
+            fgScene.plusAssign(icon);
             modIcons.add(icon);
 
             position.x -= 25f;
@@ -1322,32 +1422,69 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
         boolean hasUnrankedMod = SmartIterator.wrap(lastMods.values().iterator()).applyFilter(m -> !m.isRanked()).hasNext();
         if (hasUnrankedMod || Config.isRemoveSliderLock()) {
-            unrankedSprite = new UISprite(ResourceManager.getInstance().getTexture("play-unranked"));
+            unrankedSprite = new UISprite(SkinTextures.getWithBeatmapSkin("play-unranked"));
             unrankedSprite.setAnchor(Anchor.TopCenter);
             unrankedSprite.setOrigin(Anchor.Center);
-            unrankedSprite.setPosition(0, 80);
-            fgScene.attachChild(unrankedSprite);
+            unrankedSprite.setX(DimensionKt.getPx(0));
+            unrankedSprite.setY(DimensionKt.getPx(80));
+            fgScene.plusAssign(unrankedSprite);
         }
 
         if (GameHelper.isFlashlight()) {
             flashlightSprite = new FlashLightEntity(GameHelper.getFlashlight());
-            fgScene.attachChild(flashlightSprite, 0);
+            fgScene.addToBack(flashlightSprite);
+        }
+    }
+
+    /**
+     * Every skin texture the playfield looks up during play by name: judgements, circles, sliders, spinners,
+     * cursors, flashlight, combo burst, countdown and break. Animated ones are loaded with their frames.
+     */
+    public static final String[] GAMEPLAY_TEXTURES = {
+        "hit0", "hit50", "hit100", "hit100k", "hit300", "hit300k", "hit300g", "sliderpoint10", "sliderpoint30", "lighting",
+        "approachcircle", "defaultapproachcircle", "hitcircle", "hitcircleoverlay",
+        "sliderstartcircle", "sliderstartcircleoverlay", "sliderendcircle", "sliderendcircleoverlay",
+        "reversearrow", "sliderb", "sliderfollowcircle", "sliderscorepoint", "followpoint",
+        "spinner-background", "spinner-circle", "spinner-metre", "spinner-approachcircle", "spinner-spin", "spinner-clear",
+        "spinner-middle", "spinner-middle2", "spinner-bottom", "spinner-top", "spinner-glow",
+        "cursor", "cursormiddle", "cursortrail", "flashlight_cursor",
+        "comboburst", "comboburst-0", "comboburst-1", "comboburst-2", "comboburst-3", "comboburst-4",
+        "comboburst-5", "comboburst-6", "comboburst-7", "comboburst-8", "comboburst-9",
+        "count1", "count2", "count3", "go", "ready",
+        "play-warningarrow", "section-pass", "section-fail", "play-unranked", "play-skip",
+        "ranking-XH-small", "ranking-SH-small", "ranking-X-small", "ranking-S-small", "ranking-A-small",
+        "ranking-B-small", "ranking-C-small", "ranking-D-small"
+    };
+
+    /**
+     * The digit textures of the hit circle and score prefixes, without the prefix: the names the hit circle
+     * numbers and {@link ru.nsu.ccfit.zuev.osu.scoring.ScoreNumber} look up.
+     */
+    public static final String[] GAMEPLAY_DIGITS = { "0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "comma", "percent", "x", "d", "p" };
+
+    /**
+     * Loads {@link #GAMEPLAY_TEXTURES}, the digits of the hit circle and score prefixes and the icons of the
+     * mods, so no skin texture is decoded during play. Must be called on the update thread.
+     */
+    private void preloadGameplayTextures() {
+        for (var name : GAMEPLAY_TEXTURES) {
+            // The flashlight is a bundled asset outside gfx/, where ResourceManager loads it from.
+            SkinTextures.getWithBeatmapSkin(name, name.equals("flashlight_cursor") ? "flashlight_cursor.png" : "gfx/" + name + ".png");
+            GameplayLayer.skinAnimationFrames(name);
         }
 
-        // HUD should be to the last so we ensure everything is initialized and ready to be used by
-        // the HUD elements in their constructors.
-        // It is a Verktex tree with skin textures, built on the update thread while loading waits.
-        runOnUpdateThreadAndWait(() -> Verktex.INSTANCE.withTreeLock(() -> {
-            prepareHUD(playableBeatmap);
-            return Unit.INSTANCE;
-        }));
+        // The slider ball's frames are named without a hyphen.
+        for (int i = 0, count = ResourceManager.getInstance().getFrameCount("sliderb"); i < count; i++) {
+            SkinTextures.getWithBeatmapSkin("sliderb" + i);
+        }
 
-        isBeatmapLoaded = true;
+        for (var digit : GAMEPLAY_DIGITS) {
+            SkinTextures.getWithPrefix(OsuSkin.get().getHitCirclePrefix(), digit);
+            SkinTextures.getWithPrefix(OsuSkin.get().getScorePrefix(), digit);
+        }
 
-        if (Multiplayer.isMultiplayer) {
-            RoomAPI.INSTANCE.notifyBeatmapLoaded();
-        } else {
-            isReadyToStart = true;
+        for (var mod : lastMods.values()) {
+            SkinTextures.get(mod.getIconTextureName());
         }
     }
 
@@ -1745,7 +1882,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         engine.getEngineOptions().setWakeLockOptions(WakeLockOptions.SCREEN_BRIGHT);
         GlobalManager.getInstance().getMainActivity().reapplyWakeLock();
 
-        engine.setScene(scene);
+        EngineRouter.showVerktex(scene, backdrop);
         Verktex.INSTANCE.withTreeLock(() -> {
             if (hud.getParent() != gameplayLayer) {
                 gameplayLayer.addToBack(hud);
@@ -1873,14 +2010,14 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                     event.position.set(movement.getX(), movement.getY());
 
                     if (movement.getTouchType() == TouchType.DOWN) {
-                        event.action = TouchEvent.ACTION_DOWN;
+                        event.action = PointerEvent.Action.Down;
                         replay.lastMoveIndex[i] = -1;
                         hud.onGameplayTouchDown(movement.getTime() / 1000f);
                     } else if (movement.getTouchType() == TouchType.MOVE) {
-                        event.action = TouchEvent.ACTION_MOVE;
+                        event.action = PointerEvent.Action.Move;
                         replay.lastMoveIndex[i] = cIndex;
                     } else {
-                        event.action = TouchEvent.ACTION_UP;
+                        event.action = PointerEvent.Action.Up;
                     }
                     cursors[i].addEvent(event);
                     replay.cursorIndex[i]++;
@@ -1908,7 +2045,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                     event.systemTime = (long) mSecPassed;
                     event.trackTime = (long) mSecPassed;
                     event.offset = 0;
-                    event.action = TouchEvent.ACTION_MOVE;
+                    event.action = PointerEvent.Action.Move;
                     event.position.set(
                         lastMovement.getX() * t + movement.getX() * (1 - t),
                         lastMovement.getY() * t + movement.getY() * (1 - t)
@@ -2136,7 +2273,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             ++objectIndex;
 
             if (unrankedSprite != null) {
-                unrankedSprite.beginAbsoluteSequence(1.5f, sequence -> sequence
+                VerktexModifiers.beginAbsoluteSequence(unrankedSprite, 1.5f, sequence -> sequence
                         .scaleTo(1.5f, 0.5f)
                         .fadeOut(0.5f));
 
@@ -2535,12 +2672,21 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         releaseStoryboard();
 
         if (sceneBorder != null) {
-            sceneBorder.detachSelf();
+            removeUnderTreeLock(sceneBorder);
             sceneBorder = null;
         }
 
         onExit();
         resetPlayfieldSizeScale();
+
+        // The modifiers of the playfield are dropped with the scene.
+        var oldPlayfield = playfield;
+        Verktex.INSTANCE.withTreeLock(() -> {
+            ModifierRegistry.bindTicker(oldPlayfield, null);
+            ModifierRegistry.release(oldPlayfield);
+            return Unit.INSTANCE;
+        });
+
         scene = new GameUIScene();
 
         if (Multiplayer.isMultiplayer) {
@@ -2882,7 +3028,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             final GameEffect effect = GameObjectPool.getInstance().getEffect(
                     "hit0");
             effect.init(
-                    scene,
+                    playfield,
                     pos,
                     scale,
                     sequence -> sequence.fadeIn(0.15f)
@@ -2982,9 +3128,9 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         return cursors[index];
     }
 
-    public boolean onSceneTouchEvent(final Scene pScene, final TouchEvent event) {
+    public boolean onSceneTouchEvent(final PointerEvent event) {
         float offset = previousFrameTime > 0
-                ? (event.getMotionEvent().getEventTime() - previousFrameTime) * GameHelper.getSpeedMultiplier()
+                ? (event.getTime() - previousFrameTime) * GameHelper.getSpeedMultiplier()
                 : 0;
         int eventTime = (int) (gameplayClock.getCurrentTime() * 1000 + offset);
 
@@ -2992,32 +3138,21 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             return false;
         }
 
-        var id = event.getPointerID();
+        var id = event.getPointerId();
         if (id < 0 || id >= getCursorsCount()) {
             return false;
         }
 
         var cursor = cursors[id];
+        var action = event.getAction();
 
-        if (event.isActionDown()) {
+        if (action == PointerEvent.Action.Down) {
             if (cursor.mouseBlocked) {
                 cursor.mouseBlocked = false;
                 return true;
             }
 
-            int activeCursorCount = 0;
-
-            for (int i = 0; i < cursors.length; ++i) {
-                if (activeCursorCount >= maximumActiveCursorCount) {
-                    break;
-                }
-
-                if (cursors[i].isMouseDown()) {
-                    ++activeCursorCount;
-                }
-            }
-
-            if (activeCursorCount >= maximumActiveCursorCount) {
+            if (!canActivateCursor(cursors, maximumActiveCursorCount)) {
                 return false;
             }
         }
@@ -3026,7 +3161,9 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                 ? cursorSprites[id]
                 : null;
 
-        var cursorEvent = CursorEvent.obtain(event);
+        // The window point in the playfield's space, the AndEngine scene's camera space.
+        PlayfieldTransform.toPlayfield(event.getX(), event.getY(), playfieldTransform, touchPoint);
+        var cursorEvent = CursorEvent.obtain(event, touchPoint[0], touchPoint[1]);
 
         cursorEvent.trackTime = gameplayClock.getCurrentTime() * 1000;
         cursorEvent.offset = offset;
@@ -3035,7 +3172,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             sprite.setPosition(cursorEvent.position.x, cursorEvent.position.y);
         }
 
-        if (event.isActionDown()) {
+        if (action == PointerEvent.Action.Down) {
 
             if (sprite != null) {
                 sprite.setShowing(true);
@@ -3050,7 +3187,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             if (replay != null) {
                 replay.addPress(eventTime, cursorEvent.trackPosition, id);
             }
-        } else if (cursor.isMouseDown() && event.isActionMove()) {
+        } else if (cursor.isMouseDown() && action == PointerEvent.Action.Move) {
 
             if (sprite != null) {
                 sprite.setShowing(true);
@@ -3062,7 +3199,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                 replay.addMove(eventTime, cursorEvent.trackPosition, id);
             }
 
-        } else if (cursor.isMouseDown() && event.isActionUp()) {
+        } else if (cursor.isMouseDown() && action == PointerEvent.Action.Up) {
 
             if (sprite != null) {
                 sprite.setShowing(false);
@@ -3074,12 +3211,33 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                 replay.addUp(eventTime, id);
             }
 
-        } else if (event.isActionCancel() || event.isActionOutside()) {
+        } else if (action == PointerEvent.Action.Cancel || action == PointerEvent.Action.Unknown) {
+            // A cancel, or an outside or other action, which the bridge reports as unknown.
             removeAllCursors();
         } else {
             return false;
         }
         return true;
+    }
+
+    /**
+     * Whether another cursor may go down: at most {@code maximumActiveCursorCount} cursors are down at once.
+     * The rule of {@link #onSceneTouchEvent(PointerEvent)}, a test seam.
+     */
+    public static boolean canActivateCursor(final Cursor[] cursors, final int maximumActiveCursorCount) {
+        int activeCursorCount = 0;
+
+        for (int i = 0; i < cursors.length; ++i) {
+            if (activeCursorCount >= maximumActiveCursorCount) {
+                break;
+            }
+
+            if (cursors[i].isMouseDown()) {
+                ++activeCursorCount;
+            }
+        }
+
+        return activeCursorCount < maximumActiveCursorCount;
     }
 
     private void removeAllCursors() {
@@ -3097,7 +3255,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
                 upEvent.systemTime = currentTime;
                 upEvent.trackTime = time;
-                upEvent.action = TouchEvent.ACTION_UP;
+                upEvent.action = PointerEvent.Action.Up;
 
                 cursor.addEvent(upEvent);
 
@@ -3209,30 +3367,30 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         float initialFrequency = songService.getFrequency();
 
         // Locally saving the scenes references to avoid unexpected behavior when the scene is changed.
-        UIScene scene = this.scene;
-        UIScene mgScene = this.mgScene;
-        UIScene bgScene = this.bgScene;
+        GameUIScene scene = this.scene;
+        UIContainer mgScene = this.mgScene;
+        UIContainer bgScene = this.bgScene;
 
-        // Wind down animation for failing based on osu!stable behavior.
-        engine.registerUpdateHandler(new IUpdateHandler() {
+        // Wind down animation for failing based on osu!stable behavior. The scene runs it from the wall
+        // clock before its gameplay update, also while it ignores updates.
+        scene.setWindDown(new WindDownStep() {
             private float elapsedTime;
 
-            private void applyEffectToScene(Scene scene) {
+            private void applyEffectToScene(UIContainer scene) {
                 if (scene.getAlpha() > 0) {
                     scene.setAlpha(Math.max(0, scene.getAlpha() - 0.007f));
                 }
 
-                for (int i = 0; i < scene.getChildCount(); i++) {
-                    IEntity entity = scene.getChildByIndex(i);
+                for (var entity : scene) {
+                    float entityY = entity.getY().resolve(0f);
+                    entity.setY(DimensionKt.getPx(entityY < 0f ? entityY * 0.6f : entityY * 1.01f));
 
-                    entity.setPosition(entity.getX(), entity.getY() < 0f ? entity.getY() * 0.6f : entity.getY() * 1.01f);
-
-                    if (entity.getRotation() == 0) {
-                        entity.setRotation(entity.getRotation() + (float) Random.Default.nextDouble(-0.02, 0.02) * 180 / FMath.Pi);
-                    } else if (entity.getRotation() > 0) {
-                        entity.setRotation(entity.getRotation() + 0.01f * 180 / FMath.Pi);
+                    if (entity.getRotationZ() == 0) {
+                        entity.setRotationZ(entity.getRotationZ() + (float) Random.Default.nextDouble(-0.02, 0.02) * 180 / FMath.Pi);
+                    } else if (entity.getRotationZ() > 0) {
+                        entity.setRotationZ(entity.getRotationZ() + 0.01f * 180 / FMath.Pi);
                     } else {
-                        entity.setRotation(entity.getRotation() - 0.01f * 180 / FMath.Pi);
+                        entity.setRotationZ(entity.getRotationZ() - 0.01f * 180 / FMath.Pi);
                     }
                 }
             }
@@ -3241,8 +3399,8 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             public void onUpdate(float pSecondsElapsed) {
 
                 // Ensure this update handler is removed under unexpected circumstances.
-                if (engine.getScene() != scene) {
-                    engine.unregisterUpdateHandler(this);
+                if (!isInGameplay()) {
+                    scene.setWindDown(null);
                     return;
                 }
 
@@ -3284,15 +3442,11 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                     scene.setIgnoreUpdate(true);
                     gameplayLayer.setHudPaused(hud, true);
 
-                    engine.unregisterUpdateHandler(this);
+                    scene.setWindDown(null);
 
                     pauseMenu = Verktex.INSTANCE.withTreeLock(() -> new PauseMenu(GameScene.this, true));
                     gameplayLayer.showTopOverlay(pauseMenu.getComponent());
                 }
-            }
-
-            @Override
-            public void reset() {
             }
         });
     }
@@ -3335,7 +3489,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     private void createHitEffect(final PointF pos, final String name, Color4 color) {
 
         var effect = GameObjectPool.getInstance().getEffect(name);
-        var isAnimated = effect.hit instanceof UIAnimatedSprite animatedHit && animatedHit.getFrames().length > 1;
+        var isAnimated = effect.hit instanceof UIAnimatedSprite animatedHit && animatedHit.getFrames().size() > 1;
 
         // Reference https://github.com/ppy/osu/blob/ebf637bd3c33f1c886f6bfc81aa9ea2132c9e0d2/osu.Game/Skinning/LegacyJudgementPieceOld.cs
 
@@ -3386,7 +3540,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             // Reference https://github.com/ppy/osu/blob/a7e110f6693beca6f6e6a20efb69a6913d58550e/osu.Game.Rulesets.Osu/Objects/Drawables/DrawableOsuJudgement.cs#L71-L88
 
             var light = GameObjectPool.getInstance().getEffect("lighting");
-            light.setBlendFunction(GLES32.GL_SRC_ALPHA, GLES32.GL_DST_ALPHA);
+            light.setBlendMode(BlendMode.Additive.INSTANCE);
             light.setColor(color);
             light.init(
                 bgScene,
@@ -3487,7 +3641,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             return;
 
         final GameEffect burst1 = GameObjectPool.getInstance().getEffect("reversearrow");
-        burst1.hit.setRotation(ang);
+        burst1.hit.setRotationZ(ang);
         applyBurstEffect(burst1, pos);
     }
 
@@ -3886,19 +4040,22 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         judgeableObject = null;
 
         // Detach any lingering hit effects from the gameplay scene.
-        for (int i = mgScene.getChildCount() - 1; i >= 0; --i) {
-            var child = mgScene.getChildByIndex(i);
+        var mgChildren = new ArrayList<UIComponent>();
+        mgScene.forEach(mgChildren::add);
+
+        for (int i = mgChildren.size() - 1; i >= 0; --i) {
+            var child = mgChildren.get(i);
 
             if (child instanceof UISprite sprite) {
                 // Hit effects need to be pooled, so we cannot directly detach.
                 // finishModifiers() fires the effect's fade-out callback, which schedules putEffect() so the GameEffect
                 // wrapper is returned to the pool rather than orphaned.
-                sprite.finishModifiers();
+                VerktexModifiers.finishModifiers(sprite);
             }
 
             // We detach directly so that the next frame is not orphaned with hit effects that were not detached (since
             // GameEffect's callback is scheduled for the next update tick).
-            child.detachSelf();
+            child.removeSelf();
         }
 
         // Remove follow points spawned for objects before the seek point.
@@ -3918,7 +4075,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
         // Reset auto cursor modifiers.
         if (autoCursor != null) {
-            autoCursor.clearEntityModifiers();
+            VerktexModifiers.clearModifiers(autoCursor);
         }
 
         // Clear pending cursor events.
@@ -4406,8 +4563,11 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
     //endregion
 
-    private class GameUIScene extends UIScene {
+    private class GameUIScene extends UIScene implements RoutedScene {
         private final Stopwatch stopwatch = new Stopwatch();
+
+        // The gameplay clock as the clock of the children, so their animations run on gameplay time.
+        private final GameplayTickingClock gameplayTickingClock = new GameplayTickingClock(gameplayClock);
 
         // Reused buffer to avoid allocations.
         private final float[] fastPathSurfaceCoords = new float[2];
@@ -4417,18 +4577,37 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         private final float[] fastPathLastStableX = new float[CursorCount];
         private final float[] fastPathLastStableY = new float[CursorCount];
 
+        // The AndEngine setIgnoreUpdate: the gameplay clock is still processed, nothing else updates.
+        private boolean ignoreUpdate;
+
+        // The AndEngine onLoadComplete ran on the first update after the scene was shown.
+        private boolean isLoadPending;
+
+        // The fail wind-down, run from the wall clock while it is set.
+        private WindDownStep windDown;
+
         public GameUIScene() {
             super();
+        }
 
-            setClock(gameplayClock);
+        public void setIgnoreUpdate(boolean ignoreUpdate) {
+            this.ignoreUpdate = ignoreUpdate;
+        }
+
+        public void setWindDown(WindDownStep windDown) {
+            this.windDown = windDown;
         }
 
         @Override
-        protected void onLoadComplete() {
+        public void onShown() {
+            isLoadPending = true;
+        }
+
+        private void onLoadComplete() {
             for (int i = 0, size = modIcons.size(); i < size; i++) {
                 float finalTimeOffset = i * 0.25f;
 
-                modIcons.get(i).beginModifierSequence(sequence -> sequence
+                VerktexModifiers.beginModifierSequence(modIcons.get(i), sequence -> sequence
                         .scaleTo(1, 0.25f)
                         .delay(2 - finalTimeOffset)
                         .fadeOut(0.5f)
@@ -4439,35 +4618,90 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         }
 
         @Override
-        public void onUpdate(float deltaTimeSec) {
-            stopwatch.restart();
-
-            do {
-                super.onUpdate(deltaTimeSec);
-                // 10ms of allowance when catching up.
-            } while (gameplayClock.requiresCatchUp() && stopwatch.getElapsedSeconds() < 0.01f);
-        }
-
-        @Override
-        protected void onManagedDraw(GLState pGLState, Camera pCamera) {
-            applyRawPointerFastPath(pCamera);
-
-            super.onManagedDraw(pGLState, pCamera);
-        }
-
-        @Override
-        protected void onManagedUpdate(float secElapsed) {
-            update(secElapsed);
-
-            //noinspection ForLoopReplaceableByForEach
-            for (int i = 0; i < cursors.length; ++i) {
-                cursors[i].reset(previousFrameTime, gameplayClock.getCurrentTime() * 1000);
+        protected void onUpdate(@NonNull TickingClock clock) {
+            if (windDown != null) {
+                windDown.onUpdate(clock.getElapsedTickTime());
             }
 
-            super.onManagedUpdate(secElapsed);
+            if (isLoadPending) {
+                isLoadPending = false;
+
+                // The modifiers start at the gameplay time, the base of the AndEngine scene's clock.
+                playfieldTicker.setTime(gameplayClock.getCurrentTime());
+                onLoadComplete();
+            }
+
+            runGameplayLoop(gameplayClock, gameplayClock::requiresCatchUp, stopwatch, () -> ignoreUpdate, playfieldTicker,
+                () -> {
+                    GameScene.this.update(gameplayClock.getElapsedFrameTime());
+
+                    //noinspection ForLoopReplaceableByForEach
+                    for (int i = 0; i < cursors.length; ++i) {
+                        cursors[i].reset(previousFrameTime, gameplayClock.getCurrentTime() * 1000);
+                    }
+                },
+                () -> super.onUpdate(gameplayTickingClock));
         }
 
-        private void applyRawPointerFastPath(final Camera camera) {
+        @Override
+        protected void onDraw(@NonNull GraphicsRenderer renderer) {
+            applyRawPointerFastPath();
+
+            super.onDraw(renderer);
+        }
+
+        @NonNull
+        @Override
+        protected Vec2 onMeasure(@NonNull LayoutConstraints parentConstraints, @NonNull LayoutConstraints contentConstraints) {
+            // The playfield is laid out over the whole window, it must not be shifted by a display cutout.
+            var window = new LayoutConstraints(0f, getWindowWidth(), 0f, getWindowHeight());
+
+            for (var child : this) {
+                child.measure(window);
+            }
+
+            return contentConstraints.constrain(new Vec2(getWindowWidth(), getWindowHeight()));
+        }
+
+        @Override
+        protected void onLayout(@NonNull Vec4 bounds) {
+            var window = new Vec4(0f, 0f, getWindowWidth(), getWindowHeight());
+
+            for (var child : this) {
+                child.layout(window);
+            }
+        }
+
+        private float getWindowWidth() {
+            return Verktex.INSTANCE.getGraphics().getWindow().getWindowWidth();
+        }
+
+        private float getWindowHeight() {
+            return Verktex.INSTANCE.getGraphics().getWindow().getWindowHeight();
+        }
+
+        @Override
+        public boolean onInputEvent(@NonNull InputEvent event) {
+            // The scene handles touches itself, its children take none.
+            if (event instanceof PointerEvent pointerEvent) {
+                return onSceneTouchEvent(pointerEvent);
+            }
+
+            if (event instanceof KeyboardEvent keyboardEvent
+                    && keyboardEvent.getAction() == KeyboardEvent.Action.Down
+                    && (keyboardEvent.getKey() == KeyboardEvent.Key.Back || keyboardEvent.getKey() == KeyboardEvent.Key.Menu)) {
+                if (isPaused()) {
+                    Execution.updateThread(GameScene.this::resume);
+                } else {
+                    Execution.updateThread(GameScene.this::pause);
+                }
+                return true;
+            }
+
+            return false;
+        }
+
+        private void applyRawPointerFastPath() {
             var touchController = engine.getTouchController();
 
             if (touchController == null || !touchController.isUseRawPointer()) {
@@ -4525,11 +4759,10 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                     continue;
                 }
 
-                // Per underlying implementation, this is thread-safe since the camera is never rotated (thus the
-                // shared array is never used). When this is not the case, this must be revisited.
-                float[] sceneCoords = Cameras.convertSurfaceToSceneCoordinates(camera, fastPathSurfaceCoords);
+                // The surface point in the playfield's space, the AndEngine scene's camera space.
+                PlayfieldTransform.toPlayfield(fastPathSurfaceCoords[0], fastPathSurfaceCoords[1], playfieldTransform, fastPathSurfaceCoords);
 
-                sprite.setPosition(sceneCoords[0], sceneCoords[1]);
+                sprite.setDrawPosition(fastPathSurfaceCoords[0], fastPathSurfaceCoords[1]);
             }
         }
 
@@ -4562,6 +4795,62 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             }
 
             return false;
+        }
+    }
+
+    /**
+     * A step of the fail wind-down, given the wall clock's delta.
+     */
+    private interface WindDownStep {
+        void onUpdate(float secondsElapsed);
+    }
+
+    /**
+     * One update of the game scene: the gameplay clock is processed and, unless updates are ignored, the
+     * gameplay updates, the playfield's modifiers move to the gameplay time and the children update;
+     * repeated while the clock catches up, for at most 10 ms. A test seam of the scene's update.
+     */
+    public static void runGameplayLoop(final IFrameBasedClock clock, final BooleanSupplier requiresCatchUp,
+                                       final Stopwatch stopwatch, final BooleanSupplier ignoreUpdate,
+                                       final ModifierTicker playfieldTicker, final Runnable update,
+                                       final Runnable updateChildren) {
+        stopwatch.restart();
+
+        do {
+            clock.processFrame();
+
+            if (!ignoreUpdate.getAsBoolean()) {
+                update.run();
+                playfieldTicker.setTime(clock.getCurrentTime());
+                updateChildren.run();
+            }
+            // 10ms of allowance when catching up.
+        } while (requiresCatchUp.getAsBoolean() && stopwatch.getElapsedSeconds() < 0.01f);
+    }
+
+    /**
+     * The playfield and its layers: a container of the virtual resolution laid out only when something in it
+     * changed. Its children keep their own size like AndEngine entities did, larger ones are not clamped to it.
+     */
+    private static class PlayfieldLayer extends UIContainer {
+
+        private static final LayoutConstraints UNBOUNDED =
+                new LayoutConstraints(0f, Float.POSITIVE_INFINITY, 0f, Float.POSITIVE_INFINITY);
+
+        PlayfieldLayer() {
+            setWidth(DimensionKt.getPx(Config.getRES_WIDTH()));
+            setHeight(DimensionKt.getPx(Config.getRES_HEIGHT()));
+            setStaticLayout(true);
+        }
+
+        @NonNull
+        @Override
+        protected Vec2 onMeasure(@NonNull LayoutConstraints parentConstraints, @NonNull LayoutConstraints contentConstraints) {
+            for (var child : this) {
+                child.measure(UNBOUNDED);
+            }
+
+            return contentConstraints.constrain(new Vec2(Config.getRES_WIDTH(), Config.getRES_HEIGHT()));
         }
     }
 }

@@ -1,25 +1,19 @@
 package ru.nsu.ccfit.zuev.osu.game;
 
-import org.andengine.entity.IEntity;
-import org.andengine.entity.modifier.DelayModifier;
-import org.andengine.entity.modifier.FadeInModifier;
-import org.andengine.entity.modifier.FadeOutModifier;
-import org.andengine.entity.modifier.IEntityModifier;
-import org.andengine.entity.modifier.MoveXModifier;
-import org.andengine.entity.modifier.ParallelEntityModifier;
-import org.andengine.entity.modifier.SequenceEntityModifier;
-import org.andengine.entity.scene.Scene;
-import org.andengine.entity.sprite.Sprite;
-import org.andengine.opengl.texture.region.TextureRegion;
-import org.andengine.util.modifier.IModifier;
-import org.andengine.util.modifier.ease.EaseSineOut;
+import com.edlplan.framework.easing.Easing;
+import com.osudroid.ui.verktex.SkinTextures;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.graphics.GraphicsTexture;
+import com.reco1l.verktex.ui.UISprite;
+import com.reco1l.verktex.ui.container.UIContainer;
+import com.rian.andengine.modifier.ModifierRegistry;
+import com.rian.andengine.modifier.VerktexModifiers;
 
 import java.util.ArrayList;
 import java.util.List;
 
 import ru.nsu.ccfit.zuev.audio.BassSoundProvider;
 import ru.nsu.ccfit.zuev.osu.Config;
-import ru.nsu.ccfit.zuev.osu.GlobalManager;
 import ru.nsu.ccfit.zuev.osu.ResourceManager;
 
 /**
@@ -27,7 +21,7 @@ import ru.nsu.ccfit.zuev.osu.ResourceManager;
  */
 public class ComboBurst {
 
-    private final List<Sprite> comboBursts = new ArrayList<>();
+    private final List<UISprite> comboBursts = new ArrayList<>();
     private final List<BassSoundProvider> comboBurstVocals = new ArrayList<>();
 
     private final float rightX;
@@ -43,11 +37,11 @@ public class ComboBurst {
         this.bottomY = bottomY;
         breakCombo();
 
-        TextureRegion globalTex = ResourceManager.getInstance().getTexture("comboburst");
+        GraphicsTexture.Region globalTex = SkinTextures.getWithBeatmapSkin("comboburst");
         if (globalTex != null) {
-            Sprite sprite = new Sprite(0, 0, globalTex, GlobalManager.getInstance().getEngine().getVertexBufferObjectManager());
+            UISprite sprite = new UISprite(globalTex);
             sprite.setAlpha(0f);
-            sprite.setIgnoreUpdate(true);
+            ModifierRegistry.setPaused(sprite, true);
             comboBursts.add(sprite);
         }
         BassSoundProvider sound = ResourceManager.getInstance().getSound("comboburst");
@@ -55,11 +49,11 @@ public class ComboBurst {
             comboBurstVocals.add(sound);
         }
         for (int i = 0; i < 10; i++) {
-            TextureRegion tex = ResourceManager.getInstance().getTexture("comboburst-" + i);
+            GraphicsTexture.Region tex = SkinTextures.getWithBeatmapSkin("comboburst-" + i);
             if (tex != null) {
-                Sprite sprite = new Sprite(0, 0, tex, GlobalManager.getInstance().getEngine().getVertexBufferObjectManager());
+                UISprite sprite = new UISprite(tex);
                 sprite.setAlpha(0f);
-                sprite.setIgnoreUpdate(true);
+                ModifierRegistry.setPaused(sprite, true);
                 comboBursts.add(sprite);
             }
             sound = ResourceManager.getInstance().getSound("comboburst-" + i);
@@ -75,39 +69,27 @@ public class ComboBurst {
                 comboBurstVocals.get(nextSoundId).play(0.8f);
             }
             if (comboBursts.size() > 0) {
-                Sprite sprite = comboBursts.get(nextShowId);
+                UISprite sprite = comboBursts.get(nextShowId);
                 float toX;
                 if (fromX > 0) {
-                    toX = fromX - sprite.getWidth();
+                    toX = fromX - sprite.getTextureRegion().getWidth();
                 } else {
-                    fromX = -sprite.getWidth();
+                    fromX = -sprite.getTextureRegion().getWidth();
                     toX = 0;
                 }
-                sprite.setIgnoreUpdate(false);
-                sprite.setPosition(fromX, bottomY - sprite.getHeight());
-                sprite.registerEntityModifier(new SequenceEntityModifier(
-                        new IEntityModifier.IEntityModifierListener() {
-                            @Override
-                            public void onModifierStarted(IModifier<IEntity> pModifier, IEntity pItem) {
-
-                            }
-
-                            @Override
-                            public void onModifierFinished(IModifier<IEntity> pModifier, IEntity pItem) {
-                                pItem.setAlpha(0f);
-                                pItem.setIgnoreUpdate(true);
-                            }
-                        },
-                        new ParallelEntityModifier(
-                                new MoveXModifier(0.5f, fromX, toX, EaseSineOut.getInstance()),
-                                new FadeInModifier(0.5f)
-                        ),
-                        new DelayModifier(1.0f),
-                        new ParallelEntityModifier(
-                                new MoveXModifier(0.5f, toX, fromX, EaseSineOut.getInstance()),
-                                new FadeOutModifier(0.5f)
-                        )
-                ));
+                ModifierRegistry.setPaused(sprite, false);
+                sprite.setX(DimensionKt.getPx(fromX));
+                sprite.setY(DimensionKt.getPx(bottomY - sprite.getTextureRegion().getHeight()));
+                VerktexModifiers.beginModifierSequence(sprite, sequence -> sequence
+                        .moveToX(toX, 0.5f, Easing.OutSine)
+                        .fadeInFromZero(0.5f)
+                        .then(1.0f)
+                        .moveToX(fromX, 0.5f, Easing.OutSine)
+                        .fadeOutFromOne(0.5f)
+                        .after(e -> {
+                            e.setAlpha(0f);
+                            ModifierRegistry.setPaused(sprite, true);
+                        }));
             }
 
             if (comboBursts.size() > 0) {
@@ -141,15 +123,15 @@ public class ComboBurst {
         nextKeyComboNum = 30;
     }
 
-    public void attachAll(Scene scene) {
-        for (final Sprite sprite : comboBursts) {
-            scene.attachChild(sprite);
+    public void attachAll(UIContainer scene) {
+        for (final UISprite sprite : comboBursts) {
+            scene.plusAssign(sprite);
         }
     }
 
     public void detachAll() {
-        for (final Sprite sprite : comboBursts) {
-            sprite.detachSelf();
+        for (final UISprite sprite : comboBursts) {
+            sprite.removeSelf();
         }
     }
 }

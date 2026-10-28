@@ -70,10 +70,10 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
     var ignoreUpdate = false
 
     /**
-     * Whether the AndEngine scene is still the game scene; the HUD removes itself once it is not.
+     * Whether the game scene is still shown; the HUD removes itself once it is not.
      */
     var sceneCheck: () -> Boolean = {
-        GlobalManager.getInstance().engine.scene == GlobalManager.getInstance().gameScene?.scene
+        GlobalManager.getInstance().gameScene?.isInGameplay == true
     }
 
     /**
