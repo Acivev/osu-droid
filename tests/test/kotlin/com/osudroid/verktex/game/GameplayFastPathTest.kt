@@ -16,8 +16,9 @@ import ru.nsu.ccfit.zuev.osu.game.cursor.main.CursorEntity
 import java.io.File
 
 /**
- * The raw pointer's fast path runs on the draw thread, after the layout: the cursor reaches the raw position
- * in that draw through its translation, and the next position from the update thread replaces it.
+ * The raw pointer's fast path runs on the draw thread, before the draw's layout: the cursor reaches the raw
+ * position in that draw through its translation, also when the layout still moves it to the update thread's
+ * latest position, and the next position from the update thread replaces it.
  */
 @RunWith(RobolectricTestRunner::class)
 class GameplayFastPathTest {
@@ -78,5 +79,17 @@ class GameplayFastPathTest {
         assertEquals(0f, cursor.translationX.resolve(0f))
         assertEquals(0f, cursor.translationY.resolve(0f))
         assertEquals(150f to 250f, drawnPosition())
+    }
+
+    @Test fun fastPathAppliesOverAPendingUpdatePathPosition() {
+        cursor.setPosition(100f, 200f)
+        layout()
+
+        // The update thread moved the cursor since the last layout, the draw's layout applies that move.
+        cursor.setPosition(150f, 250f)
+        cursor.setDrawPosition(300f, 400f)
+        layout()
+
+        assertEquals(300f to 400f, drawnPosition())
     }
 }

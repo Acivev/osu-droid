@@ -8,13 +8,14 @@ import com.rian.andengine.timing.IFrameBasedClock
 import com.rian.andengine.timing.Stopwatch
 import com.rian.andengine.timing.TestClock
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import ru.nsu.ccfit.zuev.osu.game.GameScene
 
 /**
  * The update loop of the gameplay scene, through its seam `GameScene.runGameplayLoop`: the clock is
- * processed every pass, the update, the playfield ticker and the children follow unless updates are
- * ignored, and passes repeat while the clock catches up for at most 10 ms.
+ * processed every pass, the update, the playfield and frame tickers and the children follow unless updates
+ * are ignored, and passes repeat while the clock catches up for at most 10 ms.
  */
 class GameUISceneLoopTest {
 
@@ -36,10 +37,11 @@ class GameUISceneLoopTest {
     }
 
     private val ticker = ModifierTicker()
+    private val frameTicker = ModifierTicker()
     private val calls = mutableListOf<String>()
 
     private fun run(clock: IFrameBasedClock, catchUp: () -> Boolean, stopwatch: Stopwatch = Stopwatch(), ignore: Boolean = false) =
-        GameScene.runGameplayLoop(clock, { catchUp() }, stopwatch, { ignore }, ticker, { calls += "update" }, { calls += "children:${ticker.time}" })
+        GameScene.runGameplayLoop(clock, { catchUp() }, stopwatch, { ignore }, ticker, frameTicker, { calls += "update" }, { calls += "children:${ticker.time}" })
 
     @Test fun onePassWithoutCatchUp() {
         val clock = FakeClock().apply { currentTime = 2f }
@@ -76,13 +78,42 @@ class GameUISceneLoopTest {
         val source = TestClock().apply { start(); currentTime = 10f }
         val clock = GameplayFrameStabilityClock(FramedBeatmapClock(applyOffsets = false, source = source))
 
-        GameScene.runGameplayLoop(clock, { clock.requiresCatchUp }, Stopwatch(), { false }, ticker, {}, {})
+        GameScene.runGameplayLoop(clock, { clock.requiresCatchUp }, Stopwatch(), { false }, ticker, frameTicker, {}, {})
         assertEquals(clock.currentTime, ticker.time, 0f)
 
         // A seek backwards to a negative lead-in time; the frame after it has no elapsed time.
         clock.seek(-1.5f)
-        GameScene.runGameplayLoop(clock, { clock.requiresCatchUp }, Stopwatch(), { false }, ticker, {}, {})
+        GameScene.runGameplayLoop(clock, { clock.requiresCatchUp }, Stopwatch(), { false }, ticker, frameTicker, {}, {})
         assertEquals(clock.currentTime, ticker.time, 0f)
         assertEquals(-1.5f, ticker.time, 1e-4f)
+    }
+
+    @Test fun frameTickerAdvancesByTheFrameDeltaAcrossSeek() {
+        val source = TestClock().apply { start(); currentTime = 10f }
+        val clock = GameplayFrameStabilityClock(FramedBeatmapClock(applyOffsets = false, source = source))
+        var elapsed = 0f
+        val pass = { GameScene.runGameplayLoop(clock, { clock.requiresCatchUp }, Stopwatch(), { false }, ticker, frameTicker, { elapsed += clock.elapsedFrameTime }, {}) }
+
+        pass()
+        source.currentTime = 10.5f
+        pass()
+        val beforeSeek = frameTicker.time
+        assertEquals(elapsed, beforeSeek, 1e-4f)
+        assertTrue(beforeSeek > 0f)
+
+        // A seek backwards: the absolute ticker follows the clock back, the frame ticker does not go back.
+        clock.seek(-1.5f)
+        pass()
+        assertEquals(clock.currentTime, ticker.time, 0f)
+        assertEquals(elapsed, frameTicker.time, 1e-4f)
+        assertTrue(frameTicker.time >= beforeSeek)
+
+        // It keeps advancing by the frame delta from there.
+        val afterSeek = frameTicker.time
+        source.currentTime = clock.currentTime + 0.25f
+        pass()
+        assertEquals(clock.currentTime, ticker.time, 0f)
+        assertEquals(elapsed, frameTicker.time, 1e-4f)
+        assertTrue(frameTicker.time > afterSeek)
     }
 }

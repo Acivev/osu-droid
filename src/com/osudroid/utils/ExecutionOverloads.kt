@@ -2,6 +2,7 @@
 
 package com.osudroid.utils
 
+import com.reco1l.verktex.Verktex
 import java.util.concurrent.CompletableFuture
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.time.Duration.Companion.milliseconds
@@ -89,6 +90,11 @@ fun mainThread(block: Runnable) = GlobalManager.getInstance().mainActivity.runOn
  * Run a task on the update thread.
  */
 fun updateThread(block: Runnable) = GlobalManager.getInstance().engine.runOnUpdateThread(block)
+
+/**
+ * Run a task that edits the Verktex component tree on the update thread, under [Verktex.withTreeLock].
+ */
+fun updateThreadUnderTreeLock(block: Runnable) = updateThread { Verktex.withTreeLock { block.run() } }
 
 /**
  * Wraps a [Job.cancelAndJoin] call inside a coroutine. Useful for asynchronously canceling and joining a [Job] with

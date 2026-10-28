@@ -571,7 +571,7 @@ public class GameplaySlider extends GameObject {
             VerktexModifiers.beginAbsoluteSequence(sliderBody, modifierStartTime, sequence -> {
                 // Short fade for snaking out sliders to allow for any body color to smoothly disappear.
                 sequence.fadeOut(headWasHit && shouldSnakeOut ? 0.04f : 0.24f)
-                        .after(e -> Execution.updateThread(e::detachSelf));
+                        .after(e -> Execution.updateThreadUnderTreeLock(e::detachSelf));
 
                 extendLifetime(sequence);
             });
@@ -1012,7 +1012,7 @@ public class GameplaySlider extends GameObject {
             scene.plusAssign(followCircle);
 
             VerktexModifiers.beginAbsoluteSequence(ball, (float) beatmapSlider.getEndTime() / 1000,
-                    sequence -> sequence.fadeOut().after(e -> Execution.updateThread(e::detachSelf)));
+                    sequence -> sequence.fadeOut().after(e -> Execution.updateThreadUnderTreeLock(e::detachSelf)));
         }
 
         VerktexModifiers.clearModifiers(approachCircle);
@@ -1236,7 +1236,7 @@ public class GameplaySlider extends GameObject {
                 headCirclePiece.removeSelf();
             } else {
                 // Slider head is hit too early - slowly fade it.
-                extendLifetime(VerktexModifiers.fadeOut(headCirclePiece, 0.1f).after(e -> Execution.updateThread(e::detachSelf)));
+                extendLifetime(VerktexModifiers.fadeOut(headCirclePiece, 0.1f).after(e -> Execution.updateThreadUnderTreeLock(e::detachSelf)));
             }
         }
     }

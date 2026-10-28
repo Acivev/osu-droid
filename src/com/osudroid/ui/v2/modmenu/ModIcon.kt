@@ -28,7 +28,8 @@ class ModIcon(val mod: Mod) : UIContainer(), ISkinnable {
 
     /**
      * Whether the icon is in the playfield, whose local space is virtual units, instead of window pixels.
-     * Only the acronym's font raster size depends on it, the acronym is scaled to the icon's height.
+     * The acronym's font raster size depends on it, the acronym is scaled to the icon's height, and in the
+     * playfield the texture is looked up in the beatmap skin first, as ResourceManager.getTexture did.
      */
     var playfieldSpace = false
 
@@ -69,7 +70,7 @@ class ModIcon(val mod: Mod) : UIContainer(), ISkinnable {
 
 
     private fun setupContent() {
-        val texture = SkinTextures.get(mod.iconTextureName)
+        val texture = if (playfieldSpace) SkinTextures.getWithBeatmapSkin(mod.iconTextureName) else SkinTextures.get(mod.iconTextureName)
 
         sprite.textureRegion = texture
         sprite.isVisible = texture != null

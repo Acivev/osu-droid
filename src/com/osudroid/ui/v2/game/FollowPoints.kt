@@ -4,7 +4,7 @@ import com.edlplan.framework.easing.*
 import com.osudroid.beatmaps.hitobjects.HitObject
 import com.osudroid.utils.IPoolable
 import com.osudroid.utils.SynchronizedPool
-import com.osudroid.utils.updateThread
+import com.osudroid.utils.updateThreadUnderTreeLock
 import com.osudroid.ui.v2.hud.GameplayLayer
 import com.osudroid.ui.verktex.SkinTextures
 import com.reco1l.verktex.data.Anchor
@@ -57,13 +57,13 @@ object FollowPointConnection {
         // The finished modifier's target wraps the follow point.
         val fp = (target as VerktexModifierTarget).component
 
-        updateThread {
+        updateThreadUnderTreeLock {
             val poolable = fp as IPoolable
 
             // `clearAll` may have already recycled this follow point, so we need to check if it's already recycled
             // before releasing it again.
             if (poolable.isRecycled) {
-                return@updateThread
+                return@updateThreadUnderTreeLock
             }
 
             fp.removeSelf()

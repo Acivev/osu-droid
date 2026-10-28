@@ -93,7 +93,7 @@ public class GameEffect extends GameObject {
             });
         }
 
-        VerktexModifiers.beginDelayedSequence(hit, duration, sequence -> sequence.after(e -> Execution.updateThread(() -> {
+        VerktexModifiers.beginDelayedSequence(hit, duration, sequence -> sequence.after(e -> Execution.updateThreadUnderTreeLock(() -> {
             hit.removeSelf();
             VerktexModifiers.clearModifiers(hit);
             GameObjectPool.getInstance().putEffect(GameEffect.this);

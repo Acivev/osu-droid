@@ -192,6 +192,12 @@ public class GameScene implements GameObjectListener {
     private final ModifierTicker playfieldTicker = new ModifierTicker();
 
     /**
+     * The time base of the combo burst and countdown sprites: the sum of the gameplay clock's elapsed frame
+     * times, as their AndEngine modifiers were updated with them, so a seek neither freezes nor ends them.
+     */
+    private final ModifierTicker frameTicker = new ModifierTicker();
+
+    /**
      * A reused buffer for the playfield point of a touch.
      */
     private final float[] touchPoint = new float[2];
@@ -1102,7 +1108,15 @@ public class GameScene implements GameObjectListener {
      * Whether the game scene is the shown scene, as {@code engine.getScene() == getScene()} was on AndEngine.
      */
     public boolean isInGameplay() {
-        return Verktex.INSTANCE.getScene() == scene;
+        return isInGameplay(Verktex.INSTANCE.getScene(), scene);
+    }
+
+    /**
+     * Whether {@code shownScene} is {@code gameScene}, the game's current scene; a test seam of
+     * {@link #isInGameplay()}.
+     */
+    public static boolean isInGameplay(final UIScene shownScene, final UIScene gameScene) {
+        return shownScene == gameScene;
     }
 
     public void restartGame() {
@@ -1391,12 +1405,12 @@ public class GameScene implements GameObjectListener {
             float cdSpeed = countdown.speed;
             skipTime -= cdSpeed * Countdown.COUNTDOWN_LENGTH;
             if (cdSpeed != 0 && firstObjectStartTime - gameplayClock.getCurrentTime() >= cdSpeed * Countdown.COUNTDOWN_LENGTH) {
-                countdownAnimator = new Countdown(bgScene, cdSpeed, 0, firstObjectStartTime - gameplayClock.getCurrentTime());
+                countdownAnimator = new Countdown(bgScene, cdSpeed, 0, firstObjectStartTime - gameplayClock.getCurrentTime(), frameTicker);
             }
         }
 
         if (Config.isComboburst()) {
-            comboBurst = new ComboBurst(Config.getRES_WIDTH(), Config.getRES_HEIGHT());
+            comboBurst = new ComboBurst(Config.getRES_WIDTH(), Config.getRES_HEIGHT(), frameTicker);
             comboBurst.attachAll(bgScene);
         }
 
@@ -1494,7 +1508,7 @@ public class GameScene implements GameObjectListener {
         }
 
         for (var mod : lastMods.values()) {
-            collect.accept(SkinTextures.get(mod.getIconTextureName()));
+            collect.accept(SkinTextures.getWithBeatmapSkin(mod.getIconTextureName()));
         }
 
         // Verktex uploads a texture's regions when it is first bound, which would stall the frame that first
@@ -1630,7 +1644,7 @@ public class GameScene implements GameObjectListener {
             );
 
             seekControl.setOnSeek(targetTime -> {
-                Execution.updateThread(() -> seekTo(targetTime));
+                Execution.updateThreadUnderTreeLock(() -> seekTo(targetTime));
                 return Unit.INSTANCE;
             });
         }
@@ -2421,6 +2435,14 @@ public class GameScene implements GameObjectListener {
                 return;
             }
 
+            // The modifiers of the playfield are dropped with the scene.
+            var oldPlayfield = playfield;
+            Verktex.INSTANCE.withTreeLock(() -> {
+                ModifierRegistry.bindTicker(oldPlayfield, null);
+                ModifierRegistry.release(oldPlayfield);
+                return Unit.INSTANCE;
+            });
+
             scene = new GameUIScene();
             BeatmapSkinManager.setSkinEnabled(false);
             GameObjectPool.getInstance().purge();
@@ -2605,7 +2627,7 @@ public class GameScene implements GameObjectListener {
         float difference = skipTime - gameplayClock.getCurrentTime();
         gameplayClock.seek(skipTime);
 
-        Execution.updateThread(() -> {
+        Execution.updateThreadUnderTreeLock(() -> {
             updatePassiveObjects(difference);
 
             if (videoEnabled && video != null) {
@@ -3165,16 +3187,15 @@ public class GameScene implements GameObjectListener {
 
         var cursor = cursors[id];
         var action = event.getAction();
+        var branch = touchBranch(action, cursor, cursors, maximumActiveCursorCount);
 
-        if (action == PointerEvent.Action.Down) {
-            if (cursor.mouseBlocked) {
-                cursor.mouseBlocked = false;
-                return true;
-            }
+        if (branch == TouchBranch.Blocked) {
+            cursor.mouseBlocked = false;
+            return true;
+        }
 
-            if (!canActivateCursor(cursors, maximumActiveCursorCount)) {
-                return false;
-            }
+        if (branch == TouchBranch.Rejected) {
+            return false;
         }
 
         var sprite = !GameHelper.isAutoplay() && !GameHelper.isAutopilot() && cursorSprites != null
@@ -3192,7 +3213,7 @@ public class GameScene implements GameObjectListener {
             sprite.setPosition(cursorEvent.position.x, cursorEvent.position.y);
         }
 
-        if (action == PointerEvent.Action.Down) {
+        if (branch == TouchBranch.Down) {
 
             if (sprite != null) {
                 sprite.setShowing(true);
@@ -3207,7 +3228,7 @@ public class GameScene implements GameObjectListener {
             if (replay != null) {
                 replay.addPress(eventTime, cursorEvent.trackPosition, id);
             }
-        } else if (cursor.isMouseDown() && action == PointerEvent.Action.Move) {
+        } else if (branch == TouchBranch.Move) {
 
             if (sprite != null) {
                 sprite.setShowing(true);
@@ -3219,7 +3240,7 @@ public class GameScene implements GameObjectListener {
                 replay.addMove(eventTime, cursorEvent.trackPosition, id);
             }
 
-        } else if (cursor.isMouseDown() && action == PointerEvent.Action.Up) {
+        } else if (branch == TouchBranch.Up) {
 
             if (sprite != null) {
                 sprite.setShowing(false);
@@ -3231,13 +3252,63 @@ public class GameScene implements GameObjectListener {
                 replay.addUp(eventTime, id);
             }
 
-        } else if (action == PointerEvent.Action.Cancel || action == PointerEvent.Action.Unknown) {
+        } else if (branch == TouchBranch.RemoveAll) {
             // A cancel, or an outside or other action, which the bridge reports as unknown.
             removeAllCursors();
         } else {
             return false;
         }
         return true;
+    }
+
+    /**
+     * What {@link #onSceneTouchEvent(PointerEvent)} does with a pointer action of a cursor.
+     */
+    public enum TouchBranch {
+        /** A press in a block area: consumed, no cursor goes down, the next press is not blocked. */
+        Blocked,
+        /** A press while the cursor limit is reached: not handled, the cursor stays up. */
+        Rejected,
+        Down,
+        Move,
+        Up,
+        /** A cancel or an unknown action: every cursor goes up. */
+        RemoveAll,
+        /** A move or a release of a cursor that is not down: not handled. */
+        Ignored
+    }
+
+    /**
+     * The branch of {@link #onSceneTouchEvent(PointerEvent)} for {@code action} on {@code cursor}, one of
+     * {@code cursors}, a test seam.
+     */
+    public static TouchBranch touchBranch(final PointerEvent.Action action, final Cursor cursor, final Cursor[] cursors,
+                                          final int maximumActiveCursorCount) {
+        if (action == PointerEvent.Action.Down) {
+            if (cursor.mouseBlocked) {
+                return TouchBranch.Blocked;
+            }
+
+            if (!canActivateCursor(cursors, maximumActiveCursorCount)) {
+                return TouchBranch.Rejected;
+            }
+
+            return TouchBranch.Down;
+        }
+
+        if (cursor.isMouseDown() && action == PointerEvent.Action.Move) {
+            return TouchBranch.Move;
+        }
+
+        if (cursor.isMouseDown() && action == PointerEvent.Action.Up) {
+            return TouchBranch.Up;
+        }
+
+        if (action == PointerEvent.Action.Cancel || action == PointerEvent.Action.Unknown) {
+            return TouchBranch.RemoveAll;
+        }
+
+        return TouchBranch.Ignored;
     }
 
     /**
@@ -4651,7 +4722,7 @@ public class GameScene implements GameObjectListener {
                 onLoadComplete();
             }
 
-            runGameplayLoop(gameplayClock, gameplayClock::requiresCatchUp, stopwatch, () -> ignoreUpdate, playfieldTicker,
+            runGameplayLoop(gameplayClock, gameplayClock::requiresCatchUp, stopwatch, () -> ignoreUpdate, playfieldTicker, frameTicker,
                 () -> {
                     GameScene.this.update(gameplayClock.getElapsedFrameTime());
 
@@ -4827,13 +4898,14 @@ public class GameScene implements GameObjectListener {
 
     /**
      * One update of the game scene: the gameplay clock is processed and, unless updates are ignored, the
-     * gameplay updates, the playfield's modifiers move to the gameplay time and the children update;
-     * repeated while the clock catches up, for at most 10 ms. A test seam of the scene's update.
+     * gameplay updates, the playfield's modifiers move to the gameplay time, the frame ticker advances by the
+     * clock's elapsed frame time and the children update; repeated while the clock catches up, for at most
+     * 10 ms. A test seam of the scene's update.
      */
     public static void runGameplayLoop(final IFrameBasedClock clock, final BooleanSupplier requiresCatchUp,
                                        final Stopwatch stopwatch, final BooleanSupplier ignoreUpdate,
-                                       final ModifierTicker playfieldTicker, final Runnable update,
-                                       final Runnable updateChildren) {
+                                       final ModifierTicker playfieldTicker, final ModifierTicker frameTicker,
+                                       final Runnable update, final Runnable updateChildren) {
         stopwatch.restart();
 
         do {
@@ -4842,6 +4914,7 @@ public class GameScene implements GameObjectListener {
             if (!ignoreUpdate.getAsBoolean()) {
                 update.run();
                 playfieldTicker.setTime(clock.getCurrentTime());
+                frameTicker.tick(clock.getElapsedFrameTime());
                 updateChildren.run();
             }
             // 10ms of allowance when catching up.

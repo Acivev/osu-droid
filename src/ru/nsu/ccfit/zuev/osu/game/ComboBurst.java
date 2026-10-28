@@ -7,6 +7,7 @@ import com.reco1l.verktex.graphics.GraphicsTexture;
 import com.reco1l.verktex.ui.UISprite;
 import com.reco1l.verktex.ui.container.UIContainer;
 import com.rian.andengine.modifier.ModifierRegistry;
+import com.rian.andengine.modifier.ModifierTicker;
 import com.rian.andengine.modifier.VerktexModifiers;
 
 import java.util.ArrayList;
@@ -32,7 +33,8 @@ public class ComboBurst {
     private int nextShowId = 0;
     private int nextSoundId = 0;
 
-    public ComboBurst(float rightX, float bottomY) {
+    // The sprites' modifiers run on the frame ticker, the elapsed frame times the AndEngine modifiers were given.
+    public ComboBurst(float rightX, float bottomY, ModifierTicker frameTicker) {
         this.rightX = rightX;
         this.bottomY = bottomY;
         breakCombo();
@@ -41,6 +43,7 @@ public class ComboBurst {
         if (globalTex != null) {
             UISprite sprite = new UISprite(globalTex);
             sprite.setAlpha(0f);
+            ModifierRegistry.bindTicker(sprite, frameTicker);
             ModifierRegistry.setPaused(sprite, true);
             comboBursts.add(sprite);
         }
@@ -53,6 +56,7 @@ public class ComboBurst {
             if (tex != null) {
                 UISprite sprite = new UISprite(tex);
                 sprite.setAlpha(0f);
+                ModifierRegistry.bindTicker(sprite, frameTicker);
                 ModifierRegistry.setPaused(sprite, true);
                 comboBursts.add(sprite);
             }

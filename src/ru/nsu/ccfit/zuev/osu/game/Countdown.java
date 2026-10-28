@@ -8,6 +8,7 @@ import com.reco1l.verktex.data.DimensionKt;
 import com.reco1l.verktex.ui.UISprite;
 import com.reco1l.verktex.ui.container.UIContainer;
 import com.rian.andengine.modifier.ModifierRegistry;
+import com.rian.andengine.modifier.ModifierTicker;
 import com.rian.andengine.modifier.VerktexModifiers;
 
 import ru.nsu.ccfit.zuev.osu.Config;
@@ -26,9 +27,9 @@ public class Countdown extends GameObject {
     private UIContainer scene;
 
     // A sprite's modifiers are paused like the AndEngine setIgnoreUpdate; a paused sequence starts when it
-    // is unpaused.
+    // is unpaused. They run on the frame ticker, the elapsed frame times the AndEngine modifiers were given.
     public Countdown(final UIContainer scene,
-                     final float speed, final float offset, final float time) {
+                     final float speed, final float offset, final float time, final ModifierTicker frameTicker) {
         this.speed = speed;
         this.scene = scene;
         timepassed = -time + COUNTDOWN_LENGTH * speed;
@@ -67,6 +68,12 @@ public class Countdown extends GameObject {
         scene.addToBack(count1);
         scene.addToBack(count2);
         scene.addToBack(count3);
+
+        ModifierRegistry.bindTicker(ready, frameTicker);
+        ModifierRegistry.bindTicker(go, frameTicker);
+        ModifierRegistry.bindTicker(count1, frameTicker);
+        ModifierRegistry.bindTicker(count2, frameTicker);
+        ModifierRegistry.bindTicker(count3, frameTicker);
 
         // The sequences start once the sprites are in the playfield, at its gameplay time.
         VerktexModifiers.beginModifierSequence(ready, sequence -> sequence

@@ -189,7 +189,7 @@ public class GameplayHitCircle extends GameObject {
         if (successfulHit || !circlePiece.isVisible() || circlePiece.getAlpha() == 0) {
             circlePiece.removeSelf();
         } else {
-            extendLifetime(VerktexModifiers.fadeOut(circlePiece, 0.1f).after(e -> Execution.updateThread(e::detachSelf)));
+            extendLifetime(VerktexModifiers.fadeOut(circlePiece, 0.1f).after(e -> Execution.updateThreadUnderTreeLock(e::detachSelf)));
         }
 
         scene = null;

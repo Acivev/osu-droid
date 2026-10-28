@@ -123,18 +123,19 @@ public class CursorEntity extends UIContainer {
     }
 
     /**
-     * Places the cursor at a position from the draw thread, the raw pointer's fast path. The position only
-     * applies with the next layout, so it is given as a translation from the last laid-out position, which
-     * applies to this draw; the next {@link #setPosition(float, float)} replaces it.
+     * Places the cursor at a position from the draw thread, the raw pointer's fast path. It is given as a
+     * translation from the position the next layout applies, the last one given by
+     * {@link #setPosition(float, float)}, as the layout of this draw may still move the cursor there; the
+     * next {@link #setPosition(float, float)} replaces it.
      */
     public void setDrawPosition(float pX, float pY) {
         if (trail != null) {
             trail.addPosition(pX, pY);
         }
 
-        var bounds = getBounds();
-        setTranslationX(DimensionKt.getPx(pX - bounds.getX()));
-        setTranslationY(DimensionKt.getPx(pY - bounds.getY()));
+        // Anchored at the top left of a layer without padding, the laid-out position is the position itself.
+        setTranslationX(DimensionKt.getPx(pX - getX().resolve(0f)));
+        setTranslationY(DimensionKt.getPx(pY - getY().resolve(0f)));
     }
 
     @Override
