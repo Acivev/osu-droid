@@ -143,10 +143,6 @@ class RoomScene(
 
 
     init {
-        // The room chat stays on the AndEngine HUD and loads its icons from these.
-        ResourceManager.getInstance().loadHighQualityAsset("chat", "chat.png")
-        ResourceManager.getInstance().loadHighQualityAsset("send", "send.png")
-
         RoomAPI.playerEventListener = this
         RoomAPI.roomEventListener = this
         chat = RoomChat()

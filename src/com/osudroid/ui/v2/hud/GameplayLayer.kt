@@ -5,6 +5,7 @@ import com.osudroid.ui.verktex.SkinTextures
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.graphics.GraphicsTexture
 import com.reco1l.verktex.ui.UIComponent
+import com.reco1l.verktex.ui.container.UIContainer
 import com.rian.andengine.modifier.ModifierRegistry
 import ru.nsu.ccfit.zuev.osu.ResourceManager
 
@@ -96,12 +97,11 @@ class GameplayLayer : FullWindowContainer() {
         ModifierRegistry.setPaused(hud, paused)
     }
 
-    // Only a shown overlay (one with a parent) is moved, a hidden one stays hidden.
+    // Only a shown overlay (one with a parent) is moved, a hidden one stays hidden. It is reordered
+    // in place, not removed and added again: detaching it would collapse the expanded chat.
     private fun reAddAbove(component: UIComponent?) {
-        if (component?.parent != null) {
-            Verktex.removeOverlay(component)
-            Verktex.addOverlay(component)
-        }
+        val parent = component?.parent as? UIContainer ?: return
+        parent.run { component.moveToFront() }
     }
 
 

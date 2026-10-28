@@ -49,6 +49,7 @@ import com.osudroid.data.DatabaseManager;
 import com.osudroid.debug.DebugPlaygroundScene;
 import com.osudroid.resources.R;
 import com.osudroid.ui.FPSCounter;
+import com.osudroid.ui.verktex.FullWindowContainer;
 import com.osudroid.ui.v2.menu.main.MainMenuV2;
 import com.osudroid.utils.Execution;
 import com.osudroid.verktex.bridge.EngineRouter;
@@ -337,7 +338,6 @@ public class MainActivity extends BaseGameActivity implements
         ResourceManager.getInstance().loadHighQualityAsset("offline-avatar", "offline-avatar.png");
         ResourceManager.getInstance().loadHighQualityAsset("star", "gfx/star.png");
         ResourceManager.getInstance().loadHighQualityAsset("star2", "gfx/star2.png");
-        ResourceManager.getInstance().loadHighQualityAsset("chat", "chat.png");
         ResourceManager.getInstance().loadHighQualityAsset("team_vs", "team_vs.png");
         ResourceManager.getInstance().loadHighQualityAsset("head_head", "head_head.png");
         ResourceManager.getInstance().loadHighQualityAsset("crown", "crown.png");
@@ -399,7 +399,16 @@ public class MainActivity extends BaseGameActivity implements
         Execution.async(() -> {
             GlobalManager.getInstance().init();
             com.acivev.VibratorManager.INSTANCE.init(this);
-            Execution.updateThread(() -> UIEngine.getCurrent().getOverlay().attachChild(new FPSCounter()));
+            // The root lays the counter out over the whole window, as the AndEngine camera HUD did.
+            Execution.updateThread(() -> Verktex.INSTANCE.withTreeLock(() -> {
+                FPSCounter counter = new FPSCounter();
+                FullWindowContainer root = new FullWindowContainer();
+                root.plusAssign(counter);
+                FPSCounter.setInstance(counter);
+                FPSCounter.setRoot(root);
+                Verktex.addOverlay(root);
+                return null;
+            }));
             analytics.logEvent(FirebaseAnalytics.Event.APP_OPEN, null);
             GlobalManager.getInstance().setLoadingProgress(50);
             checkNewSkins();

@@ -1,27 +1,47 @@
 package com.osudroid.ui
 
+import androidx.annotation.VisibleForTesting
 import com.edlplan.framework.easing.Easing
 import com.reco1l.framework.Color4
 import com.osudroid.math.Interpolation
-import com.reco1l.andengine.Anchor
-import com.reco1l.andengine.UIEngine
-import com.reco1l.andengine.shape.UIBox
-import com.reco1l.andengine.text.UIText
-import com.reco1l.framework.math.Vec4
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.times
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UIComponent
+import com.reco1l.verktex.ui.text.UIText
+import com.rian.andengine.modifier.fadeIn
+import com.rian.andengine.modifier.fadeTo
+import com.rian.andengine.timing.ThrottledFrameClock
 import java.util.Formatter
 import java.util.Locale
 import kotlin.math.min
 import kotlin.math.roundToInt
 import ru.nsu.ccfit.zuev.osu.Config
-import ru.nsu.ccfit.zuev.osu.ResourceManager
 import ru.nsu.ccfit.zuev.osu.GlobalManager.getInstance as getGlobal
 
 /**
  * Represents an FPS counter.
  */
 class FPSCounter : UIText() {
+    // The AndEngine engine's clock, which the Verktex update is pumped from.
     private val updateClock
-        get() = UIEngine.current.clock
+        get() = clockProvider()
+
+    /**
+     * The clock the frame rate is measured with. Replaced by the tests.
+     */
+    @VisibleForTesting
+    internal var clockProvider: () -> ThrottledFrameClock = { getGlobal().engine.clock }
+
+    /**
+     * The display refresh rate. Replaced by the tests.
+     */
+    @VisibleForTesting
+    internal var refreshRateProvider: () -> Float = { getGlobal().mainActivity.refreshRate }
 
     //region Counting logic
 
@@ -67,23 +87,30 @@ class FPSCounter : UIText() {
     private val middleTextColor = Color4(0xebc247)
     private val maximumTextColor = Color4(0xccff99)
 
+    // LegacyUnits.scale the sizes were last applied for.
+    private var appliedScale = 0f
+
     init {
-        font = ResourceManager.getInstance().getFont("smallFont")
-        padding = Vec4(6f, 4f)
+        wrapText = false
         anchor = Anchor.BottomRight
         origin = Anchor.BottomRight
         alignment = Anchor.Center
 
-        background = UIBox().apply {
-            cornerRadius = 8f
-            applyTheme = {
-                color = it.accentColor * 0.1f
-                alpha = 0.8f
-            }
+        style = Style { theme ->
+            backgroundColor = (theme.palette.accent * 0.1f).copy(alpha = 0.8f)
         }
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    override fun onUpdate(clock: TickingClock) {
+        // The font size, padding and corner radius are in virtual units.
+        if (appliedScale != LegacyUnits.scale) {
+            appliedScale = LegacyUnits.scale
+
+            fontSize = LegacyUnits.fontSize("smallFont").vu.px
+            padding = Padding(6f.vu.px, 4f.vu.px)
+            radius = 8f.vu.px
+        }
+
         isVisible = Config.isShowFPS()
 
         if (isVisible) {
@@ -104,7 +131,7 @@ class FPSCounter : UIText() {
             wasVisible = false
         }
 
-        super.onManagedUpdate(deltaTimeSec)
+        super.onUpdate(clock)
     }
 
     private fun requestDisplay() {
@@ -195,7 +222,7 @@ class FPSCounter : UIText() {
     }
 
     private fun updateAimFPS(): Boolean {
-        val refreshRate = getGlobal().mainActivity.refreshRate
+        val refreshRate = refreshRateProvider()
 
         val newAimFPS = if (updateClock.throttling && updateClock.maximumUpdateHz > 0) {
             min(updateClock.maximumUpdateHz, refreshRate)
@@ -231,16 +258,15 @@ class FPSCounter : UIText() {
             blue = Interpolation.linear(middleTextColor.blue, maximumTextColor.blue, t)
         }
 
-        setColor(red, green, blue)
+        color = color.copy(red = red, green = green, blue = blue)
     }
 
     //endregion
 
     //region Reset
 
-    override fun reset() {
-        super.reset()
-
+    // The AndEngine entity reset (transformations, colour, modifiers) has no Verktex counterpart.
+    fun reset() {
         displayedFpsCount = 0f
         displayedFrameTime = 0f
         lastDisplayedFps = 0
@@ -252,4 +278,20 @@ class FPSCounter : UIText() {
     }
 
     //endregion
+
+    companion object {
+
+        /**
+         * The counter shown above every screen, set when it is added at startup.
+         */
+        @JvmStatic
+        var instance: FPSCounter? = null
+
+        /**
+         * The overlay root holding [instance] over the whole window, the component kept above the
+         * gameplay layer.
+         */
+        @JvmStatic
+        var root: UIComponent? = null
+    }
 }

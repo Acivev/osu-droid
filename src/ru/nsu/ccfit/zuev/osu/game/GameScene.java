@@ -58,6 +58,7 @@ import com.osudroid.ui.v2.hud.GameplayLayer;
 import com.osudroid.ui.verktex.LegacyUnits;
 import com.osudroid.ui.v2.hud.elements.HUDPPCounter;
 import com.osudroid.multiplayer.Multiplayer;
+import com.osudroid.ui.FPSCounter;
 
 import com.reco1l.framework.Color4;
 import com.reco1l.verktex.Verktex;
@@ -1352,6 +1353,9 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     private void prepareHUD(final DroidPlayableBeatmap playableBeatmap) {
         if (gameplayLayer == null) {
             gameplayLayer = new GameplayLayer();
+            // The FPS counter and the shown room chat are kept above the layer.
+            gameplayLayer.setFpsProvider(FPSCounter::getRoot);
+            gameplayLayer.setChatProvider(() -> Multiplayer.isConnected() ? Multiplayer.roomScene.getChat() : null);
         }
 
         if (hud != null) {

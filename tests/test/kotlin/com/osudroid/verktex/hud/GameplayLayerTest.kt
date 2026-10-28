@@ -5,18 +5,22 @@ import com.osudroid.ui.v2.hud.GameplayLayer
 import com.osudroid.verktex.VerktexTestFixtures
 import com.osudroid.verktex.bridge.EngineRouter
 import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.fill
 import com.reco1l.verktex.data.px
 import com.reco1l.verktex.input.Input
+import com.reco1l.verktex.input.InputEvent
 import com.reco1l.verktex.input.PointerEvent
 import com.reco1l.verktex.time.TickingClock
 import com.reco1l.verktex.ui.UIComponent
 import com.reco1l.verktex.ui.UIScene
+import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.shape.UIBox
 import com.rian.andengine.modifier.ModifierRegistry
 import com.rian.andengine.modifier.fadeTo
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -91,6 +95,49 @@ class GameplayLayerTest {
         assertFalse(press())
 
         // Topmost overlays get the press first: chat, then the FPS counter, then the layer.
+        assertEquals(listOf("chat", "fps", "hud"), log)
+    }
+
+    @Test
+    fun showReordersFpsAndChatWithoutDetaching() {
+        val log = mutableListOf<String>()
+        val detached = mutableListOf<String>()
+
+        // A detached chat collapses (RoomChat.onDetached), so the reorder must keep both attached.
+        class DetachRecorder(val name: String) : UIContainer() {
+            init {
+                width = fill()
+                height = fill()
+            }
+
+            override fun onInputEvent(event: InputEvent): Boolean {
+                if (event is PointerEvent && event.action == PointerEvent.Action.Down) log += name
+                return false
+            }
+
+            override fun onDetached() {
+                detached += name
+            }
+        }
+
+        val fps = DetachRecorder("fps")
+        val chat = DetachRecorder("chat")
+        // Added in the reverse order, so show() has to move both.
+        addOverlay(chat)
+        addOverlay(fps)
+
+        layer.fpsProvider = { fps }
+        layer.chatProvider = { chat }
+        layer.show()
+
+        assertTrue(detached.isEmpty())
+        assertNotNull(fps.parent)
+        assertNotNull(chat.parent)
+
+        listOf(layer, fps, chat).forEach(::layoutOverWindow)
+        hud += PressRecorder("hud", log)
+        layoutOverWindow(layer)
+        assertFalse(press())
         assertEquals(listOf("chat", "fps", "hud"), log)
     }
 
