@@ -225,6 +225,8 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
     override fun onDraw(renderer: GraphicsRenderer) {
         val clip = renderer.clipBounds
 
+        if (tintChildren) renderer.pushTint(color)
+
         for (child in children) {
             // Children fully outside the visible area cannot be seen, so they are not drawn.
             if (!child.intersectsSceneRect(clip.x, clip.y, clip.z, clip.w)) {
@@ -232,6 +234,8 @@ open class UIContainer : UIComponent(), MutableIterable<UIComponent> {
             }
             onDrawChild(renderer, child)
         }
+
+        if (tintChildren) renderer.popTint()
     }
 
     //endregion
