@@ -11,6 +11,7 @@ import com.reco1l.verktex.graphics.GraphicsRenderer
 import com.reco1l.verktex.graphics.GraphicsShader
 import com.reco1l.verktex.graphics.GraphicsTexture
 import com.reco1l.verktex.graphics.GraphicsWindow
+import com.reco1l.verktex.ui.UIComponent
 import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.shape.UIBox
 import org.junit.Assert.assertEquals
@@ -55,7 +56,7 @@ class ColorInheritanceTest {
     @Test
     fun tintChildrenMultipliesRgb() {
         val renderer = FakeRenderer()
-        renderer.pushColor(Color4(0.5f, 0.5f, 1f, 1f), tintChildren = true)
+        renderer.pushTint(Color4(0.5f, 0.5f, 1f, 1f))
 
         assertEquals(Color4(0.5f, 0.5f, 1f, 1f), renderer.transformColor(Color4.White))
     }
@@ -71,20 +72,86 @@ class ColorInheritanceTest {
     @Test
     fun tintStacksAndPops() {
         val renderer = FakeRenderer()
-        renderer.pushColor(Color4(0.5f, 1f, 1f, 1f), tintChildren = true)
-        renderer.pushColor(Color4(1f, 0.5f, 1f, 1f), tintChildren = true)
+        renderer.pushTint(Color4(0.5f, 1f, 1f, 1f))
+        renderer.pushTint(Color4(1f, 0.5f, 1f, 1f))
 
         val both = renderer.transformColor(Color4.White)
         assertEquals(0.5f, both.red, 0f)
         assertEquals(0.5f, both.green, 0f)
 
-        renderer.popColor()
+        renderer.popTint()
         val outer = renderer.transformColor(Color4.White)
         assertEquals(0.5f, outer.red, 0f)
         assertEquals(1f, outer.green, 0f)
 
-        renderer.popColor()
+        renderer.popTint()
         assertEquals(1f, renderer.transformColor(Color4.White).red, 0f)
+    }
+
+    /** Records the colour transform in effect when the component starts drawing, as its background would see it. */
+    private class ProbeContainer : UIContainer() {
+        var atBackground: Color4? = null
+        override fun drawContent(renderer: GraphicsRenderer) {
+            atBackground = renderer.transformColor(Color4.White)
+            super.drawContent(renderer)
+        }
+    }
+
+    private fun drawn(component: UIComponent) {
+        val renderer = FakeRenderer()
+        renderer.begin()
+        component.draw(renderer)
+        renderer.end()
+    }
+
+    @Test
+    fun tintingLeafDrawsItsOwnColourOnce() {
+        val leaf = ProbeBox().apply {
+            tintChildren = true
+            color = Color4(0.5f, 0.5f, 1f, 1f)
+        }
+
+        drawn(leaf)
+
+        // The leaf applies its own colour through contentColor, the renderer must add nothing.
+        assertEquals(Color4.White, leaf.seen)
+    }
+
+    @Test
+    fun tintingContainerDoesNotTintItself() {
+        val container = ProbeContainer().apply {
+            tintChildren = true
+            color = Color4(0.5f, 0.5f, 1f, 1f)
+        }
+
+        drawn(container)
+
+        assertEquals(Color4.White, container.atBackground)
+    }
+
+    @Test
+    fun untintedContainerLeavesChildUntinted() {
+        val child = ProbeBox()
+        val container = UIContainer().apply { color = Color4(0.5f, 0.5f, 1f, 1f) }
+        container += child
+
+        drawn(container)
+
+        assertEquals(Color4.White, child.seen)
+    }
+
+    @Test
+    fun tintDoesNotLeakPastTheContainer() {
+        val renderer = FakeRenderer()
+        val container = UIContainer().apply {
+            tintChildren = true
+            color = Color4(0.5f, 0.5f, 1f, 1f)
+        }
+        renderer.begin()
+        container.draw(renderer)
+        renderer.end()
+
+        assertEquals(Color4.White, renderer.transformColor(Color4.White))
     }
 
     @Test

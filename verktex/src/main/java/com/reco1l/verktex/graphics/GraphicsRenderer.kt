@@ -163,30 +163,34 @@ abstract class GraphicsRenderer {
     }
 
     /**
-     * Pushes a color onto the color stack. This color will be used to transform subsequent drawing operations.
-     *
-     * Its alpha is always multiplied into subsequent colors. Its RGB is only multiplied into them
-     * when [tintChildren] is true.
+     * Pushes a color onto the color stack. Its alpha is multiplied into subsequent colors, its RGB
+     * is not, see [pushTint] for that.
      */
-    fun pushColor(color: Color4, tintChildren: Boolean = false) {
-        val parentAlpha = colorStack.lastOrNull()?.alpha ?: 1f
-        val parentTint = tintStack.lastOrNull() ?: Color4.White
-
-        colorStack.addLast(color.copy(alpha = color.alpha * parentAlpha))
-        tintStack.addLast(
-            if (tintChildren)
-                Color4(parentTint.red * color.red, parentTint.green * color.green, parentTint.blue * color.blue)
-            else
-                parentTint
-        )
+    fun pushColor(color: Color4) {
+        colorStack.addLast(color.copy(alpha = color.alpha * (colorStack.lastOrNull()?.alpha ?: 1f)))
     }
 
     /**
-     * Pops a color (and its tint entry) from the color stack and returns it.
+     * Pops a color from the color stack and returns it.
      */
     fun popColor(): Color4? {
-        tintStack.removeLastOrNull()
         return colorStack.removeLastOrNull()
+    }
+
+    /**
+     * Pushes a tint onto the tint stack: the RGB of [color] (its alpha is ignored) is multiplied
+     * into the RGB of everything drawn until the matching [popTint], on top of the tints already pushed.
+     */
+    fun pushTint(color: Color4) {
+        val parent = tintStack.lastOrNull() ?: Color4.White
+        tintStack.addLast(Color4(parent.red * color.red, parent.green * color.green, parent.blue * color.blue))
+    }
+
+    /**
+     * Pops the last tint pushed with [pushTint].
+     */
+    fun popTint() {
+        tintStack.removeLastOrNull()
     }
 
     /**
@@ -300,8 +304,8 @@ abstract class GraphicsRenderer {
 
     /**
      * Transforms the given color by multiplying its alpha value with the alpha of the last color in
-     * the color stack. If any pushed color was tinting ([pushColor] with `tintChildren`), the RGB is
-     * also multiplied by the product of those colors' RGB.
+     * the color stack. If any tint is pushed ([pushTint]), the RGB is also multiplied by the product of
+     * those tints.
      *
      * If the color stack is empty, the original color is returned.
      */
