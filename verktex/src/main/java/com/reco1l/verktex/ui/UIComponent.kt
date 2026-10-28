@@ -398,6 +398,11 @@ abstract class UIComponent {
     var color = Color4.White
 
     /**
+     * When true, this component's RGB is multiplied into its descendants' colours (the alpha always is). Default false.
+     */
+    var tintChildren: Boolean = false
+
+    /**
      * The [color] without its alpha, used to draw the component's own content. The alpha is
      * already applied to everything the component draws through the renderer's color stack.
      */
@@ -629,7 +634,7 @@ abstract class UIComponent {
         }
 
         renderer.pushMatrix(localToSceneMatrix)
-        renderer.pushColor(color)
+        renderer.pushColor(color, tintChildren)
 
         // The background is drawn before clipping, padding clipping must only affect the content.
         if (backgroundColor.alpha > 0f || (borderColor.alpha > 0f && borderWidth.value > 0f)) {
