@@ -61,6 +61,7 @@ abstract class GraphicsRenderer {
     //region Stacks
     private val matrixStack = ArrayDeque<Mat2>()
     private val colorStack = ArrayDeque<Color4>()
+    private val tintStack = ArrayDeque<Color4>()
     private val scissorStack = ArrayDeque<Vec4>()
     private val blendModeStack = ArrayDeque<BlendMode>()
     private val depthStateStack = ArrayDeque<DepthState>()
@@ -163,15 +164,28 @@ abstract class GraphicsRenderer {
 
     /**
      * Pushes a color onto the color stack. This color will be used to transform subsequent drawing operations.
+     *
+     * Its alpha is always multiplied into subsequent colors. Its RGB is only multiplied into them
+     * when [tintChildren] is true.
      */
-    fun pushColor(color: Color4) {
-        colorStack.addLast(transformColor(color))
+    fun pushColor(color: Color4, tintChildren: Boolean = false) {
+        val parentAlpha = colorStack.lastOrNull()?.alpha ?: 1f
+        val parentTint = tintStack.lastOrNull() ?: Color4.White
+
+        colorStack.addLast(color.copy(alpha = color.alpha * parentAlpha))
+        tintStack.addLast(
+            if (tintChildren)
+                Color4(parentTint.red * color.red, parentTint.green * color.green, parentTint.blue * color.blue)
+            else
+                parentTint
+        )
     }
 
     /**
-     * Pops a color from the color stack and returns it.
+     * Pops a color (and its tint entry) from the color stack and returns it.
      */
     fun popColor(): Color4? {
+        tintStack.removeLastOrNull()
         return colorStack.removeLastOrNull()
     }
 
@@ -286,12 +300,20 @@ abstract class GraphicsRenderer {
 
     /**
      * Transforms the given color by multiplying its alpha value with the alpha of the last color in
-     * the color stack.
+     * the color stack. If any pushed color was tinting ([pushColor] with `tintChildren`), the RGB is
+     * also multiplied by the product of those colors' RGB.
      *
      * If the color stack is empty, the original color is returned.
      */
     fun transformColor(color: Color4): Color4 {
-        return color.copy(alpha = color.alpha * (colorStack.lastOrNull()?.alpha ?: 1f))
+        val tint = tintStack.lastOrNull() ?: Color4.White
+
+        return Color4(
+            color.red * tint.red,
+            color.green * tint.green,
+            color.blue * tint.blue,
+            color.alpha * (colorStack.lastOrNull()?.alpha ?: 1f)
+        )
     }
 
     //endregion
