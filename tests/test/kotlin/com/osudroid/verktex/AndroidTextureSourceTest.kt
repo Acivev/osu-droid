@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import com.reco1l.verktex.android.AndroidTextureSource
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -60,6 +61,23 @@ class AndroidTextureSourceTest {
         val after = IntArray(4)
         bitmap.getPixels(after, 0, 2, 0, 0, 2, 2)
         assertArrayEquals(before, after)
+    }
+
+    @Test
+    fun nonArgb8888BitmapsAreConvertedForTheRgba8Atlas() {
+        for (config in listOf(Bitmap.Config.RGBA_F16, Bitmap.Config.RGB_565)) {
+            val bitmap = Bitmap.createBitmap(3, 2, config)
+            val source = AndroidTextureSource(bitmap)
+            assertEquals(Bitmap.Config.ARGB_8888, source.bitmap.config)
+            assertEquals(3f, source.width)
+            assertEquals(2f, source.height)
+        }
+    }
+
+    @Test
+    fun argb8888BitmapsAreKeptWithoutACopy() {
+        val bitmap = Bitmap.createBitmap(3, 2, Bitmap.Config.ARGB_8888)
+        assertSame(bitmap, AndroidTextureSource(bitmap).bitmap)
     }
 
     @Test
