@@ -195,4 +195,18 @@ class EngineRouterTest {
         EngineRouter.leaveVerktex()
         assertEquals(1, a.hidden)
     }
+
+    @Test
+    fun showVerktexWithBackdropSetsIt() {
+        val backdrop = Scene()
+        val scene = RecordingScene()
+        EngineRouter.showVerktex(scene, backdrop)
+        assertSame(backdrop, set.single())
+        assertSame(scene, Verktex.scene)
+        assertEquals(1, scene.shown)
+
+        EngineRouter.showVerktex(UIScene())
+        assertSame(EngineRouter.emptyAndEngineScene, set.last())
+        assertEquals(1, scene.hidden)
+    }
 }

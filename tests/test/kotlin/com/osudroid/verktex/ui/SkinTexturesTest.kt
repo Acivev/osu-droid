@@ -1,5 +1,6 @@
 package com.osudroid.verktex.ui
 
+import android.graphics.Bitmap
 import com.osudroid.ui.verktex.SkinTextures
 import com.osudroid.verktex.VerktexTestFixtures
 import com.reco1l.verktex.texture.Textures
@@ -11,10 +12,18 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 import ru.nsu.ccfit.zuev.osu.Config
 
+// Robolectric decodes the PNG written by hdFilesDecodeAtHalfSize.
+@RunWith(RobolectricTestRunner::class)
 class SkinTexturesTest {
+    @get:Rule val temporaryFolder = TemporaryFolder()
+
     @Test fun prefersSkinPngOverAsset() {
         val r = SkinTextures.resolve("logo", "logo.png", "/skin/") { it == "/skin/logo.png" }
         assertEquals(SkinTextures.Resolved("/skin/logo.png", isInternal = false), r)
@@ -27,6 +36,15 @@ class SkinTexturesTest {
 
     @Test fun fallsBackToAsset() {
         assertEquals(SkinTextures.Resolved("gfx/star.png", isInternal = true), SkinTextures.resolve("star", "gfx/star.png", "/skin/") { false })
+    }
+
+    @Test fun resolveReportsTheHdCandidate() {
+        assertEquals(
+            SkinTextures.Resolved("/skin/star@2x.png", isInternal = false, isHD = true),
+            SkinTextures.resolve("star", "gfx/star.png", "/skin/") { it == "/skin/star@2x.png" }
+        )
+        assertFalse(SkinTextures.resolve("star", "gfx/star.png", "/skin/") { it == "/skin/star.png" }.isHD)
+        assertFalse(SkinTextures.resolve("star", "gfx/star.png", "/skin/") { false }.isHD)
     }
 
     @Test fun skinPathWithAndWithoutTrailingSlashAgree() {
@@ -57,6 +75,17 @@ class SkinTexturesTest {
     @Test fun decodeReturnsNullForMissingFile() {
         VerktexTestFixtures.ensureInitialized(maxTextureSize = 4096f)
         assertEquals(null, SkinTextures.decode(File("missing.png")))
+    }
+
+    @Test fun hdFilesDecodeAtHalfSize() {
+        VerktexTestFixtures.ensureInitialized(maxTextureSize = 4096f)
+        val file = temporaryFolder.newFile("x@2x.png")
+        file.outputStream().use { Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888).compress(Bitmap.CompressFormat.PNG, 100, it) }
+
+        val source = SkinTextures.decode(file, inSampleSize = 2)!!
+
+        assertEquals(32f, source.width)
+        assertEquals(32f, source.height)
     }
 
     @Test fun registerOverwritesPreviousKey() {

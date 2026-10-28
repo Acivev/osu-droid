@@ -243,17 +243,21 @@ class VerktexModifierTarget internal constructor(val component: UIComponent) : M
 class ModifierTicker {
 
     /**
-     * Seconds accumulated by [tick].
+     * Seconds accumulated by [tick]. Setting it moves the time to the given value and updates the
+     * modifiers of the bound subtrees like [tick] does. Going back within a started modifier reapplies
+     * it at that time; the trackers never rewind, so going back before its start does not undo it.
      */
     var time = 0f
-        private set
+        set(value) {
+            field = value
+            ModifierRegistry.update(this)
+        }
 
     /**
      * Advances [time] and updates the modifiers of the subtrees bound to this ticker.
      */
     fun tick(deltaSeconds: Float) {
         time += deltaSeconds
-        ModifierRegistry.update(this)
     }
 }
 

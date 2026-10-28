@@ -1,8 +1,11 @@
 package com.osudroid.ui.verktex
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import com.osudroid.verktex.bridge.VerktexBridge
 import com.reco1l.verktex.Platform
 import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.android.AndroidTextureSource
 import com.reco1l.verktex.graphics.GraphicsTexture
 import com.reco1l.verktex.texture.Textures
 import com.osudroid.ui.skinning.StringSkinData
@@ -24,14 +27,19 @@ object SkinTextures {
     /** Keys whose last load failed; not retried until [invalidate] or a [loadFile] with that key. */
     private val misses = mutableSetOf<String>()
 
-    data class Resolved(val path: String, val isInternal: Boolean)
+    /**
+     * A resolved texture file. [isHD] is true when the `@2x` candidate matched, such a file is decoded
+     * at half size as AndEngine's `TextureStore` did.
+     */
+    data class Resolved(val path: String, val isInternal: Boolean, val isHD: Boolean = false)
 
     /** Pure. A skin path with or without trailing slash is accepted. Skin dir first: <skinPath><name>.png, <name>.jpg, <name>@2x.png; else the asset path. */
     fun resolve(name: String, assetPath: String, skinPath: String, exists: (String) -> Boolean): Resolved {
         val dir = skinPath.trimEnd('/') + "/"
-        val candidates = listOf("$dir$name.png", "$dir$name.jpg", "$dir$name@2x.png")
+        val hdCandidate = "$dir$name@2x.png"
+        val candidates = listOf("$dir$name.png", "$dir$name.jpg", hdCandidate)
         val found = candidates.firstOrNull(exists)
-        return if (found != null) Resolved(found, isInternal = false) else Resolved(assetPath, isInternal = true)
+        return if (found != null) Resolved(found, isInternal = false, isHD = found == hdCandidate) else Resolved(assetPath, isInternal = true)
     }
 
     /**
@@ -47,9 +55,17 @@ object SkinTextures {
         if (key in misses) return null
 
         val resolved = resolve(name, assetPath, Config.getSkinPath()) { File(it).exists() }
-        val region = Textures.load(key, resolved.path, isInternal = resolved.isInternal)
+        val region = if (resolved.isHD) loadHD(key, File(resolved.path)) else Textures.load(key, resolved.path, isInternal = resolved.isInternal)
         if (region == null) misses += key
         return region
+    }
+
+    /**
+     * Loads an `@2x` skin file at half size under [key], null when it does not decode.
+     */
+    private fun loadHD(key: String, file: File): GraphicsTexture.Region? {
+        val source = decode(file, inSampleSize = 2) ?: return null
+        return Textures.load(key, source)
     }
 
     /**
@@ -100,7 +116,7 @@ object SkinTextures {
             Textures[key]?.let { return it }
 
             if (key !in misses) {
-                val region = Textures.load(key, file.path, isInternal = false)
+                val region = if (file.name.contains("@2x.")) loadHD(key, file) else Textures.load(key, file.path, isInternal = false)
                 if (region != null) return region
                 misses += key
             }
@@ -145,11 +161,23 @@ object SkinTextures {
     /**
      * Decodes an external file into a texture source. Safe from any thread; this is the expensive
      * half of [loadFile]. Returns null when the file is missing or cannot be decoded.
+     *
+     * @param inSampleSize `BitmapFactory.Options.inSampleSize`: 2 decodes an `@2x` file at half size
+     * (as AndEngine's `QualityFileBitmapSource` did), 1 decodes it as it is through the platform provider.
      */
     @JvmStatic
-    fun decode(file: File): GraphicsTexture.Source? =
+    @JvmOverloads
+    fun decode(file: File, inSampleSize: Int = 1): GraphicsTexture.Source? =
         try {
-            Platform.provider.createTextureSource(file.path, isExternal = true)
+            if (inSampleSize == 1) {
+                Platform.provider.createTextureSource(file.path, isExternal = true)
+            } else {
+                val options = BitmapFactory.Options().apply {
+                    inPreferredConfig = Bitmap.Config.ARGB_8888
+                    this.inSampleSize = inSampleSize
+                }
+                BitmapFactory.decodeFile(file.path, options)?.let { AndroidTextureSource(it) }
+            }
         } catch (_: Exception) {
             null
         }
