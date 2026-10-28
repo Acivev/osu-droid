@@ -3,11 +3,10 @@ package com.rian.andengine.modifier
 import com.edlplan.framework.easing.Easing
 import com.osudroid.utils.IPoolable
 import com.osudroid.utils.SynchronizedPool
-import com.reco1l.andengine.component.UIComponent
 import com.reco1l.framework.Color4
 
 /**
- * A sequence of [UniversalModifier]s all operating upon the same [UIComponent]. Can be used to group and chain
+ * A sequence of [UniversalModifier]s all operating upon the same [ModifierTarget]. Can be used to group and chain
  * [UniversalModifier]s that should run at the same time as others (parallel) or after one another (sequence).
  *
  * It is recommended to use this with try-with-resources to ensure that this [UniversalModifierSequence] is recycled
@@ -18,7 +17,7 @@ class UniversalModifierSequence : IPoolable, AutoCloseable {
 
     override var isRecycled = false
 
-    private var origin: UIComponent? = null
+    private var origin: ModifierTarget? = null
 
     private var startTime = 0f
     private var currentTime = 0f
@@ -32,7 +31,7 @@ class UniversalModifierSequence : IPoolable, AutoCloseable {
 
     /**
      * The time at which all [UniversalModifier]s applied to this [UniversalModifierSequence] ends relative to the
-     * underlying [UIComponent.modifierStartTime], in seconds.
+     * underlying [ModifierTarget.modifierStartTime], in seconds.
      */
     val endTime
         get() = lastActiveModifier?.endTime ?: startTime
@@ -43,7 +42,7 @@ class UniversalModifierSequence : IPoolable, AutoCloseable {
     val duration
         get() = endTime - startTime
 
-    fun init(origin: UIComponent) {
+    fun init(origin: ModifierTarget) {
         this.origin = origin
 
         startTime = origin.modifierStartTime
@@ -453,13 +452,13 @@ class UniversalModifierSequence : IPoolable, AutoCloseable {
         /**
          * Obtains a [UniversalModifierSequence] from the pool or creates a new one if it is not available.
          *
-         * @param origin The [UIComponent] that this [UniversalModifierSequence] will be applied to. If `null`, this can
+         * @param origin The [ModifierTarget] that this [UniversalModifierSequence] will be applied to. If `null`, this can
          * be set later by calling [init] on the obtained [UniversalModifierSequence].
          * @return A [UniversalModifierSequence] instance.
          */
         @JvmStatic
         @JvmOverloads
-        fun obtain(origin: UIComponent? = null) = (pool.acquire() ?: UniversalModifierSequence()).apply {
+        fun obtain(origin: ModifierTarget? = null) = (pool.acquire() ?: UniversalModifierSequence()).apply {
             if (origin != null) {
                 init(origin)
             }

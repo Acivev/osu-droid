@@ -17,6 +17,8 @@ import com.reco1l.verktex.fonts.Fonts
 import com.reco1l.verktex.input.Input
 import com.reco1l.verktex.input.KeyboardEvent
 import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.time.SystemClock
+import com.rian.andengine.modifier.ModifierRegistry
 import org.andengine.engine.Engine
 import org.andengine.input.touch.TouchEvent
 import org.andengine.opengl.util.GLState
@@ -40,6 +42,9 @@ object VerktexBridge {
 
     // The first surface is created after initialize(), every later one is a recreated context.
     private var surfaceGeneration = 0
+
+    // SystemClock time of the last modifier tick, NaN before the first one.
+    private var lastModifierTickTime = Float.NaN
 
 
     @JvmStatic
@@ -123,13 +128,31 @@ object VerktexBridge {
     }
 
     /**
-     * Updates Verktex on AndEngine's update thread.
+     * Updates Verktex on AndEngine's update thread. The modifiers are ticked first, so the update
+     * and the next draw see their values.
+     *
+     * Their delta is measured here from [SystemClock], the time source of [Verktex.clock], because
+     * that clock only advances inside the pump (after the update worker's throttle sleep). The sum
+     * matches the clock's, each frame may be off by that sleep.
+     *
+     * While AndEngine is stopped (the activity is in the background) this is not called, so the
+     * first tick after resuming covers the whole background time. It is left uncapped on purpose, as
+     * on the reco1l path. Only [Verktex.pause] is skipped, its clock does not run then.
      */
     @JvmStatic
     fun pumpUpdate() {
         if (!isInitialized) {
             return
         }
+
+        // Verktex's clock only ticks inside the pump, so the delta is taken from its time source
+        // (SystemClock) here. Its pauses are skipped the same way, the clock does not run then.
+        val now = SystemClock.time
+        if (Verktex.clock.isRunning && !lastModifierTickTime.isNaN()) {
+            val delta = now - lastModifierTickTime
+            Verktex.withTreeLock { ModifierRegistry.tick(delta) }
+        }
+        lastModifierTickTime = now
 
         platform.worker(UPDATE_WORKER).pump()
     }

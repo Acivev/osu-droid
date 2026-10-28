@@ -5,14 +5,13 @@ import com.edlplan.framework.easing.Easing
 import com.osudroid.utils.IPoolable
 import com.osudroid.utils.SynchronizedPool
 import com.rian.andengine.timing.IClock
-import com.reco1l.andengine.component.UIComponent
 import com.reco1l.framework.interpolate
 import kotlin.math.max
 import kotlin.math.min
 import org.andengine.entity.modifier.IEntityModifier
 
 /**
- * A modifier that can be used to apply different types of modifications to a [UIComponent]. This allows
+ * A modifier that can be used to apply different types of modifications to a [ModifierTarget]. This allows
  * instances of the class to be recycled in a pool.
  *
  * Unlike regular [IEntityModifier]s, which rely on relative timing from the frame it is registered, [UniversalModifier]
@@ -32,9 +31,9 @@ class UniversalModifier @JvmOverloads constructor(private val pool: Pool<Univers
     var id = -1L
 
     /**
-     * The [UIComponent] to which this [UniversalModifier] is applied.
+     * The [ModifierTarget] to which this [UniversalModifier] is applied.
      */
-    var target: UIComponent? = null
+    var target: ModifierTarget? = null
 
     /**
      * The type of this [UniversalModifier].

@@ -56,7 +56,7 @@ object FollowPointConnection {
             }
 
             fp.detachSelf()
-            fp.reset()
+            (fp as UISprite).reset()
             pool.release(poolable)
         }
     }

@@ -1,7 +1,5 @@
 package com.rian.andengine.modifier
 
-import com.reco1l.andengine.component.*
-
 /**
  * The type of the [UniversalModifier].
  *
@@ -11,7 +9,7 @@ enum class ModifierType(
     /**
      * The target member of this [ModifierType].
      *
-     * This is used to group [ModifierType]s that operate on the same property (or properties) of a [UIComponent]. It is
+     * This is used to group [ModifierType]s that operate on the same property (or properties) of a [ModifierTarget]. It is
      * assumed that [UniversalModifier]s with different [targetMember]s are independent of each other in that they
      * affect different properties, and therefore they can be applied independently in any order without affecting the
      * end result.
@@ -21,116 +19,116 @@ enum class ModifierType(
     None(null),
 
     /**
-     * Modifies the [UIComponent]'s X scale value.
+     * Modifies the [ModifierTarget]'s X scale value.
      */
     ScaleX("scale"),
 
     /**
-     * Modifies the [UIComponent]'s Y scale value.
+     * Modifies the [ModifierTarget]'s Y scale value.
      */
     ScaleY("scale"),
 
     /**
-     * Modifies the [UIComponent]'s X and Y scale values.
+     * Modifies the [ModifierTarget]'s X and Y scale values.
      */
     ScaleXY("scale"),
 
     /**
-     * Modifies the [UIComponent]'s alpha value.
+     * Modifies the [ModifierTarget]'s alpha value.
      */
     Alpha("alpha"),
 
     /**
-     * Modifies the [UIComponent]'s color value.
+     * Modifies the [ModifierTarget]'s color value.
      */
     Color("color"),
 
     /**
-     * Modifies the [UIComponent]'s X position.
+     * Modifies the [ModifierTarget]'s X position.
      */
     MoveX("move"),
 
     /**
-     * Modifies the [UIComponent]'s Y position.
+     * Modifies the [ModifierTarget]'s Y position.
      */
     MoveY("move"),
 
     /**
-     * Modifies the [UIComponent]'s X and Y position.
+     * Modifies the [ModifierTarget]'s X and Y position.
      */
     MoveXY("move"),
 
     /**
-     * Modifies the [UIComponent]'s X translation.
+     * Modifies the [ModifierTarget]'s X translation.
      */
     TranslateX("translate"),
 
     /**
-     * Modifies the [UIComponent]'s Y translation.
+     * Modifies the [ModifierTarget]'s Y translation.
      */
     TranslateY("translate"),
 
     /**
-     * Modifies the [UIComponent]'s X and Y translation.
+     * Modifies the [ModifierTarget]'s X and Y translation.
      */
     TranslateXY("translate"),
 
     /**
-     * Modifies the [UIComponent]'s rotation.
+     * Modifies the [ModifierTarget]'s rotation.
      */
     Rotation("rotation"),
 
     /**
-     * Modifies the [UIComponent]'s width.
+     * Modifies the [ModifierTarget]'s width.
      */
     Width("size"),
 
     /**
-     * Modifies the [UIComponent]'s height.
+     * Modifies the [ModifierTarget]'s height.
      */
     Height("size"),
 
     /**
-     * Modifies the [UIComponent]'s width and height.
+     * Modifies the [ModifierTarget]'s width and height.
      */
     Size("size");
 
-    fun getInitialValues(entity: UIComponent, reusableArray: FloatArray) = when (this) {
+    fun getInitialValues(entity: ModifierTarget, reusableArray: FloatArray) = when (this) {
         ScaleX -> {
             val array = reusableArray.ensureSize(1)
 
-            array[0] = entity.scaleX
+            array[0] = entity.getScaleX()
             array
         }
 
         ScaleY -> {
             val array = reusableArray.ensureSize(1)
 
-            array[0] = entity.scaleY
+            array[0] = entity.getScaleY()
             array
         }
 
         ScaleXY -> {
             val array = reusableArray.ensureSize(2)
 
-            array[0] = entity.scaleX
-            array[1] = entity.scaleY
+            array[0] = entity.getScaleX()
+            array[1] = entity.getScaleY()
             array
         }
 
         Alpha -> {
             val array = reusableArray.ensureSize(1)
 
-            array[0] = entity.alpha
+            array[0] = entity.getAlpha()
             array
         }
 
         Color -> {
             val array = reusableArray.ensureSize(3)
 
-            array[0] = entity.red
-            array[1] = entity.green
-            array[2] = entity.blue
+            array[0] = entity.getRed()
+            array[1] = entity.getGreen()
+            array[2] = entity.getBlue()
 
             array
         }
@@ -138,22 +136,22 @@ enum class ModifierType(
         MoveX -> {
             val array = reusableArray.ensureSize(1)
 
-            array[0] = entity.x
+            array[0] = entity.getX()
             array
         }
 
         MoveY -> {
             val array = reusableArray.ensureSize(1)
 
-            array[0] = entity.y
+            array[0] = entity.getY()
             array
         }
 
         MoveXY -> {
             val array = reusableArray.ensureSize(2)
 
-            array[0] = entity.x
-            array[1] = entity.y
+            array[0] = entity.getX()
+            array[1] = entity.getY()
 
             array
         }
@@ -206,14 +204,14 @@ enum class ModifierType(
         Rotation -> {
             val array = reusableArray.ensureSize(1)
 
-            array[0] = entity.rotation
+            array[0] = entity.getRotation()
             array
         }
 
         else -> reusableArray
     }
 
-    fun setValues(entity: UIComponent, initialValues: FloatArray, finalValues: FloatArray, percentage: Float) {
+    fun setValues(entity: ModifierTarget, initialValues: FloatArray, finalValues: FloatArray, percentage: Float) {
         fun valueAt(index: Int) = when {
             percentage >= 1f -> finalValues[index]
             percentage <= 0f -> initialValues[index]
@@ -222,15 +220,15 @@ enum class ModifierType(
 
         when (this) {
 
-            ScaleX -> entity.scaleX = valueAt(0)
-            ScaleY -> entity.scaleY = valueAt(0)
+            ScaleX -> entity.setScaleX(valueAt(0))
+            ScaleY -> entity.setScaleY(valueAt(0))
             ScaleXY -> entity.setScale(valueAt(0), valueAt(1))
 
-            Alpha -> entity.alpha = valueAt(0)
+            Alpha -> entity.setAlpha(valueAt(0))
             Color -> entity.setColor(valueAt(0), valueAt(1), valueAt(2))
 
-            MoveX -> entity.setPosition(valueAt(0), entity.y)
-            MoveY -> entity.setPosition(entity.x, valueAt(0))
+            MoveX -> entity.setPosition(valueAt(0), entity.getY())
+            MoveY -> entity.setPosition(entity.getX(), valueAt(0))
             MoveXY -> entity.setPosition(valueAt(0), valueAt(1))
 
             TranslateX -> entity.translationX = valueAt(0)
@@ -245,7 +243,7 @@ enum class ModifierType(
             Height -> entity.height = valueAt(0)
             Size -> entity.setSize(valueAt(0), valueAt(1))
 
-            Rotation -> entity.rotation = valueAt(0)
+            Rotation -> entity.setRotation(valueAt(0))
 
             None -> Unit
         }

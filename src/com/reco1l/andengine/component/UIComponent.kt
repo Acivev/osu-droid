@@ -32,7 +32,7 @@ import kotlin.math.*
  */
 @Suppress("MemberVisibilityCanBePrivate")
 abstract class UIComponent : Entity(0f, 0f),
-    ITouchArea, IThemeable, IClockProvider<IFrameBasedClock?>, IClockReceiver<IFrameBasedClock?> {
+    ITouchArea, IThemeable, IClockProvider<IFrameBasedClock?>, IClockReceiver<IFrameBasedClock?>, ModifierTarget {
 
     //region Axes properties
 
@@ -101,7 +101,7 @@ abstract class UIComponent : Entity(0f, 0f),
     /**
      * The width of the entity.
      */
-    var width: Float = 0f
+    final override var width: Float = 0f
         get() = computeSizeValue(
             value = field,
             padding = padding.horizontal,
@@ -140,7 +140,7 @@ abstract class UIComponent : Entity(0f, 0f),
     /**
      * The height of the entity.
      */
-    var height = 0f
+    final override var height = 0f
         get() = computeSizeValue(
             value = field,
             padding = padding.vertical,
@@ -249,7 +249,7 @@ abstract class UIComponent : Entity(0f, 0f),
     /**
      * The translation in the X axis.
      */
-    open var translationX = 0f
+    override var translationX = 0f
         set(value) {
             if (field != value) {
                 field = value
@@ -260,7 +260,7 @@ abstract class UIComponent : Entity(0f, 0f),
     /**
      * The translation in the Y axis.
      */
-    open var translationY = 0f
+    override var translationY = 0f
         set(value) {
             if (field != value) {
                 field = value
@@ -495,7 +495,7 @@ abstract class UIComponent : Entity(0f, 0f),
     /**
      * Sets the size of the entity.
      */
-    open fun setSize(x: Float, y: Float) {
+    override fun setSize(x: Float, y: Float) {
         width = x
         height = y
     }
@@ -1032,7 +1032,7 @@ abstract class UIComponent : Entity(0f, 0f),
      *
      * @param modifier The [UniversalModifier] to append.
      */
-    fun appendModifier(modifier: UniversalModifier) {
+    override fun appendModifier(modifier: UniversalModifier) {
         getTrackerFor(modifier.type, true)!!.add(modifier)
     }
 
@@ -1224,7 +1224,7 @@ abstract class UIComponent : Entity(0f, 0f),
     /**
      * Starting time to use for new [UniversalModifier]s.
      */
-    val modifierStartTime
+    override val modifierStartTime
         get() = (clock?.currentTime ?: 0f) + modifierDelay
 
     /**
@@ -1835,6 +1835,9 @@ abstract class UIComponent : Entity(0f, 0f),
      */
     val time
         get() = clock?.timeInfo
+
+    override val modifierTime
+        get() = time?.current
 
     override fun updateClock(clock: IFrameBasedClock?) {
         inheritedClock = clock

@@ -1,9 +1,7 @@
 package com.rian.andengine.modifier
 
-import com.reco1l.andengine.component.UIComponent
-
 /**
- * Tracks the lifetime of [UniversalModifier]s for one specified target member of a [UIComponent].
+ * Tracks the lifetime of [UniversalModifier]s for one specified target member of a [ModifierTarget].
  */
 class UniversalModifierTargetTracker(
     /**
@@ -12,9 +10,9 @@ class UniversalModifierTargetTracker(
     val targetMember: String?,
 
     /**
-     * The [UIComponent] whose [UniversalModifier]s are being tracked.
+     * The [ModifierTarget] whose [UniversalModifier]s are being tracked.
      */
-    private val component: UIComponent
+    private val component: ModifierTarget
 ) {
     private var modifierId = 0L
     private val _modifiers = mutableListOf<UniversalModifier>()
@@ -55,9 +53,9 @@ class UniversalModifierTargetTracker(
         _modifiers.add(index, modifier)
 
         // If the new modifier could have an immediate effect, make the effect happen immediately.
-        val time = component.time
+        val time = component.modifierTime
 
-        if (time != null && modifier.startTime <= time.current) {
+        if (time != null && modifier.startTime <= time) {
             if (index > 0) {
                 val prevModifier = modifiers[index - 1]
 
@@ -66,7 +64,7 @@ class UniversalModifierTargetTracker(
                 }
             }
 
-            modifier.apply(time.current)
+            modifier.apply(time)
         }
     }
 
@@ -94,7 +92,7 @@ class UniversalModifierTargetTracker(
      * [UniversalModifierTargetTracker].
      *
      * @param time The time after which to remove [UniversalModifier]s, in seconds relative to [component]'s
-     * [UIComponent.time].
+     * [ModifierTarget.modifierTime].
      */
     fun clearAfter(time: Float) {
         for (i in modifiers.size - 1 downTo 0) {
@@ -114,7 +112,7 @@ class UniversalModifierTargetTracker(
      * this [UniversalModifierTargetTracker].
      *
      * @param time The time after which to remove [UniversalModifier]s, in seconds relative to [component]'s
-     * [UIComponent.time].
+     * [ModifierTarget.modifierTime].
      * @param type The [ModifierType] to remove.
      */
     fun clearAfter(time: Float, type: ModifierType) {
@@ -137,7 +135,7 @@ class UniversalModifierTargetTracker(
      * this [UniversalModifierTargetTracker].
      *
      * @param time The time after which to remove [UniversalModifier]s, in seconds relative to [component]'s
-     * [UIComponent.time].
+     * [ModifierTarget.modifierTime].
      * @param types The types of [ModifierType] to remove.
      */
     fun clearAfter(time: Float, vararg types: ModifierType) {

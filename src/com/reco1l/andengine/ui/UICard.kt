@@ -110,7 +110,7 @@ open class UICard(
 
             content.clearModifiers(ModifierType.Height)
             content.heightTo(0f, if (immediate) 0f else 0.1f).after {
-                it.isVisible = false
+                content.isVisible = false
                 onContentChanged()
             }
 
