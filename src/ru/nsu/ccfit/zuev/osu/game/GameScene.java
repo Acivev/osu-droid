@@ -55,6 +55,7 @@ import com.reco1l.verktex.data.Vec2;
 import com.reco1l.verktex.data.Vec4;
 import com.reco1l.verktex.graphics.BlendMode;
 import com.reco1l.verktex.graphics.GraphicsRenderer;
+import com.reco1l.verktex.graphics.GraphicsTexture;
 import com.reco1l.verktex.input.KeyboardEvent;
 import com.reco1l.verktex.time.TickingClock;
 import com.reco1l.verktex.ui.UIAnimatedSprite;
@@ -136,6 +137,7 @@ import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 
 import javax.annotation.Nullable;
@@ -1464,28 +1466,46 @@ public class GameScene implements GameObjectListener {
 
     /**
      * Loads {@link #GAMEPLAY_TEXTURES}, the digits of the hit circle and score prefixes and the icons of the
-     * mods, so no skin texture is decoded during play. Must be called on the update thread.
+     * mods, so no skin texture is decoded during play, and uploads them to the GPU on the next frame, so none
+     * is uploaded on the frame it is first drawn. Must be called on the update thread.
      */
     private void preloadGameplayTextures() {
+        var textures = new LinkedHashSet<GraphicsTexture>();
+        Consumer<GraphicsTexture.Region> collect = region -> {
+            if (region != null) {
+                textures.add(region.getTexture());
+            }
+        };
+
         for (var name : GAMEPLAY_TEXTURES) {
             // The flashlight is a bundled asset outside gfx/, where ResourceManager loads it from.
-            SkinTextures.getWithBeatmapSkin(name, name.equals("flashlight_cursor") ? "flashlight_cursor.png" : "gfx/" + name + ".png");
-            GameplayLayer.skinAnimationFrames(name);
+            collect.accept(SkinTextures.getWithBeatmapSkin(name, name.equals("flashlight_cursor") ? "flashlight_cursor.png" : "gfx/" + name + ".png"));
+            GameplayLayer.skinAnimationFrames(name).forEach(collect);
         }
 
         // The slider ball's frames are named without a hyphen.
         for (int i = 0, count = ResourceManager.getInstance().getFrameCount("sliderb"); i < count; i++) {
-            SkinTextures.getWithBeatmapSkin("sliderb" + i);
+            collect.accept(SkinTextures.getWithBeatmapSkin("sliderb" + i));
         }
 
         for (var digit : GAMEPLAY_DIGITS) {
-            SkinTextures.getWithPrefix(OsuSkin.get().getHitCirclePrefix(), digit);
-            SkinTextures.getWithPrefix(OsuSkin.get().getScorePrefix(), digit);
+            collect.accept(SkinTextures.getWithPrefix(OsuSkin.get().getHitCirclePrefix(), digit));
+            collect.accept(SkinTextures.getWithPrefix(OsuSkin.get().getScorePrefix(), digit));
         }
 
         for (var mod : lastMods.values()) {
-            SkinTextures.get(mod.getIconTextureName());
+            collect.accept(SkinTextures.get(mod.getIconTextureName()));
         }
+
+        // Verktex uploads a texture's regions when it is first bound, which would stall the frame that first
+        // draws them (the first hit object, the first spinner). Every draw binds its own texture, so binding
+        // them here ahead of time changes nothing that is drawn.
+        Verktex.scheduleOnDraw(() -> {
+            for (var texture : textures) {
+                texture.bind();
+            }
+            return Unit.INSTANCE;
+        });
     }
 
     private void prepareHUD(final DroidPlayableBeatmap playableBeatmap) {
