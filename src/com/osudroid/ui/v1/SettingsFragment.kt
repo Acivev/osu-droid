@@ -489,10 +489,15 @@ class SettingsFragment : SettingsFragment() {
         val offsetPreference = findPreference<SeekBarPreference>("offset")!!
 
         findPreference<Preference>("offset_calibration")!!.setOnPreferenceClickListener {
-            CalibrationScene.settingsFragment = this
-            CalibrationScene.OFFSET_MIN = offsetPreference.min
-            CalibrationScene.OFFSET_MAX = offsetPreference.max
-            CalibrationScene.show()
+            // The scene is a Verktex overlay, it is built and shown on the update thread.
+            updateThread {
+                Verktex.withTreeLock {
+                    CalibrationScene.settingsFragment = this
+                    CalibrationScene.OFFSET_MIN = offsetPreference.min
+                    CalibrationScene.OFFSET_MAX = offsetPreference.max
+                    CalibrationScene.show()
+                }
+            }
 
             // We only want to dismiss the fragment, not reapply preferences (which is what the override does).
             super.dismiss()

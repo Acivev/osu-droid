@@ -20,6 +20,13 @@ object ActivityOverlay {
         fragmentManager = activity.supportFragmentManager
     }
 
+    /**
+     * Whether an overlay is displayed, the condition [onBackPress] takes the key on.
+     */
+    @JvmStatic
+    val isDisplayingOverlay: Boolean
+        @Synchronized get() = fragmentManager != null && displayingOverlay.size > 0
+
     @JvmStatic
     @Synchronized
     fun onBackPress(): Boolean {
