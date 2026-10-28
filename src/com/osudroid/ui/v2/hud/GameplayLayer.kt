@@ -1,6 +1,7 @@
 package com.osudroid.ui.v2.hud
 
 import com.osudroid.ui.verktex.FullWindowContainer
+import com.osudroid.ui.verktex.PersistentOverlays
 import com.osudroid.ui.verktex.SkinTextures
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.graphics.GraphicsTexture
@@ -25,24 +26,12 @@ class GameplayLayer : FullWindowContainer() {
     var isShown = false
         private set
 
-    /**
-     * The FPS counter overlay, kept above the layer while it is shown. Null while the counter is not a
-     * Verktex overlay.
-     */
-    var fpsProvider: (() -> UIComponent?)? = null
-
-    /**
-     * The chat overlay when it is shown, kept above the layer and the FPS counter. Null while the chat
-     * is not a Verktex overlay.
-     */
-    var chatProvider: (() -> UIComponent?)? = null
-
     private val topOverlays = mutableListOf<UIComponent>()
 
 
     /**
      * Adds the layer as an overlay. Verktex appends overlays, so the FPS counter and the shown chat are
-     * added again above it, as they were above the AndEngine HUD.
+     * moved to the front above it, as they were above the AndEngine HUD.
      */
     fun show() = Verktex.withTreeLock {
         if (isShown) {
@@ -52,8 +41,10 @@ class GameplayLayer : FullWindowContainer() {
         isShown = true
         Verktex.addOverlay(this)
 
-        reAddAbove(fpsProvider?.invoke())
-        reAddAbove(chatProvider?.invoke())
+        PersistentOverlays.bringToFront()
+
+        // The pause or fail menu stays above everything.
+        topOverlays.forEach(::bringToFront)
     }
 
     /**
@@ -97,10 +88,8 @@ class GameplayLayer : FullWindowContainer() {
         ModifierRegistry.setPaused(hud, paused)
     }
 
-    // Only a shown overlay (one with a parent) is moved, a hidden one stays hidden. It is reordered
-    // in place, not removed and added again: detaching it would collapse the expanded chat.
-    private fun reAddAbove(component: UIComponent?) {
-        val parent = component?.parent as? UIContainer ?: return
+    private fun bringToFront(component: UIComponent) {
+        val parent = component.parent as? UIContainer ?: return
         parent.run { component.moveToFront() }
     }
 

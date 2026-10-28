@@ -135,10 +135,15 @@ class CalibrationSceneTest {
         val back = KeyboardEvent(action = KeyboardEvent.Action.Down, key = KeyboardEvent.Key.Back)
         Verktex.withTreeLock { CalibrationScene.show() }
 
-        // The BPM or offset input dialog is shown: the key is left to ActivityOverlay.onBackPress().
+        // The BPM or offset input dialog is shown: the key goes to ActivityOverlay.onBackPress() on the
+        // main thread and the scene stays.
+        var posts = 0
+        CalibrationScene.mainThreadPost = { posts++ }
         CalibrationScene.isActivityOverlayDisplayed = { true }
-        assertFalse(Verktex.withTreeLock { CalibrationScene.onInputEvent(back) })
+        assertTrue(Verktex.withTreeLock { CalibrationScene.onInputEvent(back) })
         assertTrue(EngineRouter.isOverlayShown(CalibrationScene))
+        assertEquals(1, posts)
+        CalibrationScene.mainThreadPost = { block -> block() }
 
         CalibrationScene.isActivityOverlayDisplayed = { false }
         assertTrue(Verktex.withTreeLock { CalibrationScene.onInputEvent(back) })

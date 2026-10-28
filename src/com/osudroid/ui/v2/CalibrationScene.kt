@@ -5,8 +5,6 @@ import androidx.annotation.IdRes
 import androidx.annotation.VisibleForTesting
 import com.edlplan.ui.ActivityOverlay
 import com.edlplan.framework.easing.Easing
-import com.osudroid.multiplayer.Multiplayer
-import com.osudroid.ui.FPSCounter
 import com.osudroid.ui.v1.SettingsFragment
 import com.osudroid.ui.v2.modmenu.LegacyButton
 import com.osudroid.ui.v2.modmenu.LegacyTextButton
@@ -482,13 +480,8 @@ object CalibrationScene : UIScene() {
             songService.pause()
         }
 
+        // The router keeps the FPS counter and the room chat above it, as the AndEngine overlay did.
         EngineRouter.showOverlay(this)
-
-        // The FPS counter and the room chat were in the AndEngine overlay, drawn above the child scene.
-        for (overlay in listOf(FPSCounter.root, Multiplayer.roomScene?.chat)) {
-            val parent = overlay?.parent as? UIContainer ?: continue
-            parent.run { overlay.moveToFront() }
-        }
     }
 
     fun back() {
@@ -508,8 +501,10 @@ object CalibrationScene : UIScene() {
         if (event is KeyboardEvent) {
             if (event.key == KeyboardEvent.Key.Back && event.action == KeyboardEvent.Action.Down) {
                 // A displayed dialog takes the key, AndEngine asked ActivityOverlay.onBackPress() first.
+                // The key is consumed here, the scene below would take it otherwise.
                 if (isActivityOverlayDisplayed()) {
-                    return false
+                    mainThreadPost { ActivityOverlay.onBackPress() }
+                    return true
                 }
 
                 back()

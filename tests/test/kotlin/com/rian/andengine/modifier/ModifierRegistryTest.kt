@@ -6,6 +6,8 @@ import com.reco1l.verktex.data.px
 import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.shape.UIBox
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertNotNull
 import org.junit.Before
 import org.junit.Test
 
@@ -255,5 +257,32 @@ class ModifierRegistryTest {
         ModifierRegistry.tick(0.5f)
 
         assertEquals(start + 0.75f, ModifierRegistry.time, 1e-4f)
+    }
+
+    @Test
+    fun releaseDropsANeverAttachedSubtreeWithASelfRestartingModifier() {
+        val before = ModifierRegistry.activeCount()
+
+        val root = UIContainer()
+        val text = UIBox()
+        root += text
+
+        // The replay marquee: a move that starts again in its own callback, so it never ends.
+        fun loop() {
+            text.x = 0f.px
+            text.moveToX(-100f, 1f).after { loop() }
+        }
+        loop()
+
+        ModifierRegistry.tick(2.5f)
+        assertNotNull(ModifierRegistry.existingTargetFor(text))
+
+        ModifierRegistry.release(root)
+
+        assertEquals(before, ModifierRegistry.activeCount())
+        assertNull(ModifierRegistry.existingTargetFor(text))
+
+        ModifierRegistry.tick(1f)
+        assertEquals(before, ModifierRegistry.activeCount())
     }
 }

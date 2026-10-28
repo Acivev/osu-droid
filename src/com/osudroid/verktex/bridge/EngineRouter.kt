@@ -1,5 +1,6 @@
 package com.osudroid.verktex.bridge
 
+import com.osudroid.ui.verktex.PersistentOverlays
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.ui.UIComponent
 import com.reco1l.verktex.ui.UIScene
@@ -66,6 +67,8 @@ object EngineRouter {
     fun showOverlay(component: UIComponent) = Verktex.withTreeLock {
         if (trackedOverlays.add(component)) {
             Verktex.addOverlay(component)
+            // The FPS counter and the room chat stay above it, as they were on the AndEngine HUD.
+            PersistentOverlays.bringToFront()
         }
     }
 

@@ -2,6 +2,7 @@ package com.osudroid.verktex.hud
 
 import com.osudroid.ui.v2.hud.GameplayHUD
 import com.osudroid.ui.v2.hud.GameplayLayer
+import com.osudroid.ui.verktex.PersistentOverlays
 import com.osudroid.verktex.VerktexTestFixtures
 import com.osudroid.verktex.bridge.EngineRouter
 import com.reco1l.verktex.Verktex
@@ -49,8 +50,13 @@ class GameplayLayerTest {
         layer.addToBack(hud)
     }
 
+    private val defaultFpsRoot = PersistentOverlays.fpsRoot
+    private val defaultChat = PersistentOverlays.chat
+
     @After
     fun tearDown() {
+        PersistentOverlays.fpsRoot = defaultFpsRoot
+        PersistentOverlays.chat = defaultChat
         layer.hide()
         overlays.forEach(Verktex::removeOverlay)
         EngineRouter.leaveVerktex()
@@ -86,8 +92,8 @@ class GameplayLayerTest {
         addOverlay(chat)
 
         hud += PressRecorder("hud", log)
-        layer.fpsProvider = { fps }
-        layer.chatProvider = { chat }
+        PersistentOverlays.fpsRoot = { fps }
+        PersistentOverlays.chat = { chat }
 
         layer.show()
         listOf(layer, fps, chat).forEach(::layoutOverWindow)
@@ -126,8 +132,8 @@ class GameplayLayerTest {
         addOverlay(chat)
         addOverlay(fps)
 
-        layer.fpsProvider = { fps }
-        layer.chatProvider = { chat }
+        PersistentOverlays.fpsRoot = { fps }
+        PersistentOverlays.chat = { chat }
         layer.show()
 
         assertTrue(detached.isEmpty())
@@ -187,5 +193,29 @@ class GameplayLayerTest {
 
         assertTrue(child.alpha < 1f)
         assertEquals(1, updates)
+    }
+
+    @Test
+    fun trackedOverlayShownLaterStaysBelowFpsAndChat() {
+        val log = mutableListOf<String>()
+
+        val fps = PressRecorder("fps", log)
+        val chat = PressRecorder("chat", log)
+        addOverlay(fps)
+        addOverlay(chat)
+        PersistentOverlays.fpsRoot = { fps }
+        PersistentOverlays.chat = { chat }
+
+        // The mod menu, the attribute display and the calibration scene are tracked router overlays.
+        val modMenu = PressRecorder("modMenu", log)
+        EngineRouter.showOverlay(modMenu)
+
+        try {
+            listOf(fps, chat, modMenu).forEach(::layoutOverWindow)
+            assertFalse(press())
+            assertEquals(listOf("chat", "fps", "modMenu"), log)
+        } finally {
+            EngineRouter.hideOverlay(modMenu)
+        }
     }
 }

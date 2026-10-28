@@ -144,10 +144,12 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
                 it.dismiss()
                 updateThread {
                     ToastLogger.showText(string.hudEditor_saving, true)
-                    Verktex.withTreeLock {
+                    // The layout is read under the tree lock, the file is written outside it.
+                    val data = Verktex.withTreeLock {
                         setEditMode(false)
-                        saveToSkinJSON()
+                        getSkinData()
                     }
+                    saveToSkinJSON(data)
                     ToastLogger.showText(string.hudEditor_saved, true)
                 }
             }
@@ -175,9 +177,7 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
     /**
      * Saves the current HUD layout to the skin JSON file.
      */
-    fun saveToSkinJSON() {
-
-        val data = getSkinData()
+    fun saveToSkinJSON(data: HUDSkinData = getSkinData()) {
 
         val jsonFile = File(Config.getSkinPath(), "skin.json")
         val json: JSONObject

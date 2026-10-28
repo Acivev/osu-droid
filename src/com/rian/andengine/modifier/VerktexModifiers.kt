@@ -360,6 +360,21 @@ object ModifierRegistry {
     fun activeCount() = targets.values.count { !it.isEmpty }
 
     /**
+     * Drops the modifiers of [root] and of every component under it, without running their callbacks.
+     * For a subtree that is discarded: one that was never attached keeps ticking otherwise, forever when
+     * a modifier restarts itself.
+     */
+    @JvmStatic
+    fun release(root: UIComponent) {
+        val released = targets.values.filter { isStillUnder(it.component, root) }
+
+        for (target in released) {
+            target.trackers.forEach { it.clear() }
+            remove(target)
+        }
+    }
+
+    /**
      * Binds a subtree root to its own [ticker], `null` unbinds it. Unbound components use [tick].
      */
     @JvmStatic

@@ -300,6 +300,13 @@ class RoomChat : FullWindowContainer() {
 
     override fun onDetached() {
         collapse(true)
+
+        // A collapse still animating when the chat is hidden would leave the body half open: the
+        // registry drops the detached animation and collapse() above sees it already collapsed.
+        if (!isExpanded) {
+            body.clearModifiers(ModifierType.Height)
+            body.height = 0f.px
+        }
     }
 
     override fun onUpdate(clock: TickingClock) {

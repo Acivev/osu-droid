@@ -58,7 +58,6 @@ import com.osudroid.ui.v2.hud.GameplayLayer;
 import com.osudroid.ui.verktex.LegacyUnits;
 import com.osudroid.ui.v2.hud.elements.HUDPPCounter;
 import com.osudroid.multiplayer.Multiplayer;
-import com.osudroid.ui.FPSCounter;
 
 import com.reco1l.framework.Color4;
 import com.reco1l.verktex.Verktex;
@@ -68,6 +67,7 @@ import com.reco1l.verktex.input.InputEvent;
 import com.reco1l.verktex.input.PointerEvent;
 import com.reco1l.verktex.ui.UIComponent;
 import com.reco1l.verktex.ui.text.UIText;
+import com.rian.andengine.modifier.ModifierRegistry;
 import com.rian.andengine.modifier.VerktexModifiers;
 import com.osudroid.GameMode;
 import com.osudroid.beatmaps.Beatmap;
@@ -1177,6 +1177,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         }
 
         hideGameplayLayer();
+        discardHUD(false);
 
         var gameLoadingJob = this.gameLoadingJob;
         var storyboardLoadingJob = this.storyboardLoadingJob;
@@ -1353,16 +1354,15 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     private void prepareHUD(final DroidPlayableBeatmap playableBeatmap) {
         if (gameplayLayer == null) {
             gameplayLayer = new GameplayLayer();
-            // The FPS counter and the shown room chat are kept above the layer.
-            gameplayLayer.setFpsProvider(FPSCounter::getRoot);
-            gameplayLayer.setChatProvider(() -> Multiplayer.isConnected() ? Multiplayer.roomScene.getChat() : null);
         }
 
         if (hud != null) {
             hud.removeSelf();
+            ModifierRegistry.release(hud);
         }
 
         // The layer holds the HUD and, in the editor, its element selector; both belong to the old HUD.
+        ModifierRegistry.release(gameplayLayer);
         gameplayLayer.clearChildren();
 
         hud = new GameplayHUD();
@@ -1519,6 +1519,36 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             component.removeSelf();
             return Unit.INSTANCE;
         });
+    }
+
+    /**
+     * Removes the HUD and drops the modifiers of its subtree on the update thread, so a HUD that is not
+     * used any more (one built for a cancelled load is never attached) does not keep ticking. With
+     * {@code clearLayer} the layer's other children (the editor's element selector) go as well.
+     */
+    private void discardHUD(final boolean clearLayer) {
+        var oldHud = hud;
+        var layer = gameplayLayer;
+
+        Runnable discard = () -> Verktex.INSTANCE.withTreeLock(() -> {
+            if (oldHud != null) {
+                oldHud.removeSelf();
+                ModifierRegistry.release(oldHud);
+            }
+
+            if (clearLayer && layer != null) {
+                ModifierRegistry.release(layer);
+                layer.clearChildren();
+            }
+
+            return Unit.INSTANCE;
+        });
+
+        if (VerktexBridge.isUpdateThread()) {
+            discard.run();
+        } else {
+            Execution.updateThread(discard);
+        }
     }
 
     /**
@@ -2442,12 +2472,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         if (expiredObjects != null) {
             expiredObjects.clear();
         }
-        if (hud != null) {
-            Verktex.INSTANCE.withTreeLock(() -> {
-                hud.removeSelf();
-                return Unit.INSTANCE;
-            });
-        }
+        discardHUD(true);
         hideGameplayLayer();
         breakPeriods = null;
         replaySettingsPanel = null;
