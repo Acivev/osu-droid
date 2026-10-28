@@ -9,7 +9,12 @@ import java.nio.ByteOrder
 import java.nio.IntBuffer
 import kotlin.math.min
 
-class AndroidTextureSource(val bitmap: Bitmap) : GraphicsTexture.Source {
+class AndroidTextureSource(source: Bitmap) : GraphicsTexture.Source {
+
+    // The atlas is GL_RGBA8: RGBA_F16 (16-bit PNGs), RGB_565 and HARDWARE bitmaps fail to upload
+    // (GL_INVALID_OPERATION), which leaves whatever was in the atlas before.
+    val bitmap: Bitmap = if (source.config == Bitmap.Config.ARGB_8888) source
+        else source.copy(Bitmap.Config.ARGB_8888, false)
 
     override val width = bitmap.width.toFloat()
     override val height = bitmap.height.toFloat()
