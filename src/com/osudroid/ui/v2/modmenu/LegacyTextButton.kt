@@ -1,6 +1,7 @@
 package com.osudroid.ui.v2.modmenu
 
 import androidx.annotation.StringRes
+import com.osudroid.ui.verktex.ISkinnable
 import com.osudroid.ui.verktex.LegacyUnits
 import com.osudroid.ui.verktex.LegacyUnits.vu
 import com.osudroid.ui.verktex.SkinTextures
@@ -33,7 +34,7 @@ open class LegacyTextButton(
     private var iconName: String?,
     private var iconAssetPath: String?,
     private var loadIcon: (name: String, assetPath: String) -> GraphicsTexture.Region? = SkinTextures::get
-) : LegacyButton() {
+) : LegacyButton(), ISkinnable {
 
     private val icon = UISprite()
 
@@ -86,6 +87,10 @@ open class LegacyTextButton(
             row += icon
             row += label
         }
+    }
+
+    override fun onSkinChanged() {
+        shouldLoadTexture = true
     }
 
     override fun onApplyLegacySizes() {

@@ -8,6 +8,7 @@ import com.osudroid.multiplayer.api.RoomAPI.setPlayerMods
 import com.osudroid.multiplayer.api.RoomAPI.setRoomMods
 import com.osudroid.multiplayer.api.data.RoomMods
 import com.osudroid.multiplayer.Multiplayer
+import com.osudroid.ui.verktex.ISkinnable
 import com.osudroid.ui.verktex.LegacyUnits
 import com.osudroid.ui.verktex.LegacyUnits.vu
 import com.osudroid.ui.verktex.ModsIndicator
@@ -446,6 +447,11 @@ object ModMenu : UIContainer() {
         EngineRouter.showOverlay(this)
 
         onTree {
+            // Skin changes only reach the shown Verktex scene, so the regions are looked up again in
+            // case the skin changed while this scene was not shown.
+            propagate { (it as? ISkinnable)?.onSkinChanged() }
+            shouldLoadSearchIcon = true
+
             // Do not show mod presets in multiplayer.
             modPresetsSection.isVisible = !Multiplayer.isMultiplayer
 
