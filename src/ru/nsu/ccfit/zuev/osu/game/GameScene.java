@@ -283,6 +283,11 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     public GameplayLayer gameplayLayer;
 
     /**
+     * The pause or fail menu shown above the gameplay layer, null once resumed.
+     */
+    private PauseMenu pauseMenu;
+
+    /**
      * Whether the HUD editor mode is enabled.
      */
     public boolean isHUDEditorMode = false;
@@ -3130,8 +3135,8 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         scene.setIgnoreUpdate(true);
         gameplayLayer.setHudPaused(hud, true);
 
-        final PauseMenu menu = new PauseMenu(engine, this, false);
-        UIEngine.getCurrent().getOverlay().setChildScene(menu.getScene(), false, false, true);
+        pauseMenu = Verktex.INSTANCE.withTreeLock(() -> new PauseMenu(this, false));
+        gameplayLayer.showTopOverlay(pauseMenu.getComponent());
     }
 
     public void gameover() {
@@ -3252,8 +3257,8 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
                     engine.unregisterUpdateHandler(this);
 
-                    PauseMenu menu = new PauseMenu(engine, GameScene.this, true);
-                    UIEngine.getCurrent().getOverlay().setChildScene(menu.getScene(), false, false, true);
+                    pauseMenu = Verktex.INSTANCE.withTreeLock(() -> new PauseMenu(GameScene.this, true));
+                    gameplayLayer.showTopOverlay(pauseMenu.getComponent());
                 }
             }
 
@@ -3271,7 +3276,10 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         scene.setIgnoreUpdate(false);
         gameplayLayer.setHudPaused(hud, false);
 
-        UIEngine.getCurrent().getOverlay().getChildScene().back();
+        if (pauseMenu != null) {
+            gameplayLayer.hideTopOverlay(pauseMenu.getComponent());
+            pauseMenu = null;
+        }
         paused = false;
 
         if (isGameOver) {
