@@ -8,8 +8,11 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ru.nsu.ccfit.zuev.osu.Config
 
 class SkinTexturesTest {
     @Test fun prefersSkinPngOverAsset() {
@@ -67,5 +70,41 @@ class SkinTexturesTest {
 
         assertTrue((first.texture as VerktexTestFixtures.FakeTexture).disposed)
         assertFalse((second.texture as VerktexTestFixtures.FakeTexture).disposed)
+    }
+
+    @Test fun beatmapSkinIsResolvedOnlyWhileEnabled() {
+        val beatmapFile = File("/songs/1 Map/score-0.png")
+        val custom = { name: String -> if (name == "score-0") beatmapFile else null }
+
+        assertSame(beatmapFile, SkinTextures.resolveBeatmapSkin("score-0", enabled = true, customFile = custom))
+        assertNull(SkinTextures.resolveBeatmapSkin("score-0", enabled = false, customFile = custom))
+        assertNull(SkinTextures.resolveBeatmapSkin("score-1", enabled = true, customFile = custom))
+    }
+
+    @Test fun beatmapFolderWinsWhileEnabledUserSkinOtherwise() {
+        val provider = VerktexTestFixtures.ensureInitialized(maxTextureSize = 4096f)
+        setSkinPath("/test-user-skin/")
+
+        // The beatmap's file and the bundled asset (the user skin has none) differ in size.
+        val beatmapFile = File("/songs/2 Map/scorebar-bg.png")
+        provider.textureSizes[beatmapFile.path] = 30f to 10f
+        provider.textureSizes["gfx/scorebar-bg.png"] = 60f to 20f
+        val custom = { name: String -> if (name == "scorebar-bg") beatmapFile else null }
+
+        val fromBeatmap = SkinTextures.getWithBeatmapSkin("scorebar-bg", "gfx/scorebar-bg.png", enabled = true, customFile = custom)
+        assertEquals(30f, fromBeatmap!!.width)
+
+        val fromUserSkin = SkinTextures.getWithBeatmapSkin("scorebar-bg", "gfx/scorebar-bg.png", enabled = false, customFile = custom)
+        assertEquals(60f, fromUserSkin!!.width)
+
+        // Another beatmap's file for the same name is its own texture, not the cached one.
+        val otherFile = File("/songs/3 Map/scorebar-bg.png")
+        provider.textureSizes[otherFile.path] = 40f to 10f
+        val other = SkinTextures.getWithBeatmapSkin("scorebar-bg", "gfx/scorebar-bg.png", enabled = true) { otherFile }
+        assertEquals(40f, other!!.width)
+    }
+
+    private fun setSkinPath(path: String) {
+        Config.setSkinPath(path)
     }
 }

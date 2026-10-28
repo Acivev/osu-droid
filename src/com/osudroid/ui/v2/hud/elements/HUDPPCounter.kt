@@ -2,6 +2,7 @@ package com.osudroid.ui.v2.hud.elements
 
 import com.osudroid.ui.v2.hud.HUDElement
 import com.osudroid.ui.v2.SpriteFont
+import com.reco1l.verktex.time.TickingClock
 import com.rian.framework.RollingDoubleCounter
 import ru.nsu.ccfit.zuev.osu.Config
 import ru.nsu.ccfit.zuev.osu.DifficultyAlgorithm
@@ -26,10 +27,8 @@ class HUDPPCounter : HUDElement() {
     private val counter = RollingDoubleCounter(0.0).apply { rollingDuration = 1f }
 
     init {
-        registerUpdateHandler(counter)
-        attachChild(sprite)
+        this += sprite
         updateText()
-        onContentChanged()
     }
 
     override fun onGameplayUpdate(game: GameScene, secondsElapsed: Float) {
@@ -39,10 +38,12 @@ class HUDPPCounter : HUDElement() {
         counter.targetValue = game.stat.pp.takeIf { !it.isNaN() } ?: 0.0
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    override fun onUpdate(clock: TickingClock) {
         value = counter.currentValue.roundToInt()
 
-        super.onManagedUpdate(deltaTimeSec)
+        // The AndEngine update handler ran before the children.
+        counter.onUpdate(clock.elapsedTickTime)
+        super.onUpdate(clock)
     }
 
     private fun updateText() {

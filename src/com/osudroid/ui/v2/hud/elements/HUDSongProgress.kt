@@ -1,10 +1,14 @@
 package com.osudroid.ui.v2.hud.elements
 
-import com.reco1l.andengine.*
-import com.reco1l.andengine.shape.UIBox
-import com.reco1l.andengine.shape.UICircle
-import com.reco1l.andengine.shape.PaintStyle
-import com.reco1l.framework.Color4
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.OutlineCircle
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.data.wrap
+import com.reco1l.verktex.ui.shape.UIBox
+import com.reco1l.verktex.ui.shape.UICircle
 import com.osudroid.ui.v2.hud.HUDElement
 import ru.nsu.ccfit.zuev.osu.Config
 import ru.nsu.ccfit.zuev.osu.game.GameScene
@@ -27,10 +31,10 @@ class HUDLinearSongProgress : HUDSongProgress() {
 
         anchor = Anchor.BottomLeft
         origin = Anchor.BottomLeft
-        relativeSizeAxes = Axes.X
-        setSize(1f, BAR_HEIGHT)
+        width = fill()
+        height = BAR_HEIGHT.vu.px
 
-        color = Color4.Black
+        backgroundColor = Color4.Black
         alpha = 0.3f
     }
 
@@ -38,29 +42,32 @@ class HUDLinearSongProgress : HUDSongProgress() {
 
         anchor = Anchor.BottomLeft
         origin = Anchor.BottomLeft
-        setSize(0f, BAR_HEIGHT)
+        width = 0f.px
+        height = BAR_HEIGHT.vu.px
+        backgroundColor = Color4.White
         alpha = 0.4f
     }
 
 
     init {
         // Adding a 20epx padding so the user can grab the progress bar more easily.
-        setSize(Config.getRES_WIDTH().toFloat(), BAR_HEIGHT + 20f)
+        width = Config.getRES_WIDTH().toFloat().vu.px
+        height = (BAR_HEIGHT + 20f).vu.px
 
-        attachChild(backgroundRect)
-        attachChild(progressRect)
+        this += backgroundRect
+        this += progressRect
     }
 
 
     override fun setProgress(progress: Float, isIntro: Boolean) {
 
         if (isIntro) {
-            progressRect.setColor(153f / 255f, 204f / 255f, 51f / 255f)
+            progressRect.backgroundColor = Color4(153f / 255f, 204f / 255f, 51f / 255f)
         } else {
-            progressRect.setColor(1f, 1f, 150f / 255f)
+            progressRect.backgroundColor = Color4(1f, 1f, 150f / 255f)
         }
 
-        progressRect.width = width * progress
+        progressRect.width = (size.x * progress).vu.px
     }
 
 
@@ -76,57 +83,58 @@ class HUDPieSongProgress : HUDSongProgress() {
 
 
     init {
-        width = MatchContent
-        height = MatchContent
+        width = wrap()
+        height = wrap()
 
         // Reference: https://github.com/ppy/osu/blob/6455c0583b5e607baeca7f584410bc63515aa619/osu.Game/Skinning/LegacySongProgress.cs
 
         // Draw a white ring outline. Using PaintStyle.Outline avoids relying on the
         // depth buffer, which may not be available (DEPTH_SIZE = 0 in ConfigChooser).
-        UICircle().also { ring ->
+        OutlineCircle().also { ring ->
 
-            ring.setSize(33f, 33f)
+            ring.width = 33f.vu.px
+            ring.height = 33f.vu.px
             ring.anchor = Anchor.Center
             ring.origin = Anchor.Center
             ring.color = Color4.White
-            ring.paintStyle = PaintStyle.Outline
+            // The AndEngine outline width was in window pixels.
             ring.lineWidth = 3f
 
-            attachChild(ring)
+            this += ring
         }
 
         circularProgress = UICircle().also { progress ->
 
-            progress.setSize(30f, 30f)
+            progress.width = 30f.vu.px
+            progress.height = 30f.vu.px
             progress.anchor = Anchor.Center
             progress.origin = Anchor.Center
             progress.alpha = 0.6f
 
-            attachChild(progress)
+            this += progress
         }
 
 
         UICircle().also { dot ->
 
-            dot.setSize(4f, 4f)
+            dot.width = 4f.vu.px
+            dot.height = 4f.vu.px
             dot.anchor = Anchor.Center
             dot.origin = Anchor.Center
             dot.color = Color4.White
 
-            attachChild(dot)
+            this += dot
         }
-
-        onContentChanged()
     }
 
 
     override fun setProgress(progress: Float, isIntro: Boolean) {
 
         if (isIntro) {
-            circularProgress.setColor(199f / 255f, 1f, 47f / 255f)
+            circularProgress.color = circularProgress.color.copy(red = 199f / 255f, green = 1f, blue = 47f / 255f)
             circularProgress.setPortion(-1f + progress)
         } else {
-            circularProgress.setColor(1f, 1f, 1f)
+            circularProgress.color = circularProgress.color.copy(red = 1f, green = 1f, blue = 1f)
             circularProgress.setPortion(progress)
         }
 

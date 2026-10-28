@@ -3,7 +3,7 @@ package com.osudroid.ui.v2.hud.elements
 import com.osudroid.beatmaps.HitWindow
 import com.osudroid.beatmaps.constants.HitObjectType
 import com.osudroid.ui.v2.hud.HUDElement
-import com.reco1l.framework.Color4
+import com.reco1l.verktex.data.Color4
 import ru.nsu.ccfit.zuev.osu.GlobalManager
 import kotlin.math.abs
 

@@ -4,17 +4,22 @@ import android.graphics.PointF
 import com.edlplan.framework.easing.Easing
 import com.osudroid.math.toRadians
 import com.osudroid.ui.v2.hud.HUDElement
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.OutlineCircle
 import com.osudroid.utils.*
-import com.reco1l.andengine.Anchor
-import com.reco1l.andengine.box
-import com.reco1l.andengine.circle
-import com.reco1l.andengine.container
-import com.reco1l.andengine.container.UIContainer
-import com.reco1l.andengine.shape.PaintStyle
-import com.reco1l.andengine.shape.UIBox
-import com.reco1l.framework.Color4
-import org.andengine.engine.camera.Camera
-import org.andengine.opengl.util.GLState
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.Mat2
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.container.container
+import com.reco1l.verktex.ui.shape.UIBox
+import com.reco1l.verktex.ui.shape.box
+import com.reco1l.verktex.ui.shape.circle
+import com.rian.andengine.modifier.clearModifiers
+import com.rian.andengine.modifier.moveTo
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.hypot
@@ -35,37 +40,36 @@ class HUDAimErrorMeter : HUDElement() {
     private val expiredIndicators = SynchronizedPool<Indicator>(30)
     private val activeIndicators = mutableListOf<Indicator>()
 
-    // Shared shape reused to draw every "X" hit marker at different positions, colors and alpha.
-    private val markerBar = UIBox().apply {
-        anchor = Anchor.Center
-        origin = Anchor.Center
-        setSize(HIT_MARKER_SIZE, HIT_MARKER_THICKNESS)
-        color = Color4.White
-
-        // Used to get anchor working properly.
-        parent = this@HUDAimErrorMeter
-    }
+    // Every "X" hit marker is drawn as two bars of this size, centered at the hit position, as the shared AndEngine
+    // box was.
+    private val markerBarWidth = HIT_MARKER_SIZE.vu
+    private val markerBarHeight = HIT_MARKER_THICKNESS.vu
+    private val markerMatrix = Mat2()
+    private val markerSceneMatrix = Mat2()
 
     // Still attached as a normal child (so its `moveTo` modifier keeps ticking via the regular update
     // traversal), but manually re-drawn after the hit indicators in `onDrawChildren` - see there for why.
     private val averageMarker = UIContainer().apply {
         anchor = Anchor.Center
         origin = Anchor.Center
-        setSize(AVERAGE_MARKER_SIZE, AVERAGE_MARKER_SIZE)
+        width = AVERAGE_MARKER_SIZE.vu.px
+        height = AVERAGE_MARKER_SIZE.vu.px
 
         box {
             anchor = Anchor.Center
             origin = Anchor.Center
-            setSize(AVERAGE_MARKER_SIZE, AVERAGE_MARKER_THICKNESS)
-            color = Color4.White
+            width = AVERAGE_MARKER_SIZE.vu.px
+            height = AVERAGE_MARKER_THICKNESS.vu.px
+            backgroundColor = Color4.White
         }
 
         box {
             anchor = Anchor.Center
             origin = Anchor.Center
-            setSize(AVERAGE_MARKER_SIZE, AVERAGE_MARKER_THICKNESS)
-            rotation = 90f
-            color = Color4.White
+            width = AVERAGE_MARKER_SIZE.vu.px
+            height = AVERAGE_MARKER_THICKNESS.vu.px
+            rotationZ = 90f
+            backgroundColor = Color4.White
         }
     }
 
@@ -83,22 +87,24 @@ class HUDAimErrorMeter : HUDElement() {
 
 
     init {
-        setSize(SIZE, SIZE)
+        width = SIZE.vu.px
+        height = SIZE.vu.px
 
         circle {
             anchor = Anchor.Center
             origin = Anchor.Center
-            setSize(SIZE * INNER_PORTION, SIZE * INNER_PORTION)
-            paintStyle = PaintStyle.Fill
+            width = (SIZE * INNER_PORTION).vu.px
+            height = (SIZE * INNER_PORTION).vu.px
             color = Color4(128, 128, 128)
             alpha = 0.3f
         }
 
-        circle {
+        +OutlineCircle().apply {
             anchor = Anchor.Center
             origin = Anchor.Center
-            setSize(SIZE * INNER_PORTION, SIZE * INNER_PORTION)
-            paintStyle = PaintStyle.Outline
+            width = (SIZE * INNER_PORTION).vu.px
+            height = (SIZE * INNER_PORTION).vu.px
+            // The AndEngine outline width was in window pixels.
             lineWidth = LINE_THICKNESS
             color = Color4.White
         }
@@ -118,14 +124,16 @@ class HUDAimErrorMeter : HUDElement() {
         container {
             anchor = Anchor.Center
             origin = Anchor.Center
-            setSize(SIZE, SIZE)
-            rotation = 45f
+            width = SIZE.vu.px
+            height = SIZE.vu.px
+            rotationZ = 45f
 
             box {
                 anchor = Anchor.Center
                 origin = Anchor.Center
-                setSize(LINE_THICKNESS, shaftLength)
-                color = Color4.White
+                width = LINE_THICKNESS.vu.px
+                height = shaftLength.vu.px
+                backgroundColor = Color4.White
                 alpha = 0.7f
             }
 
@@ -135,20 +143,24 @@ class HUDAimErrorMeter : HUDElement() {
             box {
                 anchor = Anchor.Center
                 origin = Anchor.TopCenter
-                setSize(LINE_THICKNESS, ARROW_TIP_LENGTH)
-                y = -shaftLength / 2f
-                rotation = -45f
-                color = Color4.White
+                rotationOrigin = Anchor.TopCenter
+                width = LINE_THICKNESS.vu.px
+                height = ARROW_TIP_LENGTH.vu.px
+                y = (-shaftLength / 2f).vu.px
+                rotationZ = -45f
+                backgroundColor = Color4.White
                 alpha = 0.7f
             }
 
             box {
                 anchor = Anchor.Center
                 origin = Anchor.TopCenter
-                setSize(LINE_THICKNESS, ARROW_TIP_LENGTH)
-                y = -shaftLength / 2f
-                rotation = 45f
-                color = Color4.White
+                rotationOrigin = Anchor.TopCenter
+                width = LINE_THICKNESS.vu.px
+                height = ARROW_TIP_LENGTH.vu.px
+                y = (-shaftLength / 2f).vu.px
+                rotationZ = 45f
+                backgroundColor = Color4.White
                 alpha = 0.7f
             }
         }
@@ -159,9 +171,10 @@ class HUDAimErrorMeter : HUDElement() {
     private fun createCrossGuide(rotationDegrees: Float, thickness: Float, guideAlpha: Float) = UIBox().apply {
         anchor = Anchor.Center
         origin = Anchor.Center
-        setSize(thickness, SIZE * INNER_PORTION * 0.9f)
-        rotation = rotationDegrees
-        color = Color4.White
+        width = thickness.vu.px
+        height = (SIZE * INNER_PORTION * 0.9f).vu.px
+        rotationZ = rotationDegrees
+        backgroundColor = Color4.White
         alpha = guideAlpha
     }
 
@@ -200,8 +213,8 @@ class HUDAimErrorMeter : HUDElement() {
         }
 
         averageMarker.moveTo(
-            averagePositionX * SIZE,
-            averagePositionY * SIZE,
+            (averagePositionX * SIZE).vu,
+            (averagePositionY * SIZE).vu,
             AVERAGE_MARKER_MOVE_DURATION,
             Easing.OutQuint
         )
@@ -252,45 +265,49 @@ class HUDAimErrorMeter : HUDElement() {
         hasLastObjectPosition = false
 
         // Snap back to center immediately rather than animating from the pre-seek position (which is now stale).
-        averageMarker.clearEntityModifiers()
-        averageMarker.x = 0f
-        averageMarker.y = 0f
+        averageMarker.clearModifiers()
+        averageMarker.x = 0f.px
+        averageMarker.y = 0f.px
     }
 
     //region Indicator update & draw
 
-    override fun onManagedDraw(pGLState: GLState, camera: Camera) {
+    override fun onDraw(renderer: GraphicsRenderer) {
         // averageMarker is hidden for this pass and re-drawn manually below (after the hit indicators) so
         // it always renders on top of them.
         averageMarker.isVisible = false
-        super.onManagedDraw(pGLState, camera)
+        super.onDraw(renderer)
         averageMarker.isVisible = true
 
-        pGLState.pushModelViewGLMatrix()
-        onApplyTransformations(pGLState)
-
         activeIndicators.forEach {
-            markerBar.x = it.x
-            markerBar.y = it.y
-            markerBar.color = it.color
-            markerBar.alpha = it.alpha
+            val color = it.color.copy(alpha = it.alpha)
 
-            markerBar.rotation = -45f
-            markerBar.onDraw(pGLState, camera)
-
-            markerBar.rotation = 45f
-            markerBar.onDraw(pGLState, camera)
+            drawMarkerBar(renderer, it.x.vu, it.y.vu, -45f, color)
+            drawMarkerBar(renderer, it.x.vu, it.y.vu, 45f, color)
         }
 
-        averageMarker.onDraw(pGLState, camera)
-
-        pGLState.popModelViewGLMatrix()
+        averageMarker.draw(renderer)
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    // A bar centered at the given offset from this element's center and rotated around its own center.
+    private fun drawMarkerBar(renderer: GraphicsRenderer, offsetX: Float, offsetY: Float, rotation: Float, color: Color4) {
+        markerMatrix.identity()
+        markerMatrix.translate(-markerBarWidth / 2f, -markerBarHeight / 2f)
+        markerMatrix.rotate(rotation)
+        markerMatrix.translate(bounds.width / 2f + offsetX, bounds.height / 2f + offsetY)
+
+        markerSceneMatrix.set(localToSceneMatrix)
+        markerSceneMatrix.concat(markerMatrix)
+
+        renderer.pushMatrix(markerSceneMatrix)
+        renderer.drawRect(0f, 0f, markerBarWidth, markerBarHeight, color = color)
+        renderer.popMatrix()
+    }
+
+    override fun onUpdate(clock: TickingClock) {
         activeIndicators.forEach(Indicator::update)
 
-        super.onManagedUpdate(deltaTimeSec)
+        super.onUpdate(clock)
     }
 
     //endregion

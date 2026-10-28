@@ -2,14 +2,21 @@ package com.osudroid.ui.v2.hud
 
 import android.graphics.PointF
 import com.osudroid.ui.v2.hud.elements.*
-import com.reco1l.andengine.*
-import com.reco1l.andengine.container.UIContainer
-import com.reco1l.andengine.shape.*
-import com.reco1l.framework.Color4
-import com.reco1l.framework.math.Vec2
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.LayoutConstraints
+import com.reco1l.verktex.data.Vec2
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.shape.*
 import com.osudroid.ui.v2.hud.editor.HUDElementOverlay
-import com.reco1l.andengine.component.*
-import org.andengine.input.touch.TouchEvent
+import com.rian.andengine.modifier.clearModifiers
+import com.rian.andengine.modifier.fadeTo
 import com.osudroid.beatmaps.constants.HitObjectType
 import com.osudroid.beatmaps.hitobjects.HitObject
 import kotlin.math.abs
@@ -91,6 +98,60 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
     private var connectionLine: UILine? = null
 
 
+    //region Legacy units
+
+    /**
+     * The position in virtual units, the AndEngine `x` and `y`. The Verktex [x] and [y] follow it.
+     */
+    var position = Vec2.Zero
+        set(value) {
+            field = value
+            x = value.x.vu.px
+            y = value.y.vu.px
+        }
+
+    /**
+     * The size in virtual units without the scale, the AndEngine `width` and `height`. It is measured
+     * on demand because the AndEngine size was known before the first layout pass.
+     */
+    val size: Vec2
+        get() {
+            if (measureInvalid) {
+                measure(UNBOUNDED)
+            }
+            return measuredSize / LegacyUnits.scale
+        }
+
+    /**
+     * The position of the anchor in the parent, in virtual units.
+     */
+    val anchorPosition: Vec2
+        get() = parentSize * anchor
+
+    private val parentSize: Vec2
+        get() = when (val parent = parent) {
+            is GameplayHUD -> parent.size
+            null -> Vec2.Zero
+            else -> parent.bounds.let { Vec2(it.width, it.height) } / LegacyUnits.scale
+        }
+
+    /**
+     * The AndEngine background of the element, drawn behind its children over its whole size.
+     * It is not a child, so it is animated by the modifier registry while unattached.
+     */
+    protected var background: UIBox? = null
+
+    fun setPosition(x: Float, y: Float) {
+        position = Vec2(x, y)
+    }
+
+    override fun onDraw(renderer: GraphicsRenderer) {
+        background?.let { renderer.drawRect(0f, 0f, bounds.width, bounds.height, color = it.color) }
+        super.onDraw(renderer)
+    }
+
+    //endregion
+
     //region Skinning
 
     /**
@@ -103,7 +164,10 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
 
         anchor = data.anchor
         origin = data.origin
-        setScale(data.scale)
+        // The AndEngine origin was also the scale and rotation center.
+        scaleOrigin = data.origin
+        rotationOrigin = data.origin
+        setElementScale(data.scale)
         setPosition(data.position.x, data.position.y)
 
         // When the element is restored it's usually selected so we need to update the connection line.
@@ -120,8 +184,8 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
         type = this::class,
         anchor = anchor,
         origin = origin,
-        scale = (mScaleX + mScaleY) / 2f,
-        position = Vec2(x, y)
+        scale = (scaleX + scaleY) / 2f,
+        position = position
     )
 
     /**
@@ -148,10 +212,10 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
             }
             editorOverlay = HUDElementOverlay(this)
 
-            parent!!.attachChild(editorOverlay!!)
+            parent!! += editorOverlay!!
         } else {
-            connectionLine?.detachSelf()
-            editorOverlay?.detachSelf()
+            connectionLine?.removeSelf()
+            editorOverlay?.removeSelf()
 
             connectionLine = null
             background = null
@@ -164,10 +228,10 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
      */
     open fun onSelectionStateChange(isSelected: Boolean) {
 
-        background?.clearEntityModifiers()
+        background?.clearModifiers()
         background?.fadeTo(if (isSelected) 0.5f else 0.15f, 0.1f)
 
-        editorOverlay?.clearEntityModifiers()
+        editorOverlay?.clearModifiers()
         editorOverlay?.fadeTo(if (isSelected) 1f else 0f, 0.1f)
 
         if (isSelected) {
@@ -176,7 +240,7 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
             wasSelected = false
         }
 
-        connectionLine?.clearEntityModifiers()
+        connectionLine?.clearModifiers()
         connectionLine?.fadeTo(if (isSelected) 1f else 0f, 0.1f)
     }
 
@@ -210,30 +274,40 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
     private var wasSelected = false
     private var wasMoved = false
 
+    // Verktex offers moves and releases to every child, AndEngine bound them to the pressed area.
+    private var pressedPointerId = -1
 
-    override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float): Boolean {
 
-        if (isInEditMode) {
+    override fun onInputEvent(event: InputEvent): Boolean {
+
+        if (isInEditMode && event is PointerEvent) {
             val hud = parent as GameplayHUD
 
-            val parentLocalX = absoluteX + localX
-            val parentLocalY = absoluteY + localY
+            val parentLocal = hud.toLocalSpaceFromScene(event.x, event.y) / LegacyUnits.scale
+
+            val parentLocalX = parentLocal.x
+            val parentLocalY = parentLocal.y
 
             val deltaX = parentLocalX - initialX
             val deltaY = parentLocalY - initialY
 
-            if (event.isActionDown) {
+            if (event.action == PointerEvent.Action.Down) {
                 initialX = parentLocalX
                 initialY = parentLocalY
 
                 wasMoved = false
                 wasSelected = hud.selected == this
+                pressedPointerId = event.pointerId
 
                 hud.selected = this
                 return true
             }
 
-            if (event.isActionMove) {
+            if (event.pointerId != pressedPointerId) {
+                return false
+            }
+
+            if (event.action == PointerEvent.Action.Move) {
                 // Preventing from moving the element if it's not selected.
                 if (isSelected) {
                     move(deltaX, deltaY)
@@ -245,11 +319,13 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
                 }
             }
 
-            if (event.isActionUp) {
-                if (wasSelected && isSelected && !wasMoved) {
+            if (event.action == PointerEvent.Action.Up || event.action == PointerEvent.Action.Cancel) {
+                pressedPointerId = -1
+
+                if (event.action == PointerEvent.Action.Up && wasSelected && isSelected && !wasMoved) {
                     hud.forEachElement { element ->
 
-                        if (element != this && element.contains(parentLocalX, parentLocalY)) {
+                        if (element != this && element.containsScenePoint(event.x, event.y)) {
                             hud.selected = element
                             return@forEachElement
                         }
@@ -262,11 +338,6 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
         return false
     }
 
-    override fun onInvalidateTransformations() {
-        super.onInvalidateTransformations()
-        editorOverlay?.onInvalidateTransformations()
-    }
-
     //endregion
 
     //region Edit mode
@@ -275,14 +346,14 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
 
         val drawSize = size * scale
         val drawPosition = anchorPosition + position - drawSize * origin
-        val parentDrawSize = (parent as UIComponent).size
+        val parentDrawSize = parentSize
 
         val relativeTopLeft = drawPosition / parentDrawSize
         val relativeTopRight = (drawPosition + Vec2(drawSize.x, 0f)) / parentDrawSize
         val relativeBottomRight = (drawPosition + drawSize) / parentDrawSize
         val relativeBottomLeft = (drawPosition + Vec2(0f, drawSize.y)) / parentDrawSize
 
-        val closest = Anchor.all.minBy {
+        val closest = AnchorNames.all.minBy {
             minOf(
                 abs(relativeTopLeft.distance(it)),
                 abs(relativeTopRight.distance(it)),
@@ -301,6 +372,8 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
             val previousOriginOffset = -(size * scale * origin)
             val originOffset = -(size * scale * closest)
             origin = closest
+            scaleOrigin = closest
+            rotationOrigin = closest
             position -= originOffset - previousOriginOffset
         }
     }
@@ -309,49 +382,46 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
 
         if (connectionLine == null) {
             connectionLine = UILine().apply {
+                // The line draws in its own space, which covers the parent.
+                width = fill()
+                height = fill()
                 color = Color4(0xFFF27272)
-                lineWidth = 10f
+                lineWidth = 10f.px
                 alpha = 0f
             }
-            parent!!.attachChild(connectionLine!!)
+            parent!! += connectionLine!!
         }
 
-        connectionLine!!.fromPoint = anchorPosition
-        connectionLine!!.toPoint = (editorOverlay?.outlinePosition ?: Vec2.Zero) + size * scale * origin
+        connectionLine!!.fromPoint = anchorPosition * LegacyUnits.scale
+        connectionLine!!.toPoint = ((editorOverlay?.outlinePosition ?: Vec2.Zero) + size * scale * origin) * LegacyUnits.scale
     }
 
-    override fun setScaleX(pScaleX: Float) {
-        super.setScaleX(pScaleX)
+    // The AndEngine setScale(Float) override; the name is taken by the Verktex scale setter.
+    fun setElementScale(value: Float) {
+        scale = value
         updateConnectionLine()
     }
 
-    override fun setScaleY(pScaleY: Float) {
-        super.setScaleY(pScaleY)
+    fun setScale(scaleX: Float, scaleY: Float) {
+        this.scaleX = scaleX
+        this.scaleY = scaleY
         updateConnectionLine()
     }
 
-    override fun setScale(pScale: Float) {
-        super.setScale(pScale)
-        updateConnectionLine()
-    }
+    fun detachSelf(): Boolean {
+        editorOverlay?.removeSelf()
+        connectionLine?.removeSelf()
 
-    override fun setScale(pScaleX: Float, pScaleY: Float) {
-        super.setScale(pScaleX, pScaleY)
-        updateConnectionLine()
-    }
-
-    override fun detachSelf(): Boolean {
-        editorOverlay?.detachSelf()
-        connectionLine?.detachSelf()
-
-        return super.detachSelf()
+        val hadParent = parent != null
+        removeSelf()
+        return hadParent
     }
 
     /**
      * Moves the element by the specified delta.
      */
     fun move(deltaX: Float, deltaY: Float) {
-        setPosition(x + deltaX, y + deltaY)
+        setPosition(position.x + deltaX, position.y + deltaY)
         applyClosestAnchorOrigin()
         updateConnectionLine()
     }
@@ -365,4 +435,9 @@ abstract class HUDElement : UIContainer(), IGameplayEvents {
     }
 
     //endregion
+
+
+    companion object {
+        private val UNBOUNDED = LayoutConstraints(0f, Float.POSITIVE_INFINITY, 0f, Float.POSITIVE_INFINITY)
+    }
 }

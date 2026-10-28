@@ -166,15 +166,20 @@ object Multiplayer {
 
         val hud = GlobalManager.getInstance().gameScene.hud ?: return
 
-        if (hud.hasElement(HUDLeaderboard::class)) {
+        val itemsList = MutableList(array.length()) { i ->
+            jsonToScoreboardItem(array.getJSONObject(i)).apply { rank = i + 1 }
+        }
 
-            val itemsList = MutableList(array.length()) { i ->
-                jsonToScoreboardItem(array.getJSONObject(i)).apply { rank = i + 1 }
-            }
+        // The HUD is a Verktex tree, read on the update thread under its lock.
+        updateThread {
+            Verktex.withTreeLock {
+                if (hud.hasElement(HUDLeaderboard::class)) {
 
-            hud.forEachElement { element ->
-                if (element is HUDLeaderboard) {
-                    element.nextItems = itemsList
+                    hud.forEachElement { element ->
+                        if (element is HUDLeaderboard) {
+                            element.nextItems = itemsList
+                        }
+                    }
                 }
             }
         }

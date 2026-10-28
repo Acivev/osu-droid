@@ -1,14 +1,15 @@
 package com.osudroid.ui.v2
 
-import com.reco1l.andengine.text.UITextureText
-import org.andengine.opengl.texture.region.TextureRegion
-import ru.nsu.ccfit.zuev.osu.ResourceManager
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.SkinTextures
+import com.reco1l.verktex.graphics.GraphicsTexture
+import com.reco1l.verktex.ui.text.UITextureText
 import com.osudroid.ui.skinning.StringSkinData
 
-open class SpriteFont(private val texturePrefix: StringSkinData) : UITextureText(mutableMapOf<Char, TextureRegion>().also {
+open class SpriteFont(private val texturePrefix: StringSkinData) : UITextureText(mutableMapOf<Char, GraphicsTexture.Region?>().also {
 
     fun addChar(char: Char, textureName: String) {
-        it[char] = ResourceManager.getInstance().getTextureWithPrefix(texturePrefix, textureName)
+        it[char] = SkinTextures.getWithPrefix(texturePrefix, textureName)
     }
 
     for (i in 0..9) {
@@ -21,4 +22,10 @@ open class SpriteFont(private val texturePrefix: StringSkinData) : UITextureText
     addChar('d', "d")
     addChar('p', "p")
 
-})
+}) {
+
+    init {
+        // The glyphs are sized in virtual units like the AndEngine regions were.
+        setTextureScale(LegacyUnits.scale)
+    }
+}

@@ -5,21 +5,23 @@ import com.osudroid.resources.R.string
 import com.osudroid.ui.v2.hud.elements.HUDAccuracyCounter
 import com.osudroid.ui.v2.hud.elements.HUDPieSongProgress
 import com.osudroid.ui.v2.hud.elements.HUDScoreCounter
-import com.reco1l.andengine.container.UIContainer
+import com.osudroid.ui.verktex.SkinTextures
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.Vec2
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.framework.forEachTolerant
 import com.osudroid.ui.v2.hud.editor.HUDElementSelector
 import com.reco1l.osu.ui.MessageDialog
 import com.osudroid.utils.updateThread
-import com.reco1l.andengine.UIEngine
-import com.reco1l.andengine.component.*
-import org.andengine.entity.IEntity
-import org.andengine.input.touch.TouchEvent
 import com.osudroid.beatmaps.constants.HitObjectType
 import com.osudroid.beatmaps.hitobjects.HitObject
 import org.json.JSONObject
 import ru.nsu.ccfit.zuev.osu.Config
 import ru.nsu.ccfit.zuev.osu.GlobalManager
-import ru.nsu.ccfit.zuev.osu.ResourceManager
 import ru.nsu.ccfit.zuev.osu.ToastLogger
 import ru.nsu.ccfit.zuev.osu.game.GameScene
 import ru.nsu.ccfit.zuev.osu.scoring.*
@@ -43,12 +45,10 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
 
                 // Move to front
                 if (value != null) {
-                    mChildren?.let { children -> if (children.remove(value)) children.add(value) }
+                    if (value.parent == this) value.moveToFront()
 
                     // Preserve overlay on top of the element.
-                    if (value.editorOverlay != null) {
-                        mChildren?.let { children -> if (children.remove(value.editorOverlay)) children.add(value.editorOverlay) }
-                    }
+                    if (value.editorOverlay?.parent == this) value.editorOverlay!!.moveToFront()
 
                     elementSelector?.collapse()
                 }
@@ -64,21 +64,43 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
 
     private var isInEditMode = false
 
+    /**
+     * The AndEngine `setIgnoreUpdate`: while true the HUD does not update, see [GameplayLayer.setHudPaused].
+     */
+    var ignoreUpdate = false
+
+    /**
+     * Whether the AndEngine scene is still the game scene; the HUD removes itself once it is not.
+     */
+    var sceneCheck: () -> Boolean = {
+        GlobalManager.getInstance().engine.scene == GlobalManager.getInstance().gameScene?.scene
+    }
+
+    /**
+     * The size in virtual units, the AndEngine camera HUD's.
+     */
+    val size
+        get() = Vec2(Config.getRES_WIDTH().toFloat(), Config.getRES_HEIGHT().toFloat())
+
 
     init {
-        width = FillParent
-        height = FillParent
+        width = fill()
+        height = fill()
     }
 
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
-        if (UIEngine.current.scene != GlobalManager.getInstance().gameScene?.scene) {
-            // Detach on the next tick to ensure that parent's entity list stays stable throughout this tick.
-            updateThread { detachSelf() }
+    override fun onUpdate(clock: TickingClock) {
+        if (ignoreUpdate) {
             return
         }
 
-        super.onManagedUpdate(deltaTimeSec)
+        if (!sceneCheck()) {
+            // Detach on the next tick to ensure that parent's entity list stays stable throughout this tick.
+            updateThread { Verktex.withTreeLock { removeSelf() } }
+            return
+        }
+
+        super.onUpdate(clock)
     }
 
 
@@ -86,7 +108,7 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
      * Checks if the HUD has an element of the specified type.
      */
     fun hasElement(type: KClass<out HUDElement>): Boolean {
-        return mChildren?.any { type.isInstance(it) } ?: false
+        return any { type.isInstance(it) }
     }
 
     /**
@@ -100,7 +122,7 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
             return
         }
 
-        attachChild(element)
+        this += element
         element.restoreData = data
         element.setSkinData(data)
         element.setEditMode(inEditMode)
@@ -122,22 +144,24 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
                 it.dismiss()
                 updateThread {
                     ToastLogger.showText(string.hudEditor_saving, true)
-                    setEditMode(false)
-                    saveToSkinJSON()
+                    Verktex.withTreeLock {
+                        setEditMode(false)
+                        saveToSkinJSON()
+                    }
                     ToastLogger.showText(string.hudEditor_saved, true)
                 }
             }
             .addButton(StringTable.get(string.hudEditor_modal_discard)) {
                 it.dismiss()
                 updateThread {
-                    setSkinData(OsuSkin.get().hudSkinData)
+                    Verktex.withTreeLock { setSkinData(OsuSkin.get().hudSkinData) }
                     ToastLogger.showText(string.hudEditor_discarded, true)
                 }
             }
             .addButton(StringTable.get(string.hudEditor_modal_reset)) {
                 it.dismiss()
                 updateThread {
-                    setSkinData(HUDSkinData.Default)
+                    Verktex.withTreeLock { setSkinData(HUDSkinData.Default) }
                     ToastLogger.showText(string.hudEditor_reset, true)
                 }
             }
@@ -179,9 +203,8 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
      */
     fun getSkinData(): HUDSkinData {
         return HUDSkinData(
-            elements = mChildren?.filterIsInstance<HUDElement>()
-                ?.map { it.getSkinData() }
-                ?: emptyList()
+            elements = filterIsInstance<HUDElement>()
+                .map { it.getSkinData() }
         )
     }
 
@@ -190,7 +213,7 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
      */
     fun setSkinData(layoutData: HUDSkinData) {
         selected = null
-        mChildren?.filterIsInstance<HUDElement>()?.forEach(IEntity::detachSelf)
+        filterIsInstance<HUDElement>().forEach(HUDElement::detachSelf)
 
         // First pass: We attach everything so that elements can reference between them when
         // applying default layout.
@@ -202,7 +225,7 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
     }
 
     private inline fun <reified T : HUDElement>getFirstOf() : T? {
-        return mChildren?.firstOrNull { it is T } as? T
+        return firstOrNull { it is T } as? T
     }
 
     private fun applyDefaultLayout() {
@@ -213,10 +236,10 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
         val accuracyCounter = getFirstOf<HUDAccuracyCounter>()
         val pieSongProgress = getFirstOf<HUDPieSongProgress>()
 
-        accuracyCounter?.y += (scoreCounter?.y ?: 0f) + (scoreCounter?.height ?: 0f)
+        accuracyCounter?.let { it.setPosition(it.position.x, it.position.y + (scoreCounter?.position?.y ?: 0f) + (scoreCounter?.size?.y ?: 0f)) }
 
-        pieSongProgress?.y = (accuracyCounter?.y ?: 0f) + (accuracyCounter?.transformedHeight ?: 0f) / 2f
-        pieSongProgress?.x = (accuracyCounter?.x ?: 0f) - (accuracyCounter?.transformedWidth ?: 0f) - 18f
+        pieSongProgress?.let { it.setPosition(it.position.x, (accuracyCounter?.position?.y ?: 0f) + (accuracyCounter?.let { a -> a.size.y * a.scaleY } ?: 0f) / 2f) }
+        pieSongProgress?.let { it.setPosition((accuracyCounter?.position?.x ?: 0f) - (accuracyCounter?.let { a -> a.size.x * a.scaleX } ?: 0f) - 18f, it.position.y) }
 
         accuracyCounter?.restoreData = accuracyCounter.getSkinData()
         pieSongProgress?.restoreData = pieSongProgress.getSkinData()
@@ -227,8 +250,8 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
     //region Elements events
 
     private fun loadEditModeAssets() {
-        ResourceManager.getInstance().loadHighQualityAsset("delete", "delete.png")
-        ResourceManager.getInstance().loadHighQualityAsset("restore", "restore.png")
+        SkinTextures.getAsset("delete", "delete.png")
+        SkinTextures.getAsset("restore", "restore.png")
     }
 
     /**
@@ -243,18 +266,18 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
 
             elementSelector = HUDElementSelector(this)
         } else {
-            elementSelector?.detachSelf()
+            elementSelector?.removeSelf()
             elementSelector = null
         }
 
 
         // Cannot use forEachElement {} because we're modifying the list.
-        mChildren?.filterIsInstance<HUDElement>()?.forEach { it.setEditMode(value) }
+        filterIsInstance<HUDElement>().forEach { it.setEditMode(value) }
     }
 
     override fun onAttached() {
         if (isInEditMode) {
-            UIEngine.current.overlay.attachChild(elementSelector)
+            (parent as? GameplayLayer)?.plusAssign(elementSelector!!)
         }
         super.onAttached()
     }
@@ -270,9 +293,9 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
      * using another method such as `filterIsInstance<HUDElement>()`.
      */
     fun forEachElement(action: (HUDElement) -> Unit) {
-        // `action` may reorder `mChildren` (e.g. selecting an  element moves it to front), which
+        // `action` may reorder `children` (e.g. selecting an  element moves it to front), which
         // would cause a `ConcurrentModificationException` if we used a regular `forEach`.
-        mChildren?.forEachTolerant { (it as? HUDElement)?.let(action) }
+        children.forEachTolerant { (it as? HUDElement)?.let(action) }
     }
 
     override fun onGameplayUpdate(gameScene: GameScene, secondsElapsed: Float) {
@@ -317,15 +340,19 @@ class GameplayHUD : UIContainer(), IGameplayEvents {
 
     //endregion
 
-    override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float): Boolean {
+    override fun onInputEvent(event: InputEvent): Boolean {
 
         // Ignoring touches on the element selector area when expanded.
-        if (elementSelector?.isExpanded == true && localX <= elementSelector!!.width) {
-            return false
+        if (event is PointerEvent && elementSelector?.isExpanded == true) {
+            val localX = toLocalSpaceFromScene(event.x, event.y).x
+
+            if (localX <= elementSelector!!.bounds.width) {
+                return false
+            }
         }
 
-        if (!super.onAreaTouched(event, localX, localY)) {
-            if (event.isActionDown) {
+        if (!super.onInputEvent(event)) {
+            if (event is PointerEvent && event.action == PointerEvent.Action.Down) {
                 selected = null
             }
             return false

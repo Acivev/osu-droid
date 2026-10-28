@@ -3,7 +3,8 @@ package com.osudroid.ui.v2.hud.elements
 import com.osudroid.ui.v2.hud.HUDElement
 import com.osudroid.ui.v2.hud.HUDElementSkinData
 import com.osudroid.ui.v2.SpriteFont
-import com.reco1l.andengine.text.TextAlign
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.text.TextAlign
 import com.rian.framework.RollingFloatCounter
 import ru.nsu.ccfit.zuev.osu.game.GameScene
 import ru.nsu.ccfit.zuev.skins.OsuSkin
@@ -43,9 +44,7 @@ class HUDAccuracyCounter : HUDElement() {
     private val counter = RollingFloatCounter(1f).apply { rollingDuration = 1f }
 
     init {
-        registerUpdateHandler(counter)
-        attachChild(sprite)
-        onContentChanged()
+        this += sprite
     }
 
     override fun setSkinData(data: HUDElementSkinData?) {
@@ -62,9 +61,11 @@ class HUDAccuracyCounter : HUDElement() {
         counter.targetValue = gameScene.stat.accuracy
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    override fun onUpdate(clock: TickingClock) {
         value = counter.currentValue
 
-        super.onManagedUpdate(deltaTimeSec)
+        // The AndEngine update handler ran before the children.
+        counter.onUpdate(clock.elapsedTickTime)
+        super.onUpdate(clock)
     }
 }

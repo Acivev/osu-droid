@@ -1,37 +1,29 @@
 package com.osudroid.ui.v2.hud.elements
 
-import com.reco1l.andengine.Anchor
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.shape.UIBox
-import com.reco1l.framework.Color4
-import org.andengine.engine.camera.Camera
-import org.andengine.opengl.util.GLState
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.ui.shape.UIBox
 import com.osudroid.beatmaps.constants.HitObjectType
 
 class HUDColorHitErrorMeter : HUDHitErrorMeter() {
     private val indicators = MutableList(20) { Indicator(it, 0f, Color4.Black) }
     private var currentIndicatorIndex = 0
 
-    private val indicatorBox = UIBox().apply {
-        anchor = Anchor.CenterLeft
-        origin = Anchor.CenterLeft
-        setSize(INDICATOR_SIZE, INDICATOR_SIZE)
-
-        // Used to get anchor working properly.
-        parent = this@HUDColorHitErrorMeter
-    }
+    // Indicators are drawn as squares of this size, vertically centered like the shared AndEngine box was.
+    private val indicatorSize = INDICATOR_SIZE.vu
 
     init {
         // Extra 2 to indicator spacing for left and right padding.
         val width = INDICATOR_SIZE * indicators.size + INDICATOR_SPACING * (indicators.size + 2)
 
-        setSize(width, INDICATOR_SIZE)
+        this.width = width.vu.px
+        this.height = INDICATOR_SIZE.vu.px
 
         background = UIBox().apply {
-            applyTheme = {
-                color = Color4.Black
-                alpha = 0.6f
-            }
+            color = Color4.Black
+            alpha = 0.6f
         }
     }
 
@@ -52,22 +44,19 @@ class HUDColorHitErrorMeter : HUDHitErrorMeter() {
         indicators.forEach { it.alpha = 0f }
     }
 
-    override fun onManagedDraw(pGLState: GLState, pCamera: Camera) {
-        super.onManagedDraw(pGLState, pCamera)
+    override fun onDraw(renderer: GraphicsRenderer) {
+        super.onDraw(renderer)
 
-        // After super.onManagedDraw() the matrix has been popped; re-push our translation
-        // so that indicatorBox draws in this element's local coordinate space.
-        pGLState.pushModelViewGLMatrix()
-        pGLState.translateModelViewGLMatrixf(absoluteX, absoluteY, 0f)
-
+        // Drawn after the children in this element's local space.
         indicators.forEach {
-            indicatorBox.x = INDICATOR_SPACING + it.index * (INDICATOR_SIZE + INDICATOR_SPACING)
-            indicatorBox.color = it.color
-            indicatorBox.alpha = it.alpha
-            indicatorBox.onDraw(pGLState, pCamera)
+            renderer.drawRect(
+                (INDICATOR_SPACING + it.index * (INDICATOR_SIZE + INDICATOR_SPACING)).vu,
+                (bounds.height - indicatorSize) / 2f,
+                indicatorSize,
+                indicatorSize,
+                color = it.color.copy(alpha = it.alpha)
+            )
         }
-
-        pGLState.popModelViewGLMatrix()
     }
 
     private data class Indicator(val index: Int, var alpha: Float, var color: Color4)

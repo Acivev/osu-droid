@@ -1,6 +1,7 @@
 package com.osudroid.game.replay
 
-import com.reco1l.andengine.ui.UICard
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.ui.UICard
 
 /**
  * Controls playback of gameplay when replaying.
@@ -17,10 +18,10 @@ class ReplayPlaybackControl : UICard() {
     val seekControl = ReplayPlaybackSeek()
 
     init {
-        width = FillParent
+        width = fill()
         title = "Playback"
 
-        content.apply {
+        content {
             +seekControl
             +rateControl
         }

@@ -1,11 +1,14 @@
 package com.osudroid.ui.v2.hud.elements
 
 import com.osudroid.ui.v2.SpriteFont
-import com.reco1l.andengine.*
-import com.reco1l.andengine.text.*
-import com.reco1l.framework.*
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.text.UIText
 import com.osudroid.ui.v2.hud.HUDElement
-import ru.nsu.ccfit.zuev.osu.ResourceManager
 import ru.nsu.ccfit.zuev.osu.game.GameScene
 import ru.nsu.ccfit.zuev.osu.scoring.StatisticV2
 import ru.nsu.ccfit.zuev.skins.*
@@ -14,19 +17,20 @@ import ru.nsu.ccfit.zuev.skins.*
 sealed class HUDStatisticCounter(label: String) : HUDElement() {
 
     protected val labelText = UIText().apply {
-        font = ResourceManager.getInstance().getFont("smallFont")
+        fontSize = LegacyUnits.fontSize("smallFont").vu.px
+        wrapText = false
         text = label
     }
 
     protected val valueText = SpriteFont(OsuSkin.get().scorePrefix)
 
     init {
-        attachChild(labelText)
-        attachChild(valueText)
+        this += labelText
+        this += valueText
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
-        valueText.y = labelText.height
+    override fun onUpdate(clock: TickingClock) {
+        valueText.y = labelText.measuredSize.y.px
 
         val innerAnchor = when (anchor.x) {
             0f -> Anchor.TopLeft
@@ -39,7 +43,7 @@ sealed class HUDStatisticCounter(label: String) : HUDElement() {
         valueText.anchor = innerAnchor
         valueText.origin = innerAnchor
 
-        super.onManagedUpdate(deltaTimeSec)
+        super.onUpdate(clock)
     }
 }
 
@@ -62,4 +66,4 @@ sealed class HUDHitStatisticCounter(
 class HUDGreatCounter : HUDHitStatisticCounter("Great", Color4(0xFF46b4dc),  { hit300.toString() })
 class HUDOkCounter : HUDHitStatisticCounter("Ok", Color4(0xFF64DC28), { hit100.toString() })
 class HUDMehCounter : HUDHitStatisticCounter("Meh", Color4(0xFFc8b46e), { hit50.toString() })
-class HUDMissCounter : HUDHitStatisticCounter("Miss", Color4.Red, { misses.toString() })
+class HUDMissCounter : HUDHitStatisticCounter("Miss", Color4(1f, 0f, 0f), { misses.toString() })

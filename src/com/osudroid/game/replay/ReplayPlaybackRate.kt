@@ -1,12 +1,14 @@
 package com.osudroid.game.replay
 
-import com.reco1l.andengine.Anchor
-import com.reco1l.andengine.container.Orientation
-import com.reco1l.andengine.container.UILinearContainer
-import com.reco1l.andengine.linearContainer
-import com.reco1l.andengine.textButton
-import com.reco1l.andengine.ui.form.FormSlider
-import com.reco1l.framework.math.Vec4
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.linearContainer
+import com.reco1l.verktex.ui.form.FormSlider
+import com.reco1l.verktex.ui.textButton
 import java.text.DecimalFormat
 
 class ReplayPlaybackRate : UILinearContainer() {
@@ -20,7 +22,7 @@ class ReplayPlaybackRate : UILinearContainer() {
 
     init {
         orientation = Orientation.Vertical
-        width = FillParent
+        width = fill()
 
         val slider = FormSlider(rate).apply {
             label = "Playback speed"
@@ -33,15 +35,15 @@ class ReplayPlaybackRate : UILinearContainer() {
         +slider
 
         linearContainer {
-            spacing = 10f
-            padding = Vec4(0f, 16f)
+            spacing = 10f.vu.px
+            padding = Padding(0f.px, 16f.vu.px)
             anchor = Anchor.TopCenter
             origin = Anchor.TopCenter
 
             fun addStepButton(step: Float) = textButton {
                 text = "%+.2f".format(step)
-                height = 42f
-                padding = Vec4(12f, 0f)
+                height = 42f.vu.px
+                padding = Padding(12f.vu.px, 0f.px)
                 onActionUp = { slider.value += step }
             }
 

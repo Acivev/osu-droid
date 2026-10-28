@@ -1,19 +1,23 @@
 package com.osudroid.ui.v2.hud.editor
 
-import com.reco1l.andengine.*
-import com.reco1l.andengine.container.UIContainer
-import com.reco1l.andengine.shape.*
-import com.reco1l.andengine.text.UIText
-import com.reco1l.framework.Color4
-import com.reco1l.framework.math.Vec4
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.text.UIText
 import com.osudroid.ui.v2.hud.GameplayHUD
 import com.osudroid.ui.v2.hud.HUDElement
 import com.osudroid.ui.v2.hud.HUDElementSkinData
-import com.reco1l.andengine.component.*
-import org.andengine.engine.camera.Camera
-import org.andengine.input.touch.TouchEvent
-import org.andengine.opengl.util.GLState
-import ru.nsu.ccfit.zuev.osu.ResourceManager
+import com.rian.andengine.modifier.beginModifierSequence
+import com.rian.andengine.modifier.clearModifiers
+import com.rian.andengine.modifier.scaleTo
 import kotlin.math.abs
 import kotlin.math.min
 
@@ -21,7 +25,8 @@ class HUDElementPreview(private val element: HUDElement, val hud: GameplayHUD): 
 
 
     private val label = UIText().apply {
-        font = ResourceManager.getInstance().getFont("smallFont")
+        fontSize = LegacyUnits.fontSize("smallFont").vu.px
+        wrapText = false
         anchor = Anchor.BottomLeft
         origin = Anchor.BottomLeft
         text = element.name
@@ -29,19 +34,16 @@ class HUDElementPreview(private val element: HUDElement, val hud: GameplayHUD): 
     }
 
     init {
-        width = FillParent
-        height = 120f
-        padding = Vec4(12f)
-        scaleCenterX = 0.5f
-        scaleCenterY = 0.5f
+        width = fill()
+        height = 120f.vu.px
+        padding = Padding(12f.vu.px)
+        scaleOrigin = Anchor.Center
 
-        background = UIBox().apply {
-            color = Color4(0xFF363653)
-            cornerRadius = 12f
-        }
+        backgroundColor = Color4(0xFF363653)
+        radius = 12f.vu.px
 
-        attachChild(element)
-        attachChild(label)
+        this += element
+        this += label
         element.setSkinData(
             HUDElementSkinData(
                 type = element::class,
@@ -51,36 +53,54 @@ class HUDElementPreview(private val element: HUDElement, val hud: GameplayHUD): 
         )
     }
 
-    override fun onManagedDraw(pGLState: GLState, pCamera: Camera) {
+    override fun onUpdate(clock: TickingClock) {
 
-        // Scaling the element inside the box
-        element.setScaleCenter(0f, 0f)
+        // Scaling the element inside the box (the AndEngine version did it before drawing).
+        element.scaleOrigin = Anchor.TopLeft
 
-        if (element.width > element.height) {
-            element.setScale(min(1f, innerWidth / element.width))
+        val innerWidth = (bounds.width - padding.left.toPixels() - padding.right.toPixels()) / LegacyUnits.scale
+        val innerHeight = (bounds.height - padding.top.toPixels() - padding.bottom.toPixels()) / LegacyUnits.scale
+        val elementSize = element.size
+
+        if (elementSize.x > elementSize.y) {
+            element.setElementScale(min(1f, innerWidth / elementSize.x))
         } else {
-            element.setScale(min(1f, (innerHeight - label.height) / element.height))
+            element.setElementScale(min(1f, (innerHeight - label.measuredSize.y / LegacyUnits.scale) / elementSize.y))
         }
 
 
-        super.onManagedDraw(pGLState, pCamera)
+        super.onUpdate(clock)
     }
 
     //region Input handling
     private var initialX = 0f
     private var initialY = 0f
 
-    override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float): Boolean {
+    // Verktex offers releases to every child, AndEngine bound them to the pressed area.
+    private var pressedPointerId = -1
 
-        if (event.isActionDown) {
-            initialX = localX
-            initialY = localY
+    override fun onInputEvent(event: InputEvent): Boolean {
+
+        if (event !is PointerEvent) {
+            return false
         }
 
-        if (event.isActionUp) {
+        val local = toLocalSpaceFromScene(event.x, event.y) / LegacyUnits.scale
+
+        val localX = local.x
+        val localY = local.y
+
+        if (event.action == PointerEvent.Action.Down) {
+            initialX = localX
+            initialY = localY
+            pressedPointerId = event.pointerId
+        }
+
+        if (event.action == PointerEvent.Action.Up && event.pointerId == pressedPointerId) {
+            pressedPointerId = -1
 
             if (abs(localX - initialX) < 1f && abs(localY - initialY) < 1f) {
-                clearEntityModifiers()
+                clearModifiers()
                 beginModifierSequence {
                     scaleTo(0.9f, 0.1f)
                     then()

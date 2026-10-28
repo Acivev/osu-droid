@@ -1,16 +1,20 @@
 package com.osudroid.game.replay
 
-import com.reco1l.andengine.Anchor
-import com.reco1l.andengine.container.Orientation
-import com.reco1l.andengine.container.UILinearContainer
-import com.reco1l.andengine.iconButton
-import com.reco1l.andengine.linearContainer
-import com.reco1l.andengine.textButton
-import com.reco1l.andengine.ui.form.FormSlider
-import com.reco1l.framework.math.Vec4
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.SkinTextures
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.button
+import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.linearContainer
+import com.reco1l.verktex.ui.form.FormSlider
+import com.reco1l.verktex.ui.sprite
+import com.reco1l.verktex.ui.textButton
 import java.text.DecimalFormat
 import kotlin.math.abs
-import ru.nsu.ccfit.zuev.osu.ResourceManager
 
 class ReplayPlaybackSeek : UILinearContainer() {
     /**
@@ -68,36 +72,48 @@ class ReplayPlaybackSeek : UILinearContainer() {
 
     init {
         orientation = Orientation.Vertical
-        width = FillParent
+        width = fill()
 
         +seekBar
 
         linearContainer {
-            spacing = 10f
-            padding = Vec4(0f, 16f)
+            spacing = 10f.vu.px
+            padding = Padding(0f.px, 16f.vu.px)
             anchor = Anchor.TopCenter
             origin = Anchor.TopCenter
 
             fun addSeekButton(delta: Float) = textButton {
                 text = "%+d s".format(delta.toInt())
-                height = 42f
-                padding = Vec4(12f, 0f)
+                height = 42f.vu.px
+                padding = Padding(12f.vu.px, 0f.px)
                 onActionUp = { onSeek?.invoke((seekBar.value + delta).coerceIn(minDuration, totalDuration)) }
             }
 
             addSeekButton(-10f)
             addSeekButton(-1f)
 
-            iconButton {
-                val resourceManager = ResourceManager.getInstance()
+            // The AndEngine icon button took a texture, the Verktex one takes a font icon: a button with the sprite the
+            // AndEngine one had.
+            button {
+                height = 42f.vu.px
+                padding = Padding(12f.vu.px, 0f.px)
 
-                height = 42f
-                padding = Vec4(12f, 0f)
-                icon = resourceManager.getTexture("music_pause")
+                val icon = sprite {
+                    scaleType = UISprite.ScaleType.Fit
+                    anchor = Anchor.Center
+                    origin = Anchor.Center
+                    width = 28f.vu.px
+                    height = 28f.vu.px
+                    textureRegion = SkinTextures.getAsset("music_pause", "music_pause.png")
+                }
 
                 onActionUp = {
                     isPlaybackPaused = !isPlaybackPaused
-                    icon = resourceManager.getTexture(if (isPlaybackPaused) "music_play" else "music_pause")
+                    icon.textureRegion = if (isPlaybackPaused) {
+                        SkinTextures.getAsset("music_play", "music_play.png")
+                    } else {
+                        SkinTextures.getAsset("music_pause", "music_pause.png")
+                    }
                     onPauseToggle?.invoke(isPlaybackPaused)
                 }
             }
@@ -123,8 +139,14 @@ class ReplayPlaybackSeek : UILinearContainer() {
         minDuration = minSeconds
         totalDuration = maxSeconds
         rawCurrentSeconds = currentSeconds
-        seekBar.control.min = minSeconds
-        seekBar.control.max = maxSeconds
+        // The Verktex slider clamps its value into min..max on each change, so the range must not be empty in between.
+        if (minSeconds > seekBar.control.max) {
+            seekBar.control.max = maxSeconds
+            seekBar.control.min = minSeconds
+        } else {
+            seekBar.control.min = minSeconds
+            seekBar.control.max = maxSeconds
+        }
 
         if (currentSeconds < minSeconds) {
             // During lead-in, the slider stays pinned at min, so its value won't change and

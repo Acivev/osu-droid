@@ -1,33 +1,48 @@
 package com.osudroid.ui.v2.hud.editor
 
-import com.reco1l.andengine.*
-import com.reco1l.andengine.container.UIConstraintContainer
-import com.reco1l.andengine.container.UIContainer
-import com.reco1l.andengine.container.UILinearContainer
-import com.reco1l.andengine.container.Orientation
-import com.reco1l.andengine.shape.*
-import com.reco1l.andengine.sprite.UISprite
-import com.reco1l.andengine.text.*
-import com.reco1l.framework.Color4
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.SkinTextures
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.Vec2
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UICanvas
+import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.container.UIConstraintContainer
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.UILinearContainer.Orientation
+import com.reco1l.verktex.ui.shape.*
+import com.reco1l.verktex.ui.text.*
 import com.osudroid.ui.v2.hud.HUDElement
 import com.osudroid.utils.updateThread
-import com.reco1l.andengine.component.*
-import org.andengine.input.touch.TouchEvent
-import ru.nsu.ccfit.zuev.osu.ResourceManager
+import com.rian.andengine.modifier.beginModifierSequence
+import com.rian.andengine.modifier.clearModifiers
+import com.rian.andengine.modifier.scaleTo
 
 class HUDElementOverlay(private val element: HUDElement) : UIConstraintContainer() {
 
 
     /**
-     * The position of the outline box that represents the element.
+     * The position of the outline box that represents the element, in virtual units.
      */
     val outlinePosition
-        get() = outline.absolutePosition
+        get() = Vec2(outlineX, outlineY)
+
+    private var outlineX = 0f
+    private var outlineY = 0f
 
 
-    private val outline = UIBox().apply {
-        paintStyle = PaintStyle.Outline
+    private val outline = OutlineBox().apply {
         color = Color4(0xFFF27272)
+        // The AndEngine outline width was in window pixels.
         lineWidth = 8f
     }
 
@@ -35,27 +50,28 @@ class HUDElementOverlay(private val element: HUDElement) : UIConstraintContainer
         anchor = Anchor.TopCenter
         origin = Anchor.BottomCenter
         orientation = Orientation.Horizontal
-        spacing = 4f
-        y = -10f
+        spacing = 4f.vu.px
+        y = (-10f).vu.px
 
         // Toolbar buttons:
 
-        attachChild(Button("delete", Color4(0xFF260000)) {
+        +Button("delete", Color4(0xFF260000)) {
             updateThread {
-                element.remove()
+                Verktex.withTreeLock { element.remove() }
             }
-        })
+        }
 
-        attachChild(Button("restore") {
+        +Button("restore") {
             element.restore()
-        })
+        }
 
     }
 
     private val nameText = UIText().apply {
         anchor = Anchor.BottomCenter
         origin = Anchor.TopCenter
-        font = ResourceManager.getInstance().getFont("smallFont")
+        fontSize = LegacyUnits.fontSize("smallFont").vu.px
+        wrapText = false
         color = Color4(0xFFF27272)
         text = element.name
     }
@@ -63,11 +79,12 @@ class HUDElementOverlay(private val element: HUDElement) : UIConstraintContainer
 
     init {
         alpha = 0f
-        setSize(FillParent, FillParent)
+        width = fill()
+        height = fill()
 
-        attachChild(outline)
-        attachChild(toolbar)
-        attachChild(nameText)
+        this += outline
+        this += toolbar
+        this += nameText
 
         addConstraint(toolbar, outline)
         addConstraint(nameText, outline)
@@ -77,10 +94,10 @@ class HUDElementOverlay(private val element: HUDElement) : UIConstraintContainer
         val bottomLeftTip = Tip().apply { anchor = Anchor.TopLeft }
         val bottomRightTip = Tip().apply { anchor = Anchor.TopRight }
 
-        attachChild(topLeftTip)
-        attachChild(topRightTip)
-        attachChild(bottomLeftTip)
-        attachChild(bottomRightTip)
+        this += topLeftTip
+        this += topRightTip
+        this += bottomLeftTip
+        this += bottomRightTip
 
         addConstraint(topLeftTip, outline)
         addConstraint(topRightTip, outline)
@@ -93,27 +110,32 @@ class HUDElementOverlay(private val element: HUDElement) : UIConstraintContainer
      * Updates the outline box to match the element's position and size.
      */
     fun updateOutline() {
-        // We need to cancel scale center
-        outline.x = element.anchorPositionX + element.x - (element.transformedWidth * element.origin.x)
-        outline.y = element.anchorPositionY + element.y - (element.transformedHeight * element.origin.y)
+        val transformedWidth = element.size.x * element.scaleX
+        val transformedHeight = element.size.y * element.scaleY
 
-        outline.width = element.transformedWidth
-        outline.height = element.transformedHeight
+        // We need to cancel scale center
+        outlineX = element.anchorPosition.x + element.position.x - (transformedWidth * element.origin.x)
+        outlineY = element.anchorPosition.y + element.position.y - (transformedHeight * element.origin.y)
+
+        outline.x = outlineX.vu.px
+        outline.y = outlineY.vu.px
+        outline.width = transformedWidth.vu.px
+        outline.height = transformedHeight.vu.px
     }
 
 
-    override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float): Boolean {
+    override fun onInputEvent(event: InputEvent): Boolean {
         if (alpha == 1f) {
-            return super.onAreaTouched(event, localX, localY)
+            return super.onInputEvent(event)
         }
         return false
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    override fun onUpdate(clock: TickingClock) {
         updateOutline()
 
         // Ensure that the toolbar does not go out of the screen.
-        if (outline.y - toolbar.height < 0f) {
+        if (outlineY - toolbar.measuredSize.y / LegacyUnits.scale < 0f) {
             toolbar.anchor = Anchor.BottomCenter
             toolbar.origin = Anchor.TopCenter
         } else {
@@ -122,13 +144,34 @@ class HUDElementOverlay(private val element: HUDElement) : UIConstraintContainer
         }
 
         // Show only the tips that are not at the origin.
-        mChildren?.forEach {
+        forEach {
             if (it is Tip) {
                 it.isVisible = it.anchor.x != element.origin.x && it.anchor.y != element.origin.y
             }
         }
 
-        super.onManagedUpdate(deltaTimeSec)
+        super.onUpdate(clock)
+    }
+
+
+    /**
+     * The AndEngine outline box: a line [lineWidth] window pixels wide along the edges, half of it
+     * inside and half outside.
+     */
+    private class OutlineBox : UICanvas() {
+
+        var lineWidth = 1f
+
+        override fun onDraw(renderer: GraphicsRenderer) {
+            val half = lineWidth / 2f
+            val width = bounds.width
+            val height = bounds.height
+
+            renderer.drawRect(-half, -half, width + lineWidth, lineWidth, color = contentColor)
+            renderer.drawRect(-half, height - half, width + lineWidth, lineWidth, color = contentColor)
+            renderer.drawRect(-half, half, lineWidth, height - lineWidth, color = contentColor)
+            renderer.drawRect(width - half, half, lineWidth, height - lineWidth, color = contentColor)
+        }
     }
 
 
@@ -139,32 +182,50 @@ class HUDElementOverlay(private val element: HUDElement) : UIConstraintContainer
 
         init {
             origin = Anchor.Center
-            setSize(TIP_SIZE, TIP_SIZE)
+            width = TIP_SIZE.vu.px
+            height = TIP_SIZE.vu.px
 
             // The tip container is bigger than the actual tip in order to make it easier to touch.
-            attachChild(UIBox().apply {
+            +UIBox().apply {
                 anchor = Anchor.Center
                 origin = Anchor.Center
-                color = Color4(0xFFF27272)
-                cornerRadius = TIP_SIZE
-                relativeSizeAxes = Axes.Both
-                setSize(0.5f, 0.5f)
-            })
+                backgroundColor = Color4(0xFFF27272)
+                radius = TIP_SIZE.vu.px
+                width = fill(0.5f)
+                height = fill(0.5f)
+            }
         }
 
 
         private var initialX = 0f
         private var initialY = 0f
 
-        override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float): Boolean {
+        // Verktex offers moves to every child, AndEngine bound them to the pressed area.
+        private var pressedPointerId = -1
 
-            if (event.isActionDown) {
+        override fun onInputEvent(event: InputEvent): Boolean {
+
+            if (event !is PointerEvent) {
+                return false
+            }
+
+            val local = toLocalSpaceFromScene(event.x, event.y) / LegacyUnits.scale
+
+            val localX = local.x
+            val localY = local.y
+
+            if (event.action == PointerEvent.Action.Down) {
                 initialX = localX
                 initialY = localY
+                pressedPointerId = event.pointerId
                 return true
             }
 
-            if (event.isActionMove) {
+            if (event.pointerId != pressedPointerId) {
+                return false
+            }
+
+            if (event.action == PointerEvent.Action.Move) {
                 var deltaX = localX - initialX
                 var deltaY = localY - initialY
 
@@ -176,14 +237,18 @@ class HUDElementOverlay(private val element: HUDElement) : UIConstraintContainer
                     deltaY = -deltaY
                 }
 
-                val deltaScaleX = deltaX / element.transformedWidth
-                val deltaScaleY = deltaY / element.transformedHeight
+                val deltaScaleX = deltaX / (element.size.x * element.scaleX)
+                val deltaScaleY = deltaY / (element.size.y * element.scaleY)
 
                 val scaleX = (element.scaleX + deltaScaleX).coerceIn(0.5f, 5f)
                 val scaleY = (element.scaleY + deltaScaleY).coerceIn(0.5f, 5f)
 
-                element.setScale((scaleX + scaleY) / 2f)
+                element.setElementScale((scaleX + scaleY) / 2f)
                 return true
+            }
+
+            if (event.action == PointerEvent.Action.Up || event.action == PointerEvent.Action.Cancel) {
+                pressedPointerId = -1
             }
 
             return false
@@ -196,30 +261,40 @@ class HUDElementOverlay(private val element: HUDElement) : UIConstraintContainer
      */
     private inner class Button(texture: String, back: Color4 = Color4(0xFF002626), val action: () -> Unit) : UIContainer() {
 
+        // Verktex offers releases to every child, AndEngine bound them to the pressed area.
+        private var pressedPointerId = -1
+
         init {
-            setSize(BUTTON_SIZE, BUTTON_SIZE)
-            scaleCenter = Anchor.Center
+            width = BUTTON_SIZE.vu.px
+            height = BUTTON_SIZE.vu.px
+            scaleOrigin = Anchor.Center
 
-            attachChild(UIBox().apply {
-                cornerRadius = 12f
-                color = back
-                relativeSizeAxes = Axes.Both
-                setSize(1f, 1f)
-            })
+            +UIBox().apply {
+                radius = 12f.vu.px
+                backgroundColor = back
+                width = fill()
+                height = fill()
+            }
 
-            attachChild(UISprite().apply {
-                textureRegion = ResourceManager.getInstance().getTexture(texture)
+            +UISprite().apply {
+                textureRegion = SkinTextures.getAsset(texture, "$texture.png")
+                scaleType = UISprite.ScaleType.Stretch
                 anchor = Anchor.Center
                 origin = Anchor.Center
-                relativeSizeAxes = Axes.Both
-                setSize(0.8f, 0.8f)
-            })
+                width = fill(0.8f)
+                height = fill(0.8f)
+            }
         }
 
-        override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float): Boolean {
-            if (event.isActionUp) {
+        override fun onInputEvent(event: InputEvent): Boolean {
+            if (event !is PointerEvent) {
+                return false
+            }
+
+            if (event.action == PointerEvent.Action.Up && event.pointerId == pressedPointerId) {
+                pressedPointerId = -1
                 action()
-                clearEntityModifiers()
+                clearModifiers()
                 beginModifierSequence {
                     scaleTo(0.9f, 0.1f)
                     then()
@@ -228,8 +303,13 @@ class HUDElementOverlay(private val element: HUDElement) : UIConstraintContainer
                 return true
             }
 
-            if (event.isActionDown) {
+            if (event.action == PointerEvent.Action.Down) {
+                pressedPointerId = event.pointerId
                 return true
+            }
+
+            if (event.action == PointerEvent.Action.Cancel && event.pointerId == pressedPointerId) {
+                pressedPointerId = -1
             }
 
             return false

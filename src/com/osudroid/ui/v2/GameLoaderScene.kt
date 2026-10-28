@@ -14,8 +14,8 @@ import com.osudroid.utils.async
 import com.osudroid.utils.ModHashMap
 import com.osudroid.utils.updateThread
 import com.osudroid.verktex.bridge.RoutedScene
-import com.reco1l.andengine.Anchor as LegacyAnchor
-import com.reco1l.andengine.component.scaleCenter
+import com.rian.andengine.modifier.fadeIn
+import com.rian.andengine.modifier.scaleTo
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.data.*
 import com.reco1l.verktex.input.InputEvent
@@ -331,7 +331,7 @@ class GameLoaderScene(private val gameScene: GameScene, private val beatmapInfo:
                 alpha = 0f
                 scaleX = 0.9f
                 scaleY = 0.9f
-                scaleCenter = LegacyAnchor.Center
+                scaleOrigin = Anchor.Center
 
                 scaleTo(1f, 0.2f, Easing.OutCubic)
                 fadeIn(0.1f, Easing.OutExpo)

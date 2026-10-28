@@ -1,22 +1,29 @@
 package com.osudroid.ui.v2.hud.editor
 
 import android.graphics.PointF
-import com.reco1l.andengine.*
-import com.reco1l.andengine.container.UIContainer
-import com.reco1l.andengine.container.UILinearContainer
-import com.reco1l.andengine.container.Orientation
-import com.reco1l.andengine.container.UIScrollableContainer
-import com.reco1l.andengine.shape.UIBox
-import com.reco1l.andengine.text.UIText
-import com.reco1l.framework.Color4
-import com.reco1l.framework.math.Vec4
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Axis
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.UILinearContainer.Orientation
+import com.reco1l.verktex.ui.container.UIScrollableContainer
+import com.reco1l.verktex.ui.text.UIText
 import com.osudroid.ui.v2.hud.GameplayHUD
 import com.osudroid.ui.v2.hud.HUDElements
 import com.osudroid.ui.v2.hud.IGameplayEvents
-import org.andengine.input.touch.TouchEvent
 import com.osudroid.beatmaps.constants.HitObjectType
 import com.osudroid.beatmaps.hitobjects.HitObject
-import ru.nsu.ccfit.zuev.osu.ResourceManager
+import com.rian.andengine.modifier.clearModifiers
+import com.rian.andengine.modifier.modifierTarget
+import com.rian.andengine.modifier.moveToX
 import ru.nsu.ccfit.zuev.osu.game.GameScene
 import ru.nsu.ccfit.zuev.osu.scoring.StatisticV2
 import kotlin.reflect.full.primaryConstructor
@@ -28,73 +35,81 @@ class HUDElementSelector(private val hud: GameplayHUD) : UIContainer(), IGamepla
      * Whether the element selector is expanded.
      */
     val isExpanded
-        get() = x >= 0f
+        get() = modifierTarget.getX() >= 0f
 
 
     private val elements = HUDElements.entries.map { it.type.primaryConstructor!!.call() }
 
     private val elementList = UIScrollableContainer().apply {
 
-        scrollAxes = Axes.Y
-        height = FillParent
-        width = SELECTOR_WIDTH
+        scrollAxes = Axis.Y
+        height = fill()
+        width = SELECTOR_WIDTH.vu.px
 
-        background = UIBox().apply {
-            color = Color4(0xFF1E1E2E)
-        }
+        backgroundColor = Color4(0xFF1E1E2E)
 
-        attachChild(UILinearContainer().apply {
-            width = FillParent
-            padding = Vec4(16f)
-            spacing = 12f
+        +UILinearContainer().apply {
+            width = fill()
+            padding = Padding(16f.vu.px)
+            spacing = 12f.vu.px
             orientation = Orientation.Vertical
 
             elements.forEach { element ->
-                attachChild(HUDElementPreview(element, hud))
+                +HUDElementPreview(element, hud)
             }
-        })
+        }
 
     }
 
 
     init {
-        height = FillParent
+        height = fill()
 
-        x = -SELECTOR_WIDTH
+        x = (-SELECTOR_WIDTH).vu.px
 
         // The button to show/hide the element selector
-        attachChild(object : UIContainer() {
+        +object : UIContainer() {
+
+            // Verktex offers releases to every child, AndEngine bound them to the pressed area.
+            private var pressedPointerId = -1
 
             init {
-                background = UIBox().apply {
-                    cornerRadius = BUTTON_RADIUS
-                    color = Color4(0xFF181825)
-                }
+                backgroundColor = Color4(0xFF181825)
+                radius = BUTTON_RADIUS.vu.px
 
-                setSize(BUTTON_WIDTH, 150f)
-                x = SELECTOR_WIDTH - BUTTON_RADIUS
+                width = BUTTON_WIDTH.vu.px
+                height = 150f.vu.px
+                x = (SELECTOR_WIDTH - BUTTON_RADIUS).vu.px
 
                 anchor = Anchor.CenterLeft
                 origin = Anchor.CenterLeft
 
-                attachChild(UIText().apply {
-                    rotation = -90f
+                +UIText().apply {
+                    rotationZ = -90f
                     anchor = Anchor.Center
                     origin = Anchor.Center
-                    font = ResourceManager.getInstance().getFont("smallFont")
+                    fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                    wrapText = false
                     text = "Elements"
 
-                    x = BUTTON_RADIUS / 2
-                })
+                    x = (BUTTON_RADIUS / 2).vu.px
+                }
             }
 
-            override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float): Boolean {
+            override fun onInputEvent(event: InputEvent): Boolean {
 
-                if (event.isActionDown) {
+                if (event !is PointerEvent) {
+                    return false
+                }
+
+                if (event.action == PointerEvent.Action.Down) {
+                    pressedPointerId = event.pointerId
                     return true
                 }
 
-                if (event.isActionUp) {
+                if (event.action == PointerEvent.Action.Up && event.pointerId == pressedPointerId) {
+                    pressedPointerId = -1
+
                     if (isExpanded) {
                         collapse()
                     } else {
@@ -105,9 +120,9 @@ class HUDElementSelector(private val hud: GameplayHUD) : UIContainer(), IGamepla
                 return false
             }
 
-        })
+        }
 
-        attachChild(elementList)
+        +elementList
     }
 
 
@@ -118,7 +133,7 @@ class HUDElementSelector(private val hud: GameplayHUD) : UIContainer(), IGamepla
 
         hud.selected = null
 
-        clearEntityModifiers()
+        clearModifiers()
         elementList.isVisible = true
         moveToX(0f, 0.2f)
     }
@@ -127,8 +142,8 @@ class HUDElementSelector(private val hud: GameplayHUD) : UIContainer(), IGamepla
         if (!isExpanded) {
             return
         }
-        clearEntityModifiers()
-        moveToX(-SELECTOR_WIDTH, 0.2f).after { elementList.isVisible = false }
+        clearModifiers()
+        moveToX((-SELECTOR_WIDTH).vu, 0.2f).after { elementList.isVisible = false }
     }
 
 
@@ -178,4 +193,3 @@ class HUDElementSelector(private val hud: GameplayHUD) : UIContainer(), IGamepla
     }
 
 }
-

@@ -1,14 +1,20 @@
 package ru.nsu.ccfit.zuev.osu.game;
 
 import com.osudroid.ui.v2.hud.GameplayHUD;
-import com.reco1l.andengine.sprite.UISprite;
-import com.reco1l.andengine.Anchor;
+import com.osudroid.ui.verktex.LegacyUnits;
+import com.osudroid.ui.verktex.SkinTextures;
+import com.reco1l.verktex.data.Anchor;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.graphics.GraphicsTexture;
+import com.reco1l.verktex.ui.UISprite;
+import com.rian.andengine.modifier.VerktexModifiers;
+import com.reco1l.verktex.Verktex;
+import kotlin.Unit;
 import com.osudroid.multiplayer.Multiplayer;
 import org.andengine.entity.modifier.*;
 import org.andengine.entity.primitive.Rectangle;
 import org.andengine.entity.scene.Scene;
 import org.andengine.entity.sprite.Sprite;
-import org.andengine.opengl.texture.region.TextureRegion;
 
 import ru.nsu.ccfit.zuev.osu.Config;
 import ru.nsu.ccfit.zuev.osu.GlobalManager;
@@ -86,12 +92,12 @@ public class BreakAnimator extends GameObject {
         time = 0;
 
         if (mark != null) {
-            mark.detachSelf();
+            underTreeLock(mark::removeSelf);
             mark = null;
         }
 
         if (passfail != null) {
-            passfail.detachSelf();
+            underTreeLock(passfail::removeSelf);
             passfail = null;
         }
 
@@ -118,10 +124,11 @@ public class BreakAnimator extends GameObject {
 
         passfail = new UISprite();
         passfail.setOrigin(Anchor.Center);
-        passfail.setPosition(Config.getRES_WIDTH() / 2f, Config.getRES_HEIGHT() / 2f);
-        passfail.setTextureRegion(ResourceManager.getInstance().getTexture("section-" + ending));
+        setLegacyPosition(passfail, Config.getRES_WIDTH() / 2f, Config.getRES_HEIGHT() / 2f);
+        setLegacyTexture(passfail, SkinTextures.getWithBeatmapSkin("section-" + ending));
 
-        hud.attachChild(passfail, 0);
+        final UISprite passfailSprite = passfail;
+        underTreeLock(() -> hud.addToBack(passfailSprite));
         passfail.setVisible(false);
 
         for (int i = 0; i < 4; i++) {
@@ -133,13 +140,17 @@ public class BreakAnimator extends GameObject {
             scene.attachChild(arrows[i], 0);
         }
 
-        final TextureRegion zeroRect = ResourceManager.getInstance()
-                .getTextureWithPrefix(OsuSkin.get().getScorePrefix(), "0");
+        final GraphicsTexture.Region zeroRect = SkinTextures.getWithPrefix(OsuSkin.get().getScorePrefix(), "0");
+        final float zeroWidth = zeroRect != null ? zeroRect.getWidth() : 0f;
 
-        mark = new UISprite(getRankingTexture());
-        mark.setPosition(Config.getRES_WIDTH() - zeroRect.getWidth() * 11, 5);
+        mark = new UISprite();
+        setLegacyTexture(mark, getRankingTexture());
+        setLegacyPosition(mark, Config.getRES_WIDTH() - zeroWidth * 11, 5);
+        // The AndEngine sprite scaled around its top left corner.
+        mark.setScaleOrigin(Anchor.TopLeft);
         mark.setScale(1.2f);
-        hud.attachChild(mark, 0);
+        final UISprite markSprite = mark;
+        underTreeLock(() -> hud.addToBack(markSprite));
 
         // Apply the background brightness that matches the current position within the break.
         // The update() loop only uses crossing-event checks to set this, so we must prime it
@@ -167,8 +178,36 @@ public class BreakAnimator extends GameObject {
         }
     }
 
-    private TextureRegion getRankingTexture() {
-        return ResourceManager.getInstance().getTexture("ranking-" + stat.getMark() + "-small");
+    private GraphicsTexture.Region getRankingTexture() {
+        return SkinTextures.getWithBeatmapSkin("ranking-" + stat.getMark() + "-small");
+    }
+
+    /**
+     * Runs a Verktex tree edit or modifier start under the tree lock.
+     */
+    private static void underTreeLock(final Runnable action) {
+        Verktex.INSTANCE.withTreeLock(() -> {
+            action.run();
+            return Unit.INSTANCE;
+        });
+    }
+
+    /**
+     * The AndEngine sprite position, in virtual units.
+     */
+    private static void setLegacyPosition(final UISprite sprite, final float x, final float y) {
+        sprite.setX(DimensionKt.getPx(x * LegacyUnits.getScale()));
+        sprite.setY(DimensionKt.getPx(y * LegacyUnits.getScale()));
+    }
+
+    /**
+     * The AndEngine sprite took the size of its texture, in virtual units.
+     */
+    private static void setLegacyTexture(final UISprite sprite, final GraphicsTexture.Region region) {
+        sprite.setTextureRegion(region);
+        sprite.setScaleType(UISprite.ScaleType.Stretch);
+        sprite.setWidth(DimensionKt.getPx((region != null ? region.getWidth() : 0f) * LegacyUnits.getScale()));
+        sprite.setHeight(DimensionKt.getPx((region != null ? region.getHeight() : 0f) * LegacyUnits.getScale()));
     }
 
     @Override
@@ -181,10 +220,15 @@ public class BreakAnimator extends GameObject {
         if (length > 3 && time > (length - 1) / 2
                 && time - dt < (length - 1) / 2) {
             passfail.setVisible(true);
-            passfail.registerEntityModifier(new SequenceEntityModifier(
-                    new DelayModifier(0.25f), new FadeOutModifier(0.025f),
-                    new DelayModifier(0.025f), new FadeInModifier(0.025f),
-                    new DelayModifier(0.6725f), new FadeOutModifier(0.3f)));
+            underTreeLock(() -> VerktexModifiers.beginModifierSequence(passfail, sequence -> {
+                // Delay 0.25, fade out 0.025, delay 0.025, fade in 0.025, delay 0.6725, fade out 0.3.
+                sequence.delay(0.25f);
+                sequence.fadeOut(0.025f);
+                sequence.then(0.025f);
+                sequence.fadeIn(0.025f);
+                sequence.then(0.6725f);
+                sequence.fadeOut(0.3f);
+            }));
 
             var sound = ResourceManager.getInstance().getCustomSound("section" + ending, 1);
             if (sound != null)
@@ -209,19 +253,19 @@ public class BreakAnimator extends GameObject {
                 setBgFade(1);
         }
 
-        mark.setTextureRegion(getRankingTexture());
+        setLegacyTexture(mark, getRankingTexture());
 
         if (time >= length) {
             isbreak = false;
             over = true;
             resumeBgFade();
             if (mark != null) {
-                mark.detachSelf();
+                underTreeLock(mark::removeSelf);
             }
             for (final Sprite sp : arrows) {
                 sp.detachSelf();
             }
-            passfail.detachSelf();
+            underTreeLock(passfail::removeSelf);
         }
     }
 

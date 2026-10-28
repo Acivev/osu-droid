@@ -12,6 +12,7 @@ import com.osudroid.resources.SoundStore;
 import com.osudroid.resources.TextureStore;
 import com.osudroid.resources.skin.AnimatableFrameMatch;
 import com.osudroid.resources.skin.SkinFileCatalog;
+import com.osudroid.ui.verktex.SkinTextures;
 import com.osudroid.resources.skin.SkinTextureRules;
 import com.osudroid.resources.skin.SoundResolution;
 import com.osudroid.resources.skin.TextureResolution;
@@ -40,6 +41,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
+import java.util.concurrent.ConcurrentHashMap;
 
 import ru.nsu.ccfit.zuev.audio.BassSoundProvider;
 import ru.nsu.ccfit.zuev.osu.helper.FileUtils;
@@ -69,6 +71,10 @@ public class ResourceManager {
     private final SoundStore customSoundStore = new SoundStore();
     private final TextureStore textureStore = new TextureStore();
     private final TextureStore customTextureStore = new TextureStore();
+    /**
+     * The beatmap file behind each {@link #customTextureStore} key, for the Verktex HUD (SkinTextures).
+     */
+    private final Map<String, File> customTextureFiles = new ConcurrentHashMap<>();
 
     private Engine engine;
     private Context context;
@@ -101,6 +107,7 @@ public class ResourceManager {
 
         customSoundStore.clear();
         customTextureStore.clear();
+        customTextureFiles.clear();
 
         initSecurityUtils();
     }
@@ -593,28 +600,34 @@ public class ResourceManager {
             int i = 0;
             while (textureStore.containsKey(resname + delimiter + i)) {
                 customTextureStore.put(resname + delimiter + i, region);
+                customTextureFiles.put(resname + delimiter + i, file);
                 i++;
             }
         } else {
             customTextureStore.put(resname, region);
+            customTextureFiles.put(resname, file);
 
             if (resname.equals("hitcircle")) {
                 if (!customTextureStore.containsKey("sliderstartcircle")) {
                     customTextureStore.put("sliderstartcircle", region);
+                    customTextureFiles.put("sliderstartcircle", file);
                 }
 
                 if (!customTextureStore.containsKey("sliderendcircle")) {
                     customTextureStore.put("sliderendcircle", region);
+                    customTextureFiles.put("sliderendcircle", file);
                 }
             }
 
             if (resname.equals("hitcircleoverlay")) {
                 if (!customTextureStore.containsKey("sliderstartcircleoverlay")) {
                     customTextureStore.put("sliderstartcircleoverlay", region);
+                    customTextureFiles.put("sliderstartcircleoverlay", file);
                 }
 
                 if (!customTextureStore.containsKey("sliderendcircleoverlay")) {
                     customTextureStore.put("sliderendcircleoverlay", region);
+                    customTextureFiles.put("sliderendcircleoverlay", file);
                 }
             }
         }
@@ -643,7 +656,17 @@ public class ResourceManager {
             }
         }
         customTextureStore.clear();
+        customTextureFiles.clear();
         customSoundStore.clear();
+
+        SkinTextures.releaseBeatmapSkin();
+    }
+
+    /**
+     * The beatmap skin file loaded for a texture name, or null when the beatmap skin has none.
+     */
+    public File getCustomTextureFile(final String resname) {
+        return customTextureFiles.get(resname);
     }
 
     public int getFrameCount(final String texname) {

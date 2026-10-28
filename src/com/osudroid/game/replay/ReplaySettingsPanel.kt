@@ -1,20 +1,28 @@
 package com.osudroid.game.replay
 
 import com.osudroid.math.Precision
-import com.reco1l.andengine.Anchor
-import com.reco1l.andengine.Axes
-import com.reco1l.andengine.UIEngine
-import com.reco1l.andengine.container.Orientation
-import com.reco1l.andengine.container.UIContainer
-import com.reco1l.andengine.container.UILinearContainer
-import com.reco1l.andengine.container.UIScrollableContainer
-import com.reco1l.andengine.linearContainer
-import com.reco1l.andengine.shape.UIBox
-import com.reco1l.andengine.text
-import com.reco1l.framework.Color4
-import com.reco1l.framework.math.Vec4
-import org.andengine.input.touch.TouchEvent
-import ru.nsu.ccfit.zuev.osu.ResourceManager
+import com.osudroid.ui.verktex.LegacyUnits
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Axis
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.Padding
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.container.UIContainer
+import com.reco1l.verktex.ui.container.UILinearContainer
+import com.reco1l.verktex.ui.container.UILinearContainer.Orientation
+import com.reco1l.verktex.ui.container.UIScrollableContainer
+import com.reco1l.verktex.ui.container.linearContainer
+import com.reco1l.verktex.ui.text.text
+import com.rian.andengine.modifier.clearModifiers
+import com.rian.andengine.modifier.fadeIn
+import com.rian.andengine.modifier.fadeTo
+import com.rian.andengine.modifier.modifierTarget
+import com.rian.andengine.modifier.moveToX
 
 /**
  * A panel that contains settings for replay playback. Can be expanded and collapsed by tapping the button on the left.
@@ -27,42 +35,58 @@ class ReplaySettingsPanel : UIContainer() {
         private set
 
     private val isExpanded
-        get() = Precision.almostEquals(x, 0f)
+        get() = Precision.almostEquals(modifierTarget.getX(), 0f)
 
     private val elementContainer = UIScrollableContainer().apply {
-        x = BUTTON_WIDTH
+        x = BUTTON_WIDTH.vu.px
 
-        scrollAxes = Axes.Y
-        width = PANEL_WIDTH
-        height = FillParent
+        scrollAxes = Axis.Y
+        width = PANEL_WIDTH.vu.px
+        height = fill()
         showVerticalIndicator = false
 
         linearContainer {
-            width = FillParent
-            spacing = 20f
-            padding = Vec4(0f, 20f)
+            width = fill()
+            spacing = 20f.vu.px
+            padding = Padding(0f.px, 20f.vu.px)
             orientation = Orientation.Vertical
 
             addControls()
         }
     }
 
+    // The AndEngine onLoadComplete ran on the first update after an attach.
+    private var isLoaded = false
+
     init {
-        x = PANEL_WIDTH
-        height = FillParent
+        x = PANEL_WIDTH.vu.px
+        height = fill()
         anchor = Anchor.TopRight
         origin = Anchor.TopRight
         alpha = 0f
         elementContainer.isVisible = false
 
-        clock = UIEngine.current.clock
-        processCustomClock = false
+        // The gameplay layer runs on the engine's update clock, the AndEngine panel had to be given it.
 
         +ReplaySettingsPanelButton()
         +elementContainer
     }
 
-    override fun onLoadComplete() {
+    override fun onUpdate(clock: TickingClock) {
+        if (!isLoaded) {
+            isLoaded = true
+            onLoadComplete()
+        }
+
+        super.onUpdate(clock)
+    }
+
+    override fun onDetached() {
+        isLoaded = false
+        super.onDetached()
+    }
+
+    private fun onLoadComplete() {
         fadeTo(0.5f, 0.2f)
     }
 
@@ -73,7 +97,7 @@ class ReplaySettingsPanel : UIContainer() {
 
         elementContainer.isVisible = true
 
-        clearEntityModifiers()
+        clearModifiers()
         moveToX(0f, 0.2f)
         fadeIn(0.2f)
     }
@@ -83,8 +107,8 @@ class ReplaySettingsPanel : UIContainer() {
             return
         }
 
-        clearEntityModifiers()
-        moveToX(PANEL_WIDTH, 0.2f)
+        clearModifiers()
+        moveToX(PANEL_WIDTH.vu, 0.2f)
         fadeTo(0.5f, 0.2f).after { elementContainer.isVisible = false }
     }
 
@@ -97,31 +121,46 @@ class ReplaySettingsPanel : UIContainer() {
     }
 
     private inner class ReplaySettingsPanelButton : UIContainer() {
-        init {
-            background = UIBox().apply {
-                cornerRadius = BUTTON_RADIUS
-                color = Color4(0xFF181825)
-            }
 
-            setSize(BUTTON_WIDTH, 150f)
-            y = -125f
+        // Verktex offers moves and releases to every child, AndEngine bound them to the pressed area.
+        private var pressedPointerId = -1
+
+        init {
+            backgroundColor = Color4(0xFF181825)
+            radius = BUTTON_RADIUS.vu.px
+
+            width = BUTTON_WIDTH.vu.px
+            height = 150f.vu.px
+            y = (-125f).vu.px
 
             anchor = Anchor.CenterLeft
             origin = Anchor.CenterLeft
 
             text {
-                rotation = -90f
+                rotationZ = -90f
                 anchor = Anchor.Center
                 origin = Anchor.Center
-                font = ResourceManager.getInstance().getFont("smallFont")
+                fontSize = LegacyUnits.fontSize("smallFont").vu.px
+                wrapText = false
                 text = "Settings"
             }
         }
 
-        override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float) = when {
-            event.isActionDown || event.isActionMove -> true
+        override fun onInputEvent(event: InputEvent) = when {
+            event !is PointerEvent -> false
 
-            event.isActionUp -> {
+            event.action == PointerEvent.Action.Down -> {
+                pressedPointerId = event.pointerId
+                true
+            }
+
+            event.pointerId != pressedPointerId -> false
+
+            event.action == PointerEvent.Action.Move -> true
+
+            event.action == PointerEvent.Action.Up -> {
+                pressedPointerId = -1
+
                 if (isExpanded) {
                     collapse()
                 } else {
@@ -131,7 +170,10 @@ class ReplaySettingsPanel : UIContainer() {
                 false
             }
 
-            else -> false
+            else -> {
+                pressedPointerId = -1
+                false
+            }
         }
     }
 

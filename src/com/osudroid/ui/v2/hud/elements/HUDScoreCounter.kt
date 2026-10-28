@@ -2,6 +2,8 @@ package com.osudroid.ui.v2.hud.elements
 
 import com.osudroid.ui.v2.hud.HUDElement
 import com.osudroid.ui.v2.SpriteFont
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.reco1l.verktex.time.TickingClock
 import com.rian.framework.RollingLongCounter
 import ru.nsu.ccfit.zuev.osu.game.GameScene
 import ru.nsu.ccfit.zuev.skins.OsuSkin
@@ -25,7 +27,7 @@ class HUDScoreCounter : HUDElement() {
     private val counter = RollingLongCounter(0L).apply { rollingDuration = 1f }
 
     init {
-        sprite.spacing = -OsuSkin.get().scoreOverlap
+        sprite.spacing = -OsuSkin.get().scoreOverlap.vu
 
         val digitRange = '0'..'9'
         val maxDigitWidth = digitRange.maxOfOrNull { sprite.characters[it]?.width?.toFloat() ?: 0f } ?: 0f
@@ -33,18 +35,18 @@ class HUDScoreCounter : HUDElement() {
         sprite.fixedCharWidths = digitRange.associateWith { maxDigitWidth }
         sprite.text = format.format(0)
 
-        registerUpdateHandler(counter)
-        attachChild(sprite)
-        onContentChanged()
+        this += sprite
     }
 
     override fun onGameplayUpdate(game: GameScene, secondsElapsed: Float) {
         counter.targetValue = game.stat.totalScoreWithMultiplier
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    override fun onUpdate(clock: TickingClock) {
         value = counter.currentValue
 
-        super.onManagedUpdate(deltaTimeSec)
+        // The AndEngine update handler ran before the children.
+        counter.onUpdate(clock.elapsedTickTime)
+        super.onUpdate(clock)
     }
 }

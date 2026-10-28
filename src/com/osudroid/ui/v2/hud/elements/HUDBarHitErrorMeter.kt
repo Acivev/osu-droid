@@ -1,12 +1,15 @@
 package com.osudroid.ui.v2.hud.elements
 
-import com.reco1l.andengine.*
-import com.reco1l.andengine.shape.UIBox
-import com.reco1l.framework.Color4
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.CompareFunction
+import com.reco1l.verktex.graphics.DepthState
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.shape.UIBox
 import com.osudroid.utils.*
-import com.reco1l.andengine.component.*
-import org.andengine.engine.camera.Camera
-import org.andengine.opengl.util.GLState
 import com.osudroid.beatmaps.constants.HitObjectType
 import kotlin.math.abs
 
@@ -15,59 +18,58 @@ class HUDBarHitErrorMeter : HUDHitErrorMeter() {
     private val expiredIndicators = SynchronizedPool<Indicator>(20)
     private val activeIndicators = mutableListOf<Indicator>()
 
-    // Using a shared box for drawing indicators to reduce memory usage.
-    private val indicatorBox = UIBox().apply {
-        anchor = Anchor.Center
-        origin = Anchor.Center
-        setSize(INDICATOR_WIDTH, INDICATOR_HEIGHT - 2f)
-
-        // Used to get anchor working properly.
-        parent = this@HUDBarHitErrorMeter
-    }
+    // Indicators are drawn as rectangles of this size, centered like the shared AndEngine box was.
+    private val indicatorWidth = INDICATOR_WIDTH.vu
+    private val indicatorHeight = (INDICATOR_HEIGHT - 2f).vu
 
 
     init {
-        setSize(WIDTH, INDICATOR_HEIGHT)
+        width = WIDTH.vu.px
+        height = INDICATOR_HEIGHT.vu.px
 
-        val mehWindow = UIBox().apply {
+        val mehWindow = DepthBox().apply {
             anchor = Anchor.Center
             origin = Anchor.Center
             color = mehColor
-            cornerRadius = BAR_HEIGHT / 2
-            setSize(WIDTH, BAR_HEIGHT)
+            radius = (BAR_HEIGHT / 2).vu.px
+            width = WIDTH.vu.px
+            height = BAR_HEIGHT.vu.px
 
-            depthInfo = DepthInfo.Default
+            depthState = DEPTH_TEST_LESS
         }
 
-        val okWindow = UIBox().apply {
+        val okWindow = DepthBox().apply {
             anchor = Anchor.Center
             origin = Anchor.Center
             color = okColor
-            setSize(WIDTH * (hitWindow.okWindow / hitWindow.mehWindow).toFloat(), BAR_HEIGHT)
+            width = (WIDTH * (hitWindow.okWindow / hitWindow.mehWindow).toFloat()).vu.px
+            height = BAR_HEIGHT.vu.px
 
-            depthInfo = DepthInfo.Default
+            depthState = DEPTH_TEST_LESS
         }
 
-        val greatWindow = UIBox().apply {
+        val greatWindow = DepthBox().apply {
             anchor = Anchor.Center
             origin = Anchor.Center
-            setSize(WIDTH * (hitWindow.greatWindow / hitWindow.mehWindow).toFloat(), BAR_HEIGHT)
+            width = (WIDTH * (hitWindow.greatWindow / hitWindow.mehWindow).toFloat()).vu.px
+            height = BAR_HEIGHT.vu.px
             color = greatColor
 
-            clearInfo = ClearInfo.ClearDepthBuffer
-            depthInfo = DepthInfo.Less
+            clearDepthBeforeDraw = true
+            depthState = DEPTH_TEST_LESS
         }
 
-        attachChild(mehWindow)
-        attachChild(okWindow, 0)
-        attachChild(greatWindow, 0)
+        this += mehWindow
+        addToBack(okWindow)
+        addToBack(greatWindow)
 
         // Indicator
-        attachChild(UIBox().apply {
+        this += DepthBox().apply {
             anchor = Anchor.Center
             origin = Anchor.Center
-            setSize(INDICATOR_WIDTH / 2, INDICATOR_HEIGHT)
-        })
+            width = (INDICATOR_WIDTH / 2).vu.px
+            height = INDICATOR_HEIGHT.vu.px
+        }
 
         mehWindow.alpha = 0.6f
         okWindow.alpha = 0.6f
@@ -107,29 +109,26 @@ class HUDBarHitErrorMeter : HUDHitErrorMeter() {
 
     //region Indicator update & draw
 
-    override fun onManagedDraw(pGLState: GLState, pCamera: Camera) {
-        super.onManagedDraw(pGLState, pCamera)
+    override fun onDraw(renderer: GraphicsRenderer) {
+        super.onDraw(renderer)
 
         if (activeIndicators.isEmpty()) return
 
-        // After super.onManagedDraw() the matrix has been popped; re-push our translation
-        // so that indicatorBox draws in this element's local coordinate space.
-        pGLState.pushModelViewGLMatrix()
-        pGLState.translateModelViewGLMatrixf(absoluteX, absoluteY, 0f)
-
+        // Drawn after the children in this element's local space, centered like the shared box was.
         activeIndicators.forEach {
-            indicatorBox.x = it.x
-            indicatorBox.color = it.color
-            indicatorBox.alpha = it.alpha
-            indicatorBox.onDraw(pGLState, pCamera)
+            renderer.drawRect(
+                bounds.width / 2f + it.x.vu - indicatorWidth / 2f,
+                (bounds.height - indicatorHeight) / 2f,
+                indicatorWidth,
+                indicatorHeight,
+                color = it.color.copy(alpha = it.alpha)
+            )
         }
-
-        pGLState.popModelViewGLMatrix()
     }
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    override fun onUpdate(clock: TickingClock) {
         activeIndicators.forEach(Indicator::update)
-        super.onManagedUpdate(deltaTimeSec)
+        super.onUpdate(clock)
     }
 
     //endregion
@@ -153,6 +152,16 @@ class HUDBarHitErrorMeter : HUDHitErrorMeter() {
         }
     }
 
+    /**
+     * A box that fills itself in its own draw, inside the canvas depth state. [UIBox] only fills its
+     * background, which is drawn before the depth state applies.
+     */
+    private class DepthBox : UIBox() {
+        override fun onDraw(renderer: GraphicsRenderer) {
+            renderer.drawRect(0f, 0f, bounds.width, bounds.height, color = contentColor, radius = radius.toPixels())
+        }
+    }
+
 
     companion object {
 
@@ -160,6 +169,9 @@ class HUDBarHitErrorMeter : HUDHitErrorMeter() {
         private const val BAR_HEIGHT = 10f
         private const val INDICATOR_HEIGHT = BAR_HEIGHT + 14f
         private const val INDICATOR_WIDTH = 4f
+
+        // The AndEngine DepthInfo.Default and DepthInfo.Less: depth test and write with GL_LESS.
+        private val DEPTH_TEST_LESS = DepthState(enabled = true, writeEnabled = true, function = CompareFunction.Less)
 
     }
 }

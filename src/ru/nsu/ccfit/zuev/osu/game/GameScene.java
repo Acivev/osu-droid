@@ -54,11 +54,20 @@ import com.reco1l.andengine.UIScene;
 import com.osudroid.resources.R;
 import com.osudroid.ui.v2.game.FollowPointConnection;
 import com.osudroid.ui.v2.hud.GameplayHUD;
+import com.osudroid.ui.v2.hud.GameplayLayer;
+import com.osudroid.ui.verktex.LegacyUnits;
 import com.osudroid.ui.v2.hud.elements.HUDPPCounter;
 import com.osudroid.multiplayer.Multiplayer;
 
 import com.reco1l.framework.Color4;
 import com.reco1l.verktex.Verktex;
+import com.reco1l.verktex.data.DimensionKt;
+import com.reco1l.verktex.data.LayoutConstraints;
+import com.reco1l.verktex.input.InputEvent;
+import com.reco1l.verktex.input.PointerEvent;
+import com.reco1l.verktex.ui.UIComponent;
+import com.reco1l.verktex.ui.text.UIText;
+import com.rian.andengine.modifier.VerktexModifiers;
 import com.osudroid.GameMode;
 import com.osudroid.beatmaps.Beatmap;
 import com.osudroid.beatmaps.ComboColor;
@@ -100,8 +109,6 @@ import org.andengine.engine.handler.IUpdateHandler;
 import org.andengine.engine.options.TouchOptions;
 import org.andengine.engine.options.WakeLockOptions;
 import org.andengine.entity.IEntity;
-import org.andengine.entity.modifier.LoopEntityModifier;
-import org.andengine.entity.modifier.MoveXModifier;
 import org.andengine.entity.primitive.Rectangle;
 import org.andengine.entity.scene.Scene;
 import org.andengine.entity.scene.IOnSceneTouchListener;
@@ -109,7 +116,6 @@ import org.andengine.entity.scene.background.Background;
 import org.andengine.entity.scene.background.EntityBackground;
 import org.andengine.entity.shape.RectangularShape;
 import org.andengine.entity.sprite.Sprite;
-import org.andengine.entity.text.Text;
 import org.andengine.input.touch.TouchEvent;
 import org.andengine.opengl.texture.region.TextureRegion;
 import org.andengine.opengl.util.GLState;
@@ -122,6 +128,7 @@ import java.util.*;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.IntConsumer;
 
 import javax.annotation.Nullable;
 
@@ -192,7 +199,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     private float initialStartTime;
     private int totalLength = Integer.MAX_VALUE;
     private boolean paused;
-    private UISprite skipBtn;
+    private com.reco1l.verktex.ui.UIAnimatedSprite skipBtn;
     private float skipTime;
     private double distToNextObject;
     private CursorEntity[] cursorSprites;
@@ -269,6 +276,11 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
      * The gameplay HUD
      */
     public GameplayHUD hud;
+
+    /**
+     * The Verktex overlay holding the HUD during gameplay, created with the first HUD.
+     */
+    public GameplayLayer gameplayLayer;
 
     /**
      * Whether the HUD editor mode is enabled.
@@ -1158,6 +1170,8 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             loadingRequestId.incrementAndGet();
         }
 
+        hideGameplayLayer();
+
         var gameLoadingJob = this.gameLoadingJob;
         var storyboardLoadingJob = this.storyboardLoadingJob;
         var videoLoadingJob = this.videoLoadingJob;
@@ -1315,9 +1329,32 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
         // HUD should be to the last so we ensure everything is initialized and ready to be used by
         // the HUD elements in their constructors.
-        if (hud != null) {
-            hud.detachSelf();
+        // It is a Verktex tree with skin textures, built on the update thread while loading waits.
+        runOnUpdateThreadAndWait(() -> Verktex.INSTANCE.withTreeLock(() -> {
+            prepareHUD(playableBeatmap);
+            return Unit.INSTANCE;
+        }));
+
+        isBeatmapLoaded = true;
+
+        if (Multiplayer.isMultiplayer) {
+            RoomAPI.INSTANCE.notifyBeatmapLoaded();
+        } else {
+            isReadyToStart = true;
         }
+    }
+
+    private void prepareHUD(final DroidPlayableBeatmap playableBeatmap) {
+        if (gameplayLayer == null) {
+            gameplayLayer = new GameplayLayer();
+        }
+
+        if (hud != null) {
+            hud.removeSelf();
+        }
+
+        // The layer holds the HUD and, in the editor, its element selector; both belong to the old HUD.
+        gameplayLayer.clearChildren();
 
         hud = new GameplayHUD();
 
@@ -1330,38 +1367,19 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
             for (final var area : DatabaseManager.getBlockAreaTable().getAll()) {
                 // Attach the block area to the HUD so that it does not get scaled with the playfield.
-                var areaBox = new UIBox() {
-                    {
-                        setCornerRadius(2f);
-                        setColor(30f / 255f, 30f / 255f, 41f / 255f);
-                        setAlpha(0.15f);
-
-                        setPosition(
-                            Interpolation.linear(0f, area.getX(), ratio),
-                            Interpolation.linear(0f, area.getY(), ratio)
-                        );
-
-                        setSize(
-                            Interpolation.linear(0f, area.getWidth(), ratio),
-                            Interpolation.linear(0f, area.getHeight(), ratio)
-                        );
-                    }
-
-                    @Override
-                    public boolean onAreaTouched(TouchEvent event, float localX, float localY) {
-                        if (event.isActionDown()) {
-                            int id = event.getPointerID();
-
-                            if (id >= 0 && id < getCursorsCount()) {
-                                cursors[id].mouseBlocked = true;
-                            }
+                var areaBox = new BlockAreaBox(
+                    BlockAreaBox.toSceneUnits(area.getX(), ratio),
+                    BlockAreaBox.toSceneUnits(area.getY(), ratio),
+                    BlockAreaBox.toSceneUnits(area.getWidth(), ratio),
+                    BlockAreaBox.toSceneUnits(area.getHeight(), ratio),
+                    id -> {
+                        if (id >= 0 && id < getCursorsCount()) {
+                            cursors[id].mouseBlocked = true;
                         }
-
-                        return false;
                     }
-                };
+                );
 
-                hud.attachChild(areaBox);
+                hud.plusAssign(areaBox);
             }
         }
 
@@ -1380,12 +1398,17 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             playname = replaying ? GlobalManager.getInstance().getScoring().getReplayStat().getPlayerName() : "osu!";
 
             if (!Config.isHideReplayMarquee()) {
-                var replayText = new Text(0, 0, ResourceManager.getInstance().getFont("font"), "", 1000, engine.getVertexBufferObjectManager());
+                final float units = LegacyUnits.getScale();
+                var replayText = new UIText();
+                replayText.setFontSize(DimensionKt.getPx(LegacyUnits.fontSize("font") * units));
+                replayText.setWrapText(false);
                 replayText.setText("Watching " + playname + " play " + metadata.artist + " - " + metadata.title + " [" + metadata.version + "]");
-                replayText.registerEntityModifier(new LoopEntityModifier(new MoveXModifier(40f, Config.getRES_WIDTH() + 5, -replayText.getWidth() - 5)));
-                replayText.setPosition(0, 140);
+                // The AndEngine text width was known at once, a Verktex text is measured here.
+                float replayTextWidth = replayText.measure(new LayoutConstraints(0f, Float.POSITIVE_INFINITY, 0f, Float.POSITIVE_INFINITY)).getX() / units;
+                loopMoveX(replayText, (Config.getRES_WIDTH() + 5) * units, (-replayTextWidth - 5) * units, 40f);
+                replayText.setY(DimensionKt.getPx(140 * units));
                 replayText.setAlpha(0.7f);
-                hud.attachChild(replayText, 0);
+                hud.addToBack(replayText);
             }
         } else if (Multiplayer.room != null && Multiplayer.room.isTeamVersus()) {
             //noinspection DataFlowIssue
@@ -1396,7 +1419,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         breakAnimator = new BreakAnimator(fgScene, stat, hud);
 
         if (!startedFromHUDEditor && (GameHelper.isAutoplay() || replaying)) {
-            hud.attachChild(replaySettingsPanel = new ReplaySettingsPanel());
+            hud.plusAssign(replaySettingsPanel = new ReplaySettingsPanel());
 
             var seekControl = replaySettingsPanel.getPlaybackControl().getSeekControl();
 
@@ -1445,24 +1468,131 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                 return Unit.INSTANCE;
             });
         }
+    }
 
-        isBeatmapLoaded = true;
+    /**
+     * The AndEngine {@code LoopEntityModifier(MoveXModifier(duration, from, to))}: a move from
+     * {@code fromX} to {@code toX} (window pixels) that starts again when it ends.
+     */
+    private static void loopMoveX(final UIComponent component, final float fromX, final float toX, final float duration) {
+        component.setX(DimensionKt.getPx(fromX));
+        VerktexModifiers.moveToX(component, toX, duration).after(target -> loopMoveX(component, fromX, toX, duration));
+    }
 
-        if (Multiplayer.isMultiplayer) {
-            RoomAPI.INSTANCE.notifyBeatmapLoaded();
+    /**
+     * Runs {@code action} on the update thread, waiting for it when called from another thread.
+     */
+    private static void runOnUpdateThreadAndWait(final Runnable action) {
+        if (VerktexBridge.isUpdateThread()) {
+            action.run();
+            return;
+        }
+
+        var done = new CompletableFuture<Void>();
+
+        Execution.updateThread(() -> {
+            try {
+                action.run();
+                done.complete(null);
+            } catch (Throwable t) {
+                done.completeExceptionally(t);
+            }
+        });
+
+        done.join();
+    }
+
+    /**
+     * Removes a Verktex component from its parent under the tree lock.
+     */
+    private static void removeUnderTreeLock(final UIComponent component) {
+        Verktex.INSTANCE.withTreeLock(() -> {
+            component.removeSelf();
+            return Unit.INSTANCE;
+        });
+    }
+
+    /**
+     * Hides the gameplay layer on the update thread.
+     */
+    private void hideGameplayLayer() {
+        var layer = gameplayLayer;
+
+        if (layer == null) {
+            return;
+        }
+
+        if (VerktexBridge.isUpdateThread()) {
+            layer.hide();
         } else {
-            isReadyToStart = true;
+            Execution.updateThread(layer::hide);
+        }
+    }
+
+    /**
+     * A block area on the HUD. A press on it blocks the cursor of its pointer and is not consumed, so
+     * it still reaches the playfield.
+     */
+    public static class BlockAreaBox extends com.reco1l.verktex.ui.shape.UIBox {
+
+        private final IntConsumer onPress;
+
+        /**
+         * @param x, y, width, height The area in virtual units.
+         * @param onPress Called with the pointer ID of a press.
+         */
+        public BlockAreaBox(final float x, final float y, final float width, final float height, final IntConsumer onPress) {
+            this.onPress = onPress;
+
+            final float units = LegacyUnits.getScale();
+
+            setRadius(DimensionKt.getPx(2f * units));
+            setBackgroundColor(new com.reco1l.verktex.data.Color4(30f / 255f, 30f / 255f, 41f / 255f, 1f));
+            setAlpha(0.15f);
+
+            setX(DimensionKt.getPx(x * units));
+            setY(DimensionKt.getPx(y * units));
+
+            setWidth(DimensionKt.getPx(width * units));
+            setHeight(DimensionKt.getPx(height * units));
+        }
+
+        /**
+         * Block areas are saved in device pixels; this maps one value to virtual units with
+         * {@code ratio = RES_WIDTH / widthPixels}.
+         */
+        public static float toSceneUnits(final float devicePixels, final float ratio) {
+            return Interpolation.linear(0f, devicePixels, ratio);
+        }
+
+        @Override
+        public boolean onInputEvent(final InputEvent event) {
+            if (event instanceof PointerEvent pointerEvent && pointerEvent.getAction() == PointerEvent.Action.Down) {
+                onPress.accept(pointerEvent.getPointerId());
+            }
+
+            return false;
         }
     }
 
     private void createSkipButton() {
         float paddingBottom = Multiplayer.isConnected() ? Multiplayer.roomScene.getChat().getButtonHeight() : 0f;
 
-        skipBtn = new UIAnimatedSprite("play-skip", true, OsuSkin.get().getAnimationFramerate());
-        skipBtn.setOrigin(Anchor.BottomRight);
-        skipBtn.setPosition(Config.getRES_WIDTH(), Config.getRES_HEIGHT() - paddingBottom);
+        final float units = LegacyUnits.getScale();
+        var frames = GameplayLayer.skinAnimationFrames("play-skip");
+
+        skipBtn = new com.reco1l.verktex.ui.UIAnimatedSprite(frames, OsuSkin.get().getAnimationFramerate());
+        skipBtn.setScaleType(com.reco1l.verktex.ui.UISprite.ScaleType.Stretch);
+        // The AndEngine sprite took the size of its first frame.
+        if (!frames.isEmpty()) {
+            skipBtn.setWidth(DimensionKt.getPx(frames.get(0).getWidth() * units));
+            skipBtn.setHeight(DimensionKt.getPx(frames.get(0).getHeight() * units));
+        }
+        skipBtn.setOrigin(com.reco1l.verktex.data.Anchor.BottomRight);
+        skipBtn.setX(DimensionKt.getPx(Config.getRES_WIDTH() * units));
+        skipBtn.setY(DimensionKt.getPx((Config.getRES_HEIGHT() - paddingBottom) * units));
         skipBtn.setAlpha(0.7f);
-        hud.attachChild(skipBtn);
+        hud.plusAssign(skipBtn);
     }
 
     /**
@@ -1542,7 +1672,23 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         }
 
         if (!isHUDEditorMode && !Config.isShowScoreboard()) {
-            hud.detachChild(e -> e instanceof HUDLeaderboard);
+            Verktex.INSTANCE.withTreeLock(() -> {
+                // Like detachChild(matcher): the first match only.
+                HUDLeaderboard leaderboard = null;
+
+                for (var child : hud) {
+                    if (child instanceof HUDLeaderboard) {
+                        leaderboard = (HUDLeaderboard) child;
+                        break;
+                    }
+                }
+
+                if (leaderboard != null) {
+                    leaderboard.detachSelf();
+                }
+
+                return Unit.INSTANCE;
+            });
         }
 
         if (!isHUDEditorMode && !replaying && !GameHelper.isAutoplay() && !GameHelper.isAutopilot()) {
@@ -1561,7 +1707,13 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         GlobalManager.getInstance().getMainActivity().reapplyWakeLock();
 
         engine.setScene(scene);
-        engine.getOverlay().attachChild(hud, 0);
+        Verktex.INSTANCE.withTreeLock(() -> {
+            if (hud.getParent() != gameplayLayer) {
+                gameplayLayer.addToBack(hud);
+            }
+            return Unit.INSTANCE;
+        });
+        gameplayLayer.show();
 
         if (isHUDEditorMode) {
             ToastLogger.showText(R.string.hudEditor_back_for_menu, false);
@@ -2104,6 +2256,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             resetPlayfieldSizeScale();
             cancelStoryboardLoading();
             cancelVideoLoading();
+            hideGameplayLayer();
 
             if (scoringScene != null && !startedFromHUDEditor) {
                 if (replaying)
@@ -2160,7 +2313,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             if (Multiplayer.isConnected()) {
                 Multiplayer.roomScene.getChat().hide();
             }
-            skipBtn.detachSelf();
+            removeUnderTreeLock(skipBtn);
             skipBtn = null;
         } else if (skipBtn != null) {
             for (int i = 0; i < cursors.length; ++i) {
@@ -2180,7 +2333,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                         return;
                     }
                     if (skipBtn != null) {
-                        skipBtn.detachSelf();
+                        removeUnderTreeLock(skipBtn);
                         skipBtn = null;
                     }
                     skip();
@@ -2264,7 +2417,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             }
 
             if (skipBtn != null) {
-                skipBtn.detachSelf();
+                removeUnderTreeLock(skipBtn);
                 skipBtn = null;
             }
         });
@@ -2281,8 +2434,12 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             expiredObjects.clear();
         }
         if (hud != null) {
-            hud.detachSelf();
+            Verktex.INSTANCE.withTreeLock(() -> {
+                hud.removeSelf();
+                return Unit.INSTANCE;
+            });
         }
+        hideGameplayLayer();
         breakPeriods = null;
         replaySettingsPanel = null;
         objects = null;
@@ -2971,7 +3128,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         paused = true;
 
         scene.setIgnoreUpdate(true);
-        hud.setIgnoreUpdate(true);
+        gameplayLayer.setHudPaused(hud, true);
 
         final PauseMenu menu = new PauseMenu(engine, this, false);
         UIEngine.getCurrent().getOverlay().setChildScene(menu.getScene(), false, false, true);
@@ -3008,7 +3165,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             gameplayClock.stop();
             paused = true;
             scene.setIgnoreUpdate(true);
-            hud.setIgnoreUpdate(true);
+            gameplayLayer.setHudPaused(hud, true);
             return;
         }
 
@@ -3091,7 +3248,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                     paused = true;
 
                     scene.setIgnoreUpdate(true);
-                    hud.setIgnoreUpdate(true);
+                    gameplayLayer.setHudPaused(hud, true);
 
                     engine.unregisterUpdateHandler(this);
 
@@ -3112,7 +3269,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         }
 
         scene.setIgnoreUpdate(false);
-        hud.setIgnoreUpdate(false);
+        gameplayLayer.setHudPaused(hud, false);
 
         UIEngine.getCurrent().getOverlay().getChildScene().back();
         paused = false;

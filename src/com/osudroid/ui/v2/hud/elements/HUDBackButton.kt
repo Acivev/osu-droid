@@ -1,17 +1,23 @@
 package com.osudroid.ui.v2.hud.elements
 
 import com.edlplan.framework.easing.Easing
-import com.reco1l.andengine.*
-import com.reco1l.andengine.shape.UICircle
-import com.reco1l.andengine.sprite.UISprite
-import com.reco1l.framework.Color4
+import com.osudroid.ui.verktex.LegacyUnits.vu
+import com.osudroid.ui.verktex.SkinTextures
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.data.fill
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.CompareFunction
+import com.reco1l.verktex.graphics.DepthState
+import com.reco1l.verktex.input.InputEvent
+import com.reco1l.verktex.input.PointerEvent
+import com.reco1l.verktex.time.TickingClock
+import com.reco1l.verktex.ui.UISprite
+import com.reco1l.verktex.ui.shape.UICircle
 import com.reco1l.framework.Interpolation
 import com.osudroid.ui.v2.hud.HUDElement
-import com.reco1l.andengine.component.*
-import org.andengine.input.touch.TouchEvent
 import ru.nsu.ccfit.zuev.osu.Config
 import ru.nsu.ccfit.zuev.osu.GlobalManager
-import ru.nsu.ccfit.zuev.osu.ResourceManager
 
 class HUDBackButton : HUDElement() {
 
@@ -20,12 +26,13 @@ class HUDBackButton : HUDElement() {
     private val requiredPressTimeMs = Config.getBackButtonPressTime().toFloat()
 
     private val arrow = UISprite().apply {
-        textureRegion = ResourceManager.getInstance().getTexture("back-arrow")
+        textureRegion = SkinTextures.getAsset("back-arrow", "back-arrow.png")
+        scaleType = UISprite.ScaleType.Stretch
         anchor = Anchor.Center
         origin = Anchor.Center
 
-        relativeSizeAxes = Axes.Both
-        setSize(0.6f, 0.6f)
+        width = fill(0.6f)
+        height = fill(0.6f)
     }
 
     private val backCircle = UICircle().apply {
@@ -33,21 +40,21 @@ class HUDBackButton : HUDElement() {
         anchor = Anchor.Center
         origin = Anchor.Center
         color = Color4.White
-        depthInfo = DepthInfo.Default
+        depthState = DEPTH_TEST_LESS
 
-        relativeSizeAxes = Axes.Both
-        setSize(1f, 1f)
+        width = fill(1f)
+        height = fill(1f)
     }
 
     private val frontCircle = UICircle().apply {
         anchor = Anchor.Center
         origin = Anchor.Center
         color = Color4(0xFF002626)
-        clearInfo = ClearInfo.ClearDepthBuffer
-        depthInfo = DepthInfo.Less
+        clearDepthBeforeDraw = true
+        depthState = DEPTH_TEST_LESS
 
-        relativeSizeAxes = Axes.Both
-        setSize(0.95f, 0.95f)
+        width = fill(0.95f)
+        height = fill(0.95f)
     }
 
 
@@ -61,36 +68,37 @@ class HUDBackButton : HUDElement() {
 
             alpha = Interpolation.floatAt(holdDurationMs, 0.25f, 0.5f, 0f, requiredPressTimeMs, Easing.OutCubic)
             backCircle.setPortion(progress)
-            backCircle.setScale(scale)
-            frontCircle.setScale(scale)
-            arrow.setScale(scale)
+            backCircle.scale = scale
+            frontCircle.scale = scale
+            arrow.scale = scale
         }
 
 
     private var isPressed = false
 
+    // Verktex offers moves and releases to every child, AndEngine bound them to the pressed area.
+    private var pressedPointerId = -1
+
 
     init {
-        setSize(SIZE, SIZE)
+        width = SIZE.vu.px
+        height = SIZE.vu.px
         alpha = 0.25f
 
         // The HUD layer may be attached to the beatmap's clock, which can be paused at any time. When that happens,
-        // this back button will never be pressable. For this reason, we use the engine's update clock.
-        // We will not inherit the beatmap clock's rate, but this is fine since the press duration is based on real
-        // time, not game time.
-        clock = UIEngine.current.clock
-        processCustomClock = false
+        // this back button will never be pressable. The Verktex gameplay layer always runs on the engine's update
+        // clock, so the press duration is based on real time, not game time.
 
-        attachChild(frontCircle)
-        attachChild(backCircle)
-        attachChild(arrow)
+        this += frontCircle
+        this += backCircle
+        this += arrow
     }
 
 
-    override fun onManagedUpdate(deltaTimeSec: Float) {
+    override fun onUpdate(clock: TickingClock) {
 
         if (!isInEditMode) {
-            val realMsElapsed = deltaTimeSec * 1000
+            val realMsElapsed = clock.elapsedTickTime * 1000
 
             if (isPressed) {
                 holdDurationMs += realMsElapsed
@@ -98,37 +106,47 @@ class HUDBackButton : HUDElement() {
                 if (holdDurationMs >= requiredPressTimeMs) {
                     isPressed = false
                     GlobalManager.getInstance().gameScene.pause()
-                    (parent as UIComponent).invalidate(InvalidationFlag.InputBindings)
                 }
             } else {
                 holdDurationMs -= realMsElapsed * 2
             }
         }
 
-        super.onManagedUpdate(deltaTimeSec)
+        super.onUpdate(clock)
     }
 
-    override fun onAreaTouched(event: TouchEvent, localX: Float, localY: Float): Boolean {
+    override fun onInputEvent(event: InputEvent): Boolean {
 
         if (isInEditMode) {
-            return super.onAreaTouched(event, localX, localY)
+            return super.onInputEvent(event)
         }
 
-        if (event.isActionDown) {
+        if (event !is PointerEvent) {
+            return false
+        }
+
+        if (event.action == PointerEvent.Action.Down) {
             isPressed = true
+            pressedPointerId = event.pointerId
             return true
         }
 
-        if (event.isActionMove) {
+        if (event.pointerId != pressedPointerId) {
+            return false
+        }
+
+        if (event.action == PointerEvent.Action.Move) {
             if (isPressed) {
-                if (localX <= 0f || localY <= 0f || localX >= width || localY >= height) {
+                val local = toLocalSpaceFromScene(event.x, event.y)
+
+                if (local.x <= 0f || local.y <= 0f || local.x >= bounds.width || local.y >= bounds.height) {
                     isPressed = false
                 }
                 return true
             }
         }
 
-        if (event.isActionUp) {
+        if (event.action == PointerEvent.Action.Up || event.action == PointerEvent.Action.Cancel) {
             if (isPressed) {
                 isPressed = false
                 return true
@@ -141,5 +159,8 @@ class HUDBackButton : HUDElement() {
 
     companion object {
         private const val SIZE = 72f
+
+        // The AndEngine DepthInfo.Default and DepthInfo.Less: depth test and write with GL_LESS.
+        private val DEPTH_TEST_LESS = DepthState(enabled = true, writeEnabled = true, function = CompareFunction.Less)
     }
 }
