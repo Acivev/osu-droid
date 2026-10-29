@@ -9,6 +9,7 @@ import android.util.Log;
 
 import com.osudroid.resources.FontStore;
 import com.osudroid.resources.SoundStore;
+import com.osudroid.resources.TextureEntry;
 import com.osudroid.resources.TextureStore;
 import com.osudroid.resources.skin.AnimatableFrameMatch;
 import com.osudroid.resources.skin.SkinFileCatalog;
@@ -16,19 +17,12 @@ import com.osudroid.ui.verktex.SkinTextures;
 import com.osudroid.resources.skin.SkinTextureRules;
 import com.osudroid.resources.skin.SoundResolution;
 import com.osudroid.resources.skin.TextureResolution;
-import com.osudroid.ui.skinning.StringSkinData;
 import com.osudroid.ui.skinning.IniReader;
 import com.osudroid.ui.skinning.SkinConverter;
 import com.reco1l.andengine.UIEngine;
 import org.andengine.engine.Engine;
 import org.andengine.opengl.font.Font;
 import org.andengine.opengl.font.StrokeFont;
-import org.andengine.opengl.texture.TextureOptions;
-import org.andengine.opengl.texture.atlas.bitmap.BitmapTextureAtlas;
-import org.andengine.opengl.texture.atlas.bitmap.source.IBitmapTextureAtlasSource;
-import org.andengine.opengl.texture.atlas.source.BaseTextureAtlasSource;
-import org.andengine.opengl.texture.region.TextureRegion;
-import org.andengine.opengl.texture.region.TextureRegionFactory;
 import org.andengine.util.debug.Debug;
 import org.json.JSONObject;
 
@@ -46,7 +40,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import ru.nsu.ccfit.zuev.audio.BassSoundProvider;
 import ru.nsu.ccfit.zuev.osu.helper.FileUtils;
 import ru.nsu.ccfit.zuev.osu.helper.MD5Calculator;
-import ru.nsu.ccfit.zuev.osu.helper.QualityFileBitmapSource;
 import ru.nsu.ccfit.zuev.osu.online.OnlineManager;
 import ru.nsu.ccfit.zuev.osuplus.BuildConfig;
 import ru.nsu.ccfit.zuev.skins.OsuSkin;
@@ -98,8 +91,8 @@ public class ResourceManager {
         fontStore.init(engine, context);
         soundStore.init(context);
         customSoundStore.init(context);
-        textureStore.init(engine, context);
-        customTextureStore.init(engine, context);
+        textureStore.init(context);
+        customTextureStore.init(context);
 
         fontStore.clear();
         textureStore.clear();
@@ -129,7 +122,7 @@ public class ResourceManager {
         loadTexture("ranking_enabled_score", "ranking_enabled_score.png", false);
         loadTexture("ranking_enabled_pp", "ranking_enabled_pp.png", false);
         loadTexture("ranking_disabled", "ranking_disabled.png", false);
-        loadTexture("flashlight_cursor", "flashlight_cursor.png", false, TextureOptions.BILINEAR_PREMULTIPLYALPHA);
+        loadTexture("flashlight_cursor", "flashlight_cursor.png", false);
 
         textureStore.markAbsent("lighting");
 
@@ -353,71 +346,61 @@ public class ResourceManager {
         return fontStore.getOrLoadDefault(resname);
     }
 
-    public TextureRegion loadTexture(final String resname, final String file,
-                                     final boolean external, final TextureOptions opt) {
-        return textureStore.load(resname, file, external, opt);
+    public TextureEntry loadTexture(final String resname, final String file,
+                                    final boolean external) {
+        return textureStore.load(resname, file, external);
     }
 
-    public TextureRegion loadTexture(final String resname, final String file,
-                                     final boolean external) {
-        return textureStore.load(resname, file, external, TextureOptions.BILINEAR);
-    }
-
-    public TextureRegion loadBackground(final String file) {
+    public TextureEntry loadBackground(final String file) {
         backgroundFile = file;
         if (textureStore.containsKey("::background")) {
             // Deliberately not textureStore.unload(name) here, which would also remove the map
-            // entry - the original code only unloads the GL texture at this point and leaves the
-            // (now stale, about to be overwritten below) region in the map, since getTexture/
+            // entry - the original code only unloaded the GL texture at this point and left the
+            // (now stale, about to be overwritten below) entry in the map, since getTexture/
             // getTextureIfLoaded("::background") is read externally (GameScene, ScoringScene,
             // GameLoaderScene, RoomScene, LobbyScene) and must keep seeing *something* until this
-            // method's own textureStore.put(...) calls below replace it.
-            engine.getTextureManager().unloadTexture(Objects.requireNonNull(textureStore.get("::background")).getTexture());
+            // method's own textureStore.put(...) calls below replace it. The catalog has no GL
+            // texture; the check (and its throw for an absent slot) stays.
+            Objects.requireNonNull(textureStore.get("::background"));
         }
         if (file == null) {
             return textureStore.get("menu-background");
         }
 
-        final QualityFileBitmapSource source = new QualityFileBitmapSource(new File(file));
-        if (source.getWidth() == 0 || source.getHeight() == 0 || !source.preload()) {
-            TextureRegion fallback = textureStore.get("menu-background");
+        final TextureEntry entry = TextureStore.decodeFile(new File(file), 1, TextureEntry.Source.SkinFile);
+        if (entry == null) {
+            TextureEntry fallback = textureStore.get("menu-background");
             textureStore.put("::background", fallback);
             return fallback;
         }
 
-        final BitmapTextureAtlas tex = new BitmapTextureAtlas(engine.getTextureManager(), source.getWidth(), source.getHeight(), TextureOptions.BILINEAR);
-        TextureRegion region = TextureRegionFactory.createFromSource(tex, source, 0, 0, false);
-        engine.getTextureManager().loadTexture(tex);
-        textureStore.put("::background", region);
-        return region;
+        textureStore.put("::background", entry);
+        return entry;
     }
 
     /**
      * {@link #loadBackground(String)} with the background already decoded, as the song menu hands it
-     * over. The bitmap is copied for the atlas, which recycles what it uploads.
+     * over. The bitmap is only measured, not decoded again.
      */
-    public TextureRegion loadBackground(final String file, final Bitmap bitmap) {
+    public TextureEntry loadBackground(final String file, final Bitmap bitmap) {
         backgroundFile = file;
         if (textureStore.containsKey("::background")) {
-            // Only the GL texture, see loadBackground(String).
-            engine.getTextureManager().unloadTexture(Objects.requireNonNull(textureStore.get("::background")).getTexture());
+            // See loadBackground(String).
+            Objects.requireNonNull(textureStore.get("::background"));
         }
         if (file == null) {
             return textureStore.get("menu-background");
         }
 
         if (bitmap == null) {
-            TextureRegion fallback = textureStore.get("menu-background");
+            TextureEntry fallback = textureStore.get("menu-background");
             textureStore.put("::background", fallback);
             return fallback;
         }
 
-        final BitmapCopySource source = new BitmapCopySource(bitmap, 0, 0);
-        final BitmapTextureAtlas tex = new BitmapTextureAtlas(engine.getTextureManager(), bitmap.getWidth(), bitmap.getHeight(), TextureOptions.BILINEAR);
-        TextureRegion region = TextureRegionFactory.createFromSource(tex, source, 0, 0, false);
-        engine.getTextureManager().loadTexture(tex);
-        textureStore.put("::background", region);
-        return region;
+        final TextureEntry entry = new TextureEntry(TextureEntry.Source.HighQualityFile, new File(file), bitmap.getWidth(), bitmap.getHeight());
+        textureStore.put("::background", entry);
+        return entry;
     }
 
     /**
@@ -427,36 +410,16 @@ public class ResourceManager {
         return backgroundFile;
     }
 
-    public TextureRegion loadHighQualityAsset(final String resname,
-                                              final String file) {
+    public TextureEntry loadHighQualityAsset(final String resname,
+                                             final String file) {
         return textureStore.loadHighQualityAsset(resname, file);
     }
 
-    public TextureRegion loadHighQualityFile(final String resname, final File file) {
+    public TextureEntry loadHighQualityFile(final String resname, final File file) {
         return textureStore.loadHighQualityFile(resname, file);
     }
 
-    public TextureRegion getTextureWithPrefix(StringSkinData prefix, String name)
-    {
-        var defaultName = prefix.getDefaultValue() + "-" + name;
-        if (BeatmapSkinManager.isSkinEnabled() && customTextureStore.containsKey(defaultName)) {
-            return customTextureStore.get(defaultName);
-        }
-
-        var customName = prefix.getCurrentValue() + "-" + name;
-
-        if (!textureStore.containsKey(customName)) {
-            loadTexture(customName, Config.getSkinPath() + customName.replace("\\", "") + ".png", true);
-        }
-
-        TextureRegion custom = textureStore.get(customName);
-        if (custom != null) {
-            return custom;
-        }
-        return textureStore.get(defaultName);
-    }
-
-    public TextureRegion getTexture(final String resname) {
+    public TextureEntry getTexture(final String resname) {
         if (BeatmapSkinManager.isSkinEnabled() && customTextureStore.containsKey(resname)) {
             return customTextureStore.get(resname);
         }
@@ -468,7 +431,7 @@ public class ResourceManager {
         return textureStore.get(resname);
     }
 
-    public TextureRegion getAvatarTextureIfLoaded(final String avatarURL) {
+    public TextureEntry getAvatarTextureIfLoaded(final String avatarURL) {
         var region = getTextureIfLoaded(MD5Calculator.getStringMD5(avatarURL));
 
         if (region == null) {
@@ -478,7 +441,7 @@ public class ResourceManager {
         return region;
     }
 
-    public TextureRegion getProfileBannerTextureIfLoaded(final String bannerURL) {
+    public TextureEntry getProfileBannerTextureIfLoaded(final String bannerURL) {
         if (bannerURL == null || bannerURL.length() == 0) {
             return null;
         }
@@ -486,7 +449,7 @@ public class ResourceManager {
         return getTextureIfLoaded(MD5Calculator.getStringMD5(bannerURL));
     }
 
-    public TextureRegion getTextureIfLoaded(final String resname) {
+    public TextureEntry getTextureIfLoaded(final String resname) {
         if (textureStore.containsKey(resname)) {
             return textureStore.get(resname);
         }
@@ -571,7 +534,7 @@ public class ResourceManager {
         return soundStore.get(resname);
     }
 
-    public void loadCustomTexture(final File file) {
+    public TextureEntry loadCustomTexture(final File file) {
         String resname = file.getName();
         resname = resname.substring(0, resname.length() - 4).toLowerCase();
         boolean multiframe = false;
@@ -585,17 +548,14 @@ public class ResourceManager {
                 }
                 multiframe = true;
             } else {
-                return;
+                return null;
             }
         }
-        QualityFileBitmapSource source = new QualityFileBitmapSource(file);
+        TextureEntry region = TextureStore.decodeFile(file, 1, TextureEntry.Source.BeatmapSkin);
 
-        if (!source.preload()) {
-            return;
+        if (region == null) {
+            return null;
         }
-        BitmapTextureAtlas tex = new BitmapTextureAtlas(engine.getTextureManager(), source.getWidth(), source.getHeight(), TextureOptions.BILINEAR);
-        TextureRegion region = TextureRegionFactory.createFromSource(tex, source, 0, 0, false);
-        engine.getTextureManager().loadTexture(tex);
         if (multiframe) {
             int i = 0;
             while (textureStore.containsKey(resname + delimiter + i)) {
@@ -631,14 +591,11 @@ public class ResourceManager {
                 }
             }
         }
+        return region;
     }
 
     public void unloadTexture(final String name) {
         textureStore.unload(name);
-    }
-
-    public void unloadTexture(TextureRegion texture) {
-        textureStore.unload(texture);
     }
 
     public void initSecurityUtils() {
@@ -648,12 +605,6 @@ public class ResourceManager {
     public void clearCustomResources() {
         for (final BassSoundProvider s : customSoundStore.getValues()) {
             s.free();
-        }
-        for (final String s : customTextureStore.getKeys()) {
-            TextureRegion tex = customTextureStore.get(s);
-            if (tex != null && tex.getTexture() != null && tex.getTexture().isLoadedToHardware()) {
-                engine.getTextureManager().unloadTexture(tex.getTexture());
-            }
         }
         customTextureStore.clear();
         customTextureFiles.clear();
@@ -678,55 +629,5 @@ public class ResourceManager {
         }
 
         return textureStore.getFrameCount(texname);
-    }
-
-    public void checkSpinnerTextures() {
-        final String[] names = {"spinner-background", "spinner-circle",
-                "spinner-metre", "spinner-approachcircle", "spinner-spin"};
-        for (final String s : names) {
-            TextureRegion tex = textureStore.get(s);
-            if (tex != null && tex.getTexture() != null && !tex.getTexture().isLoadedToHardware()) {
-                engine.getTextureManager().onReload();
-                break;
-            }
-        }
-    }
-
-    public void checkEvoSpinnerTextures() {
-        final String[] names = {
-                "spinner-bottom",
-                "spinner-top",
-                "spinner-glow",
-                "spinner-middle",
-                "spinner-middle2",
-                "spinner-spin",
-                "spinner-clear"
-        };
-        for (final String s : names) {
-            TextureRegion tex = textureStore.get(s);
-            if (tex != null && tex.getTexture() != null && !tex.getTexture().isLoadedToHardware()) {
-                engine.getTextureManager().onReload();
-                break;
-            }
-        }
-    }
-
-    private static final class BitmapCopySource extends BaseTextureAtlasSource implements IBitmapTextureAtlasSource {
-        private final Bitmap bitmap;
-
-        BitmapCopySource(final Bitmap bitmap, final int textureX, final int textureY) {
-            super(textureX, textureY, bitmap.getWidth(), bitmap.getHeight());
-            this.bitmap = bitmap;
-        }
-
-        @Override
-        public BitmapCopySource deepCopy() {
-            return new BitmapCopySource(bitmap, mTextureX, mTextureY);
-        }
-
-        @Override
-        public Bitmap onLoadBitmap(final Bitmap.Config pBitmapConfig) {
-            return bitmap.copy(Bitmap.Config.ARGB_8888, false);
-        }
     }
 }

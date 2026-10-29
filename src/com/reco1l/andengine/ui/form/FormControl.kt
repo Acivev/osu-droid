@@ -59,7 +59,7 @@ abstract class FormControl<V : Any, C: UIControl<V>>(initialValue: V): UILinearC
         padding = Vec4(4f, 0f, 8f, 0f)
         content.spacing = -2f
         leadingIcon = UISprite().apply {
-            textureRegion = ResourceManager.getInstance().getTexture("reset")
+            textureRegion = null
             width = 16f
             height = 16f
         }

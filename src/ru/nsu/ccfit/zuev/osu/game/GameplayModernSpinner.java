@@ -12,7 +12,6 @@ import com.osudroid.beatmaps.hitobjects.Spinner;
 
 import ru.nsu.ccfit.zuev.osu.Config;
 import ru.nsu.ccfit.zuev.osu.Constants;
-import ru.nsu.ccfit.zuev.osu.ResourceManager;
 import ru.nsu.ccfit.zuev.osu.Utils;
 import ru.nsu.ccfit.zuev.osu.scoring.ScoreNumber;
 import ru.nsu.ccfit.zuev.osu.scoring.StatisticV2;
@@ -30,7 +29,6 @@ public class GameplayModernSpinner extends GameplaySpinner {
     private final ScoreNumber bonusScore;
 
     public GameplayModernSpinner() {
-        ResourceManager.getInstance().checkEvoSpinnerTextures();
         position.set(Constants.MAP_WIDTH / 2f, Constants.MAP_HEIGHT / 2f);
         Utils.trackToRealCoords(position);
 

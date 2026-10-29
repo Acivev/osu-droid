@@ -19,7 +19,6 @@ import java.util.ArrayList;
 import ru.nsu.ccfit.zuev.audio.serviceAudio.SongService;
 import ru.nsu.ccfit.zuev.osu.Config;
 import ru.nsu.ccfit.zuev.osu.Constants;
-import ru.nsu.ccfit.zuev.osu.ResourceManager;
 import ru.nsu.ccfit.zuev.osu.Utils;
 import ru.nsu.ccfit.zuev.osu.scoring.ScoreNumber;
 import ru.nsu.ccfit.zuev.osu.scoring.StatisticV2;
@@ -60,7 +59,6 @@ public class GameplaySpinner extends GameObject {
     protected final PointF currMouse = new PointF();
 
     public GameplaySpinner() {
-        ResourceManager.getInstance().checkSpinnerTextures();
         position.set(Constants.MAP_WIDTH / 2f, Constants.MAP_HEIGHT / 2f);
         Utils.trackToRealCoords(position);
 
@@ -141,7 +139,6 @@ public class GameplaySpinner extends GameObject {
         startHit = false;
 
         reloadHitSounds();
-        ResourceManager.getInstance().checkSpinnerTextures();
 
         hitTime = (float) beatmapSpinner.startTime / 1000f;
         float timePreempt = (float) beatmapSpinner.timePreempt / 1000f;

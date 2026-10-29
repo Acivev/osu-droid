@@ -22,7 +22,7 @@ open class UICheckbox(initialValue: Boolean = false) : UIControl<Boolean>(initia
 
 
     private val checkSprite = sprite {
-        textureRegion = ResourceManager.getInstance().getTexture("check")
+        textureRegion = null
         width = 32f
         height = 32f
         anchor = Anchor.Center

@@ -24,12 +24,12 @@ open class UIAnimatedSprite(frames: Array<TextureRegion?>) : UISprite() {
             val frameName = textureName + (if (withHyphen) "-" else "") + i
 
             if (ResourceManager.getInstance().isTextureLoaded(frameName)) {
-                frames.add(ResourceManager.getInstance().getTexture(frameName))
+                frames.add(null)
             }
         }
 
         if (frames.isEmpty()) {
-            frames.add(ResourceManager.getInstance().getTexture(textureName))
+            frames.add(null)
         }
 
     }.toTypedArray()) {

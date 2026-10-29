@@ -6,7 +6,6 @@ import org.andengine.opengl.font.Font;
 import org.andengine.opengl.vbo.VertexBufferObjectManager;
 
 import ru.nsu.ccfit.zuev.osu.GlobalManager;
-import ru.nsu.ccfit.zuev.osu.ResourceManager;
 
 /**
  * Created by Fuuko on 2015/2/22.
@@ -20,7 +19,7 @@ public class TextButton extends Sprite {
     }
 
     public TextButton(Font font, String text, float scale) {
-        super(0, 0, ResourceManager.getInstance().getTexture("button"),
+        super(0, 0, null,
                 GlobalManager.getInstance().getEngine().getVertexBufferObjectManager());
         final VertexBufferObjectManager vbo = GlobalManager.getInstance().getEngine().getVertexBufferObjectManager();
         buttonText = new Text(0, 0, font, text, 50, vbo);

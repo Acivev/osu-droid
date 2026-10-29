@@ -1,16 +1,23 @@
 package com.osudroid.resources
 
 import android.content.Context
-import com.reco1l.andengine.texture.BlankTextureRegion
-import org.andengine.engine.Engine
-import org.andengine.opengl.texture.TextureOptions
-import org.andengine.opengl.texture.atlas.bitmap.BitmapTextureAtlas
-import org.andengine.opengl.texture.region.TextureRegion
-import org.andengine.opengl.texture.region.TextureRegionFactory
-import ru.nsu.ccfit.zuev.osu.helper.QualityAssetBitmapSource
-import ru.nsu.ccfit.zuev.osu.helper.QualityFileBitmapSource
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import ru.nsu.ccfit.zuev.osu.Config
 import java.io.File
+import java.io.FileInputStream
+import java.io.IOException
+import java.io.InputStream
 import java.util.concurrent.ConcurrentHashMap
+
+/**
+ * A texture the catalog knows to be loadable: where it comes from and the size it decodes to.
+ * Nothing is uploaded; the pixels are drawn through Verktex (`SkinTextures`).
+ */
+class TextureEntry(val source: Source, val file: File?, val width: Int, val height: Int) {
+
+    enum class Source { SkinFile, DefaultAsset, BeatmapSkin, HighQualityAsset, HighQualityFile }
+}
 
 /**
  * A named cache of loaded textures plus their animation frame counts, safe to read and write from
@@ -26,16 +33,14 @@ import java.util.concurrent.ConcurrentHashMap
 class TextureStore {
 
     // Set via init(), mirroring ResourceManager.Init() - not constructor parameters, so that
-    // bookkeeping-only tests can construct a store without needing a real Engine/Context (those
-    // fields are only touched by the GL-touching load methods below).
-    private lateinit var engine: Engine
+    // bookkeeping-only tests can construct a store without needing a real Context (the field is
+    // only touched by the asset loads below).
     private lateinit var context: Context
 
-    private val textures = ConcurrentHashMap<String, TextureRegion>()
+    private val textures = ConcurrentHashMap<String, TextureEntry>()
     private val frameCounts = ConcurrentHashMap<String, Int>()
 
-    fun init(engine: Engine, context: Context) {
-        this.engine = engine
+    fun init(context: Context) {
         this.context = context
     }
 
@@ -43,39 +48,39 @@ class TextureStore {
      * Sentinel standing in for a `null` cache entry - e.g. the "lighting" texture, which
      * `ResourceManager.loadSkin` intentionally marks as "checked, absent" to suppress repeated
      * lazy-load attempts. [ConcurrentHashMap] forbids real `null` values, so this is substituted
-     * internally and translated back to `null` by [get]/[getOrNull], preserving the exact external
+     * internally and translated back to `null` by [get]/[remove], preserving the exact external
      * contract callers (e.g. `GameScene`'s `getTexture("lighting") != null` check) rely on.
      */
-    private val absentTexture: TextureRegion = BlankTextureRegion()
+    private val ABSENT = TextureEntry(TextureEntry.Source.DefaultAsset, null, 0, 0)
 
     //region Bookkeeping
 
-    /** Returns the cached region for [name], or `null` if absent or explicitly marked absent via [markAbsent]. */
-    fun get(name: String): TextureRegion? = textures[name]?.takeIf { it !== absentTexture }
+    /** Returns the cached entry for [name], or `null` if absent or explicitly marked absent via [markAbsent]. */
+    fun get(name: String): TextureEntry? = textures[name]?.takeIf { it !== ABSENT }
 
     fun containsKey(name: String): Boolean = textures.containsKey(name)
 
     /**
-     * Unconditionally sets [name] to [region] - a `null` region is stored as [markAbsent] would,
+     * Unconditionally sets [name] to [entry] - a `null` entry is stored as [markAbsent] would,
      * matching the original `Map<String, TextureRegion>.put(name, someNullableGet())` pass-through
      * pattern `ResourceManager.loadBackground` relies on (its "::background" fallback stores
      * whatever `get("menu-background")` returned, including `null` if that itself was never loaded).
      */
-    fun put(name: String, region: TextureRegion?) {
-        textures[name] = region ?: absentTexture
+    fun put(name: String, entry: TextureEntry?) {
+        textures[name] = entry ?: ABSENT
     }
 
     /**
      * Marks [name] as checked-and-absent: [containsKey] becomes true, [get] keeps returning `null`.
-     * Unlike [put], does not override an already-present region (matching the `if
+     * Unlike [put], does not override an already-present entry (matching the `if
      * (!textures.containsKey("lighting")) textures.put("lighting", null)` guard every original call
      * site used this for).
      */
     fun markAbsent(name: String) {
-        textures.putIfAbsent(name, absentTexture)
+        textures.putIfAbsent(name, ABSENT)
     }
 
-    fun remove(name: String): TextureRegion? = textures.remove(name)?.takeIf { it !== absentTexture }
+    fun remove(name: String): TextureEntry? = textures.remove(name)?.takeIf { it !== ABSENT }
 
     val keys: Set<String> get() = textures.keys
 
@@ -99,17 +104,16 @@ class TextureStore {
 
     //endregion
 
-    //region GL-touching loads
+    //region Loads
 
     /**
      * Loads a texture either from an external file (with `@2x` HD-variant fallback when the exact
-     * path doesn't exist) or from the app's bundled assets, registers it under [resname], and
-     * returns it. Returns `null` on decode failure, or a [BlankTextureRegion] when an external file
-     * (and its `@2x` variant) doesn't exist at all - matching `ResourceManager.loadTexture`'s
-     * original, slightly inconsistent failure contract exactly (callers historically rely on both).
+     * path doesn't exist, decoded at half size) or from the app's bundled assets, registers it
+     * under [resname], and returns it. Returns `null`, storing nothing, when the file (and its
+     * `@2x` variant) doesn't exist or doesn't decode.
      */
-    fun load(resname: String, file: String, external: Boolean, opt: TextureOptions = TextureOptions.BILINEAR): TextureRegion? {
-        val region: TextureRegion
+    fun load(resname: String, file: String, external: Boolean): TextureEntry? {
+        val entry: TextureEntry
 
         if (external) {
             var texFile = File(file)
@@ -121,76 +125,87 @@ class TextureStore {
                 isHDTexture = texFile.exists()
 
                 if (!isHDTexture) {
-                    return BlankTextureRegion()
+                    return null
                 }
             }
 
-            val source = QualityFileBitmapSource(texFile, if (isHDTexture) 2 else 1)
-            if (source.width == 0 || source.height == 0 || !source.preload()) {
-                return null
-            }
-
-            val tex = BitmapTextureAtlas(engine.textureManager, source.width, source.height, opt)
-            region = TextureRegionFactory.createFromSource(tex, source, 0, 0, false)
-            engine.textureManager.loadTexture(tex)
+            entry = decodeFile(texFile, if (isHDTexture) 2 else 1, TextureEntry.Source.SkinFile) ?: return null
         } else {
-            val source = try {
-                QualityAssetBitmapSource(context, file)
-            } catch (e: NullPointerException) {
-                return BlankTextureRegion()
-            }
-
-            if (source.width == 0 || source.height == 0 || !source.preload()) {
-                return null
-            }
-
-            val tex = BitmapTextureAtlas(engine.textureManager, source.width, source.height, opt)
-            region = TextureRegionFactory.createFromSource(tex, source, 0, 0, false)
-            engine.textureManager.loadTexture(tex)
+            entry = decodeAsset(file, TextureEntry.Source.DefaultAsset) ?: return null
         }
 
-        textures[resname] = region
-        return region
+        textures[resname] = entry
+        return entry
     }
 
-    fun loadHighQualityAsset(resname: String, file: String): TextureRegion? {
-        val source = QualityAssetBitmapSource(context, file)
-        if (source.width == 0 || source.height == 0) {
-            return null
-        }
+    fun loadHighQualityAsset(resname: String, file: String): TextureEntry? {
+        val entry = decodeAsset(file, TextureEntry.Source.HighQualityAsset) ?: return null
 
-        val tex = BitmapTextureAtlas(engine.textureManager, source.width, source.height, TextureOptions.BILINEAR)
-        val region = TextureRegionFactory.createFromSource(tex, source, 0, 0, false)
-        engine.textureManager.loadTexture(tex)
-
-        textures[resname] = region
-        return region
+        textures[resname] = entry
+        return entry
     }
 
-    fun loadHighQualityFile(resname: String, file: File): TextureRegion? {
-        val source = QualityFileBitmapSource(file)
-        if (source.width == 0 || source.height == 0) {
-            return null
-        }
+    fun loadHighQualityFile(resname: String, file: File): TextureEntry? {
+        val entry = decodeFile(file, 1, TextureEntry.Source.HighQualityFile) ?: return null
 
-        val tex = BitmapTextureAtlas(engine.textureManager, source.width, source.height, TextureOptions.BILINEAR)
-        val region = TextureRegionFactory.createFromSource(tex, source, 0, 0, false)
-        engine.textureManager.loadTexture(tex)
-
-        textures[resname] = region
-        return region
+        textures[resname] = entry
+        return entry
     }
 
     fun unload(name: String) {
-        val region = get(name) ?: return
-        engine.textureManager.unloadTexture(region.texture)
         textures.remove(name)
     }
 
-    fun unload(region: TextureRegion) {
-        engine.textureManager.unloadTexture(region.texture)
-        textures.entries.removeAll { it.value === region }
-    }
+    // Assets decode with the texture quality as their sample size, as QualityAssetBitmapSource did.
+    private fun decodeAsset(file: String, source: TextureEntry.Source): TextureEntry? =
+        decode({ context.assets.open(file) }, Config.getTextureQuality())?.let { (width, height) ->
+            TextureEntry(source, null, width, height)
+        }
 
     //endregion
+
+    companion object {
+
+        /**
+         * Decodes [file] with [sampleSize] (1, or 2 for an `@2x` file, as QualityFileBitmapSource
+         * did) and returns its entry, or `null` when it doesn't decode. Stores nothing.
+         */
+        @JvmStatic
+        fun decodeFile(file: File, sampleSize: Int, source: TextureEntry.Source): TextureEntry? =
+            decode({ FileInputStream(file) }, sampleSize)?.let { (width, height) ->
+                TextureEntry(source, file, width, height)
+            }
+
+        /** Bounds, then a full decode that is discarded; the bounds' size, or `null` on failure. */
+        private fun decode(open: () -> InputStream, sampleSize: Int): Pair<Int, Int>? {
+            val bounds = BitmapFactory.Options().also {
+                it.inJustDecodeBounds = true
+                it.inSampleSize = sampleSize
+            }
+
+            try {
+                open().use { BitmapFactory.decodeStream(it, null, bounds) }
+            } catch (e: IOException) {
+                return null
+            }
+
+            if (bounds.outWidth <= 0 || bounds.outHeight <= 0) {
+                return null
+            }
+
+            val options = BitmapFactory.Options().also {
+                it.inPreferredConfig = Bitmap.Config.ARGB_8888
+                it.inSampleSize = sampleSize
+            }
+
+            val bitmap = try {
+                open().use { BitmapFactory.decodeStream(it, null, options) }
+            } catch (e: IOException) {
+                null
+            } ?: return null
+
+            bitmap.recycle()
+            return bounds.outWidth to bounds.outHeight
+        }
+    }
 }

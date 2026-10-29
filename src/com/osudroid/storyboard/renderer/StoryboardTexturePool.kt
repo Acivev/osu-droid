@@ -10,7 +10,6 @@ import android.graphics.PorterDuffXfermode
 import com.osudroid.storyboard.model.Storyboard
 import com.osudroid.ui.verktex.SkinTextures
 import com.osudroid.verktex.bridge.VerktexBridge
-import com.reco1l.andengine.texture.BlankTextureRegion
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.graphics.GraphicsTexture
 import com.reco1l.verktex.texture.Textures
@@ -201,7 +200,7 @@ class StoryboardTexturePool @JvmOverloads constructor(
             return false
         }
 
-        return resources.getTexture(skinName)?.takeIf { it !is BlankTextureRegion } != null
+        return resources.getTexture(skinName) != null
     }
 
     /**
