@@ -106,12 +106,18 @@ class StoryboardTexturePool @JvmOverloads constructor(
     fun register() {
         VerktexBridge.checkUpdateThread()
 
-        val placeholder = shared(PLACEHOLDER_KEY) { errorBitmap() }
+        val placeholder = shared(PLACEHOLDER_KEY, ::errorBitmap)
         this.placeholder = placeholder
-        whiteRegion = shared(WHITE_KEY) { whiteBitmap() }
+        val whiteRegion = shared(WHITE_KEY, ::whiteBitmap)
+        this.whiteRegion = whiteRegion
+
+        val uploaded = LinkedHashSet<GraphicsTexture>()
+        uploaded.add(placeholder.texture)
+        uploaded.add(whiteRegion.texture)
 
         for ((index, page) in pages.withIndex()) {
             val region = Textures.load(keyPrefix + "page" + index, page.source, standalone = true)
+            region?.let { uploaded.add(it.texture) }
 
             for (info in page.infos) {
                 textures[info.name] = if (region == null) placeholder.also { page.source.recycle() } else GraphicsTexture.Region(
@@ -123,7 +129,9 @@ class StoryboardTexturePool @JvmOverloads constructor(
         }
 
         for ((name, source) in singles) {
-            textures[name] = Textures.load(keyPrefix + name, source, standalone = true) ?: placeholder.also { source.recycle() }
+            val region = Textures.load(keyPrefix + name, source, standalone = true)
+            region?.let { uploaded.add(it.texture) }
+            textures[name] = region ?: placeholder.also { source.recycle() }
         }
 
         for (name in skinNames) {
@@ -134,6 +142,15 @@ class StoryboardTexturePool @JvmOverloads constructor(
         pages.clear()
         singles.clear()
         skinNames.clear()
+
+        // Verktex uploads a texture's regions when it is first bound, which would stall the frame that first
+        // draws them. AndEngine uploaded them in the frames right after the load, so they are bound on the next
+        // frame here. Every draw binds its own texture, so binding them ahead of time changes nothing that is drawn.
+        Verktex.scheduleOnDraw {
+            for (texture in uploaded) {
+                texture.bind()
+            }
+        }
     }
 
     /**
@@ -242,7 +259,7 @@ class StoryboardTexturePool @JvmOverloads constructor(
         val singlePageHeight = if (byPage.size == 1) lineMaxY + 10 else PAGE_SIZE
         val pageHeight = singlePageHeight.coerceAtMost(PAGE_SIZE)
 
-        // One bitmap per page: Verktex uploads from the source when the page is first drawn.
+        // One bitmap per page: Verktex uploads from the source when the page is first bound, right after register().
         for ((_, pageInfos) in byPage) {
             val source = StoryboardTextureSource(composePage(pageInfos, pageHeight)) { composePage(pageInfos, pageHeight) }
 
@@ -320,16 +337,9 @@ class StoryboardTexturePool @JvmOverloads constructor(
         }
     }
 
-    private fun errorBitmap(): Bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).also {
-        it.setPixel(0, 0, Color.argb(255, 255, 0, 0))
-    }
-
-    private fun whiteBitmap(): Bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).also {
-        it.setPixel(0, 0, Color.argb(255, 255, 255, 255))
-    }
-
     /**
-     * The region of a texture all pools share, created on first use and kept.
+     * The region of a texture all pools share, created on first use and kept. [create] must not capture a
+     * pool, the shared source keeps it for its reloads.
      */
     private fun shared(key: String, create: () -> Bitmap): GraphicsTexture.Region =
         Textures[key] ?: checkNotNull(Textures.load(key, StoryboardTextureSource(create(), create), standalone = true))
@@ -363,5 +373,13 @@ class StoryboardTexturePool @JvmOverloads constructor(
         private const val WHITE_KEY = "storyboard:white"
 
         private val nextPoolId = AtomicInteger()
+
+        private fun errorBitmap(): Bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).also {
+            it.setPixel(0, 0, Color.argb(255, 255, 0, 0))
+        }
+
+        private fun whiteBitmap(): Bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).also {
+            it.setPixel(0, 0, Color.argb(255, 255, 255, 255))
+        }
     }
 }

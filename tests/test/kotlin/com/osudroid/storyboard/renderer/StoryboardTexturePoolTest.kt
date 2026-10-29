@@ -192,6 +192,36 @@ class StoryboardTexturePoolTest {
     }
 
     @Test
+    fun registerUploadsOnTheNextDrawFrame() {
+        png("a.png", 10, 10)
+        png("b.png", 12, 12)
+
+        val pool = StoryboardTexturePool(directory)
+        pool.load(storyboardOf("a.png" to 15, "b.png" to 1))
+
+        @Suppress("UNCHECKED_CAST")
+        val singles = StoryboardTexturePool::class.java.getDeclaredField("singles").apply { isAccessible = true }.get(pool) as Map<String, StoryboardTextureSource>
+        val pages = StoryboardTexturePool::class.java.getDeclaredField("pages").apply { isAccessible = true }.get(pool) as List<*>
+        val pageSourceField = pages.first()!!.javaClass.getDeclaredField("source").apply { isAccessible = true }
+        val sources = singles.values + pages.map { pageSourceField.get(it) as StoryboardTextureSource }
+        assertEquals(2, sources.size)
+
+        val bitmapField = StoryboardTextureSource::class.java.getDeclaredField("bitmap").apply { isAccessible = true }
+        val bitmaps = sources.map { bitmapField.get(it) as Bitmap }
+
+        pool.register()
+
+        // Nothing is uploaded on the update thread.
+        assertTrue(bitmaps.none { it.isRecycled })
+
+        // No component draws here: the frame after register() binds the textures, which uploads and recycles them.
+        VerktexTestFixtures.pumpDraw()
+
+        assertTrue(bitmaps.all { it.isRecycled })
+        assertTrue(sources.all { bitmapField.get(it) == null })
+    }
+
+    @Test
     fun clearUnloadsEveryPoolKey() {
         png("a.png", 10, 10)
         png("b.png", 12, 12)

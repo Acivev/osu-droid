@@ -476,6 +476,23 @@ public class GameScene implements GameObjectListener {
     }
 
     private void loadBackground() {
+        var playableBeatmap = this.playableBeatmap;
+
+        // Set before the old picture goes, so a late applyBackground of the previous attempt that lands in
+        // between builds the picture from this beatmap's source.
+        if (playableBeatmap != null) {
+            // Whether the file decodes is known only on the update thread: applyBackground asks for its region and
+            // shows the menu background when there is none.
+            backgroundSource = chooseBackground(Config.isSafeBeatmapBg(), playableBeatmap.getEvents().backgroundFilename,
+                    ResourceManager.getInstance().getBackgroundFile() != null, true);
+
+            Color4 backgroundColor = playableBeatmap.getEvents().getBackgroundColor();
+            if (backgroundColor == null) {
+                backgroundColor = new Color4(0, 0, 0);
+            }
+            this.backgroundColor = backgroundColor;
+        }
+
         if (dimRectangle != null) {
             removeUnderTreeLock(dimRectangle);
             dimRectangle = null;
@@ -492,23 +509,6 @@ public class GameScene implements GameObjectListener {
         }
 
         releaseVideo();
-
-        var playableBeatmap = this.playableBeatmap;
-
-        if (playableBeatmap == null) {
-            return;
-        }
-
-        // Whether the file decodes is known only on the update thread: applyBackground asks for its region and
-        // shows the menu background when there is none.
-        backgroundSource = chooseBackground(Config.isSafeBeatmapBg(), playableBeatmap.getEvents().backgroundFilename,
-                ResourceManager.getInstance().getBackgroundFile() != null, true);
-
-        Color4 backgroundColor = playableBeatmap.getEvents().getBackgroundColor();
-        if (backgroundColor == null) {
-            backgroundColor = new Color4(0, 0, 0);
-        }
-        this.backgroundColor = backgroundColor;
     }
 
     /**
