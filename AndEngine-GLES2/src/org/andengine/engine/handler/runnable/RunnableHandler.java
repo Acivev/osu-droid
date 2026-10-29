@@ -39,14 +39,20 @@ public class RunnableHandler implements IUpdateHandler {
 	// ===========================================================
 
 	@Override
-	public synchronized void onUpdate(final float pSecondsElapsed) {
-		final ArrayList<Runnable> runnables = this.mRunnables;
+	public void onUpdate(final float pSecondsElapsed) {
+		final ArrayList<Runnable> runnables;
 
 		// BEGIN osu!droid modified: swap in the empty buffer so Runnables posted by run() below (directly, or
 		// indirectly via postRunnable()) land in the new mRunnables instead of the list we're about to iterate
 		// and clear (which will cause the posted Runnables, which has not been run yet, to be cleared).
-		this.mRunnables = this.mRunnablesSwapBuffer;
-		this.mRunnablesSwapBuffer = runnables;
+		// The swap is the only part under the monitor: the batch runs outside it so postRunnable() never waits on a
+		// running Runnable (which may itself wait on a lock held by the thread that is posting, causing a deadlock).
+		// Only the update thread calls onUpdate(), so mRunnablesSwapBuffer needs no further protection.
+		synchronized(this) {
+			runnables = this.mRunnables;
+			this.mRunnables = this.mRunnablesSwapBuffer;
+			this.mRunnablesSwapBuffer = runnables;
+		}
 		// END osu!droid modified
 
 		final int runnableCount = runnables.size();
