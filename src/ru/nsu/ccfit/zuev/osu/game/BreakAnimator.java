@@ -13,7 +13,7 @@ import com.rian.andengine.modifier.VerktexModifiers;
 import com.reco1l.verktex.Verktex;
 import kotlin.Unit;
 import com.osudroid.multiplayer.Multiplayer;
-import org.andengine.entity.primitive.Rectangle;
+import com.reco1l.verktex.ui.shape.UIBox;
 
 import ru.nsu.ccfit.zuev.osu.Config;
 import ru.nsu.ccfit.zuev.osu.ResourceManager;
@@ -25,7 +25,7 @@ public class BreakAnimator extends GameObject {
     private final UIContainer scene;
     private final StatisticV2 stat;
     private final UISprite[] arrows = new UISprite[4];
-    private Rectangle dimRectangle;
+    private UIBox dimRectangle;
     private final GameplayHUD hud;
     private float length;
     private float time;
@@ -63,7 +63,7 @@ public class BreakAnimator extends GameObject {
 
     }
 
-    public void setDimRectangle(Rectangle dimRectangle) {
+    public void setDimRectangle(UIBox dimRectangle) {
         this.dimRectangle = dimRectangle;
     }
 
@@ -166,13 +166,15 @@ public class BreakAnimator extends GameObject {
 
     private void setBgFade(float percent) {
         if (dimRectangle != null && !Config.isNoChangeDimInBreaks()) {
-            dimRectangle.setAlpha((1 - dimBrightness) * (1 - percent));
+            final UIBox dim = dimRectangle;
+            underTreeLock(() -> dim.setAlpha((1 - dimBrightness) * (1 - percent)));
         }
     }
 
     private void resumeBgFade() {
         if (dimRectangle != null && !Config.isNoChangeDimInBreaks()) {
-            dimRectangle.setAlpha(1 - dimBrightness);
+            final UIBox dim = dimRectangle;
+            underTreeLock(() -> dim.setAlpha(1 - dimBrightness));
         }
     }
 

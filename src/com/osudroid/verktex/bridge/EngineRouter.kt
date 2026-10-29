@@ -86,15 +86,8 @@ object EngineRouter {
     }
 
     @JvmStatic
-    fun showVerktex(scene: UIScene) = showVerktex(scene, emptyAndEngineScene)
-
-    /**
-     * Like [showVerktex], but AndEngine shows [backdrop] under the Verktex scene instead of the empty
-     * scene.
-     */
-    @JvmStatic
-    fun showVerktex(scene: UIScene, backdrop: Scene) {
-        andEngineSceneSetter(backdrop)
+    fun showVerktex(scene: UIScene) {
+        andEngineSceneSetter(emptyAndEngineScene)
 
         Verktex.withTreeLock {
             hideTrackedOverlays()

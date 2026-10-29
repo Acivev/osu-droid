@@ -46,9 +46,9 @@ import com.osudroid.verktex.bridge.VerktexBridge;
 import com.osudroid.game.GameplayTickingClock;
 import com.osudroid.game.PlayfieldTransform;
 import com.osudroid.verktex.bridge.RoutedScene;
+import com.osudroid.ui.verktex.SharedBackground;
 import com.osudroid.ui.verktex.SkinTextures;
 import com.reco1l.andengine.UIEngine;
-import com.reco1l.andengine.component.ComponentsKt;
 import com.reco1l.verktex.data.Anchor;
 import com.reco1l.verktex.data.ClipMode;
 import com.reco1l.verktex.data.Vec2;
@@ -117,16 +117,8 @@ import com.osudroid.utils.ModUtils;
 import com.rian.andengine.timing.IFrameBasedClock;
 import com.rian.andengine.timing.Stopwatch;
 
-import org.andengine.engine.camera.SmoothCamera;
 import org.andengine.engine.options.TouchOptions;
 import org.andengine.engine.options.WakeLockOptions;
-import org.andengine.entity.primitive.Rectangle;
-import org.andengine.entity.scene.Scene;
-import org.andengine.entity.scene.background.Background;
-import org.andengine.entity.scene.background.EntityBackground;
-import org.andengine.entity.shape.RectangularShape;
-import org.andengine.entity.sprite.Sprite;
-import org.andengine.opengl.texture.region.TextureRegion;
 import org.andengine.util.debug.Debug;
 
 import java.io.File;
@@ -203,13 +195,25 @@ public class GameScene implements GameObjectListener {
     private final float[] touchPoint = new float[2];
 
     /**
-     * The AndEngine scene shown under the playfield: the beatmap background or video with the dim, and the
-     * storyboard.
+     * The background of the game scene: the virtual resolution scaled to the window around its top left
+     * corner, without the playfield size, as AndEngine drew the scene background. It holds
+     * {@link #backgroundEntity}.
      */
-    private Scene backdrop;
+    private BackgroundHolder backgroundHolder;
+
+    /**
+     * The beatmap background or video with the dim, scaled around its centre to fill the virtual resolution.
+     */
+    private UIContainer backgroundEntity;
     private Destination oldScene;
     private UIBox sceneBorder;
-    private RectangularShape beatmapBackground;
+    private UIComponent beatmapBackground;
+
+    /**
+     * The picture {@link #loadBackground()} chose and the colour of the colour box.
+     */
+    private BackgroundSource backgroundSource;
+    private Color4 backgroundColor;
     private Beatmap parsedBeatmap;
     private DroidPlayableBeatmap playableBeatmap;
     private BeatmapInfo lastBeatmapInfo;
@@ -252,7 +256,7 @@ public class GameScene implements GameObjectListener {
     private Replay replay;
     private boolean replaying;
     private String replayFilePath;
-    private Rectangle dimRectangle = null;
+    private UIBox dimRectangle = null;
     private ComboBurst comboBurst;
     private int failcount = 0;
     private Color4 sliderBorderColor;
@@ -416,7 +420,10 @@ public class GameScene implements GameObjectListener {
         playfield.plusAssign(mgScene);
         playfield.plusAssign(fgScene);
         scene.plusAssign(playfield);
-        backdrop = new Scene();
+        backgroundHolder = new BackgroundHolder();
+        backgroundEntity = new UIContainer();
+        backgroundEntity.setScaleOrigin(Anchor.Center);
+        backgroundHolder.plusAssign(backgroundEntity);
     }
 
     public void setScoringScene(final ScoringScene sc) {
@@ -427,10 +434,55 @@ public class GameScene implements GameObjectListener {
         oldScene = oscene;
     }
 
+    /**
+     * Where the gameplay background comes from.
+     */
+    public enum BackgroundSource {
+        /** The skin's menu background. */
+        MenuBackground,
+        /** The beatmap's background file. */
+        BeatmapBackground,
+        /** A box in the beatmap's background colour. */
+        Colour
+    }
+
+    /**
+     * The picture of the gameplay background, the rules of the AndEngine background slot: the safe-background
+     * setting and a beatmap without a background file show the menu background, the file shows itself when
+     * it decodes and the menu background the slot stored when it does not, and a slot never filled shows the
+     * colour box.
+     */
+    public static BackgroundSource chooseBackground(boolean safeBackground, String backgroundFilename, boolean slotFilled, boolean decoded) {
+        if (safeBackground || backgroundFilename == null) {
+            return BackgroundSource.MenuBackground;
+        }
+
+        if (!slotFilled) {
+            return BackgroundSource.Colour;
+        }
+
+        return decoded ? BackgroundSource.BeatmapBackground : BackgroundSource.MenuBackground;
+    }
+
+    /**
+     * Writes the scale (around the centre) and the position of a background of the given size in the
+     * virtual resolution into {@code out}: {@code factor, x, y}.
+     */
+    public static void backgroundPlacement(boolean keepAspectRatio, float bgW, float bgH, float resW, float resH, float[] out) {
+        out[0] = keepAspectRatio ? resH / bgH : resW / bgW;
+        out[1] = (resW - bgW) / 2f;
+        out[2] = (resH - bgH) / 2f;
+    }
+
     private void loadBackground() {
         if (dimRectangle != null) {
-            dimRectangle.detachSelf();
+            removeUnderTreeLock(dimRectangle);
             dimRectangle = null;
+        }
+
+        if (beatmapBackground != null) {
+            removeUnderTreeLock(beatmapBackground);
+            beatmapBackground = null;
         }
 
         if (sceneBorder != null) {
@@ -446,23 +498,51 @@ public class GameScene implements GameObjectListener {
             return;
         }
 
-        TextureRegion textureRegion = Config.isSafeBeatmapBg() || playableBeatmap.getEvents().backgroundFilename == null
-                ? ResourceManager.getInstance().getTexture("menu-background")
-                : ResourceManager.getInstance().getTextureIfLoaded("::background");
+        // Whether the file decodes is known only on the update thread: applyBackground asks for its region and
+        // shows the menu background when there is none.
+        backgroundSource = chooseBackground(Config.isSafeBeatmapBg(), playableBeatmap.getEvents().backgroundFilename,
+                ResourceManager.getInstance().getBackgroundFile() != null, true);
 
-        if (textureRegion == null) {
-            Rectangle rectangle = new Rectangle(0f, 0f, Config.getRES_WIDTH(), Config.getRES_HEIGHT(), engine.getVertexBufferObjectManager());
-
-            Color4 backgroundColor = playableBeatmap.getEvents().getBackgroundColor();
-            if (backgroundColor == null) {
-                backgroundColor = new Color4(0, 0, 0);
-            }
-            ComponentsKt.setColor4(rectangle, backgroundColor);
-
-            beatmapBackground = rectangle;
-        } else {
-            beatmapBackground = new Sprite(0, 0, textureRegion.getWidth(), textureRegion.getHeight(), textureRegion, engine.getVertexBufferObjectManager());
+        Color4 backgroundColor = playableBeatmap.getEvents().getBackgroundColor();
+        if (backgroundColor == null) {
+            backgroundColor = new Color4(0, 0, 0);
         }
+        this.backgroundColor = backgroundColor;
+    }
+
+    /**
+     * The picture of {@link #backgroundSource}, on the update thread: a sprite of the background region, or
+     * the colour box of the virtual resolution's size.
+     */
+    private UIComponent createBackgroundPicture() {
+        GraphicsTexture.Region region = null;
+        var source = backgroundSource;
+
+        if (source == BackgroundSource.BeatmapBackground) {
+            region = SharedBackground.region();
+
+            if (region == null) {
+                source = BackgroundSource.MenuBackground;
+            }
+        }
+
+        if (source == BackgroundSource.MenuBackground) {
+            region = SkinTextures.get("menu-background");
+        }
+
+        if (region == null) {
+            var color = backgroundColor != null ? backgroundColor : new Color4(0, 0, 0);
+            var box = new UIBox();
+            box.setWidth(DimensionKt.getPx(Config.getRES_WIDTH()));
+            box.setHeight(DimensionKt.getPx(Config.getRES_HEIGHT()));
+            box.setBackgroundColor(new com.reco1l.verktex.data.Color4(color.getRed(), color.getGreen(), color.getBlue(), color.getAlpha()));
+            return box;
+        }
+
+        var sprite = new UISprite(region);
+        sprite.setWidth(DimensionKt.getPx(region.getWidth()));
+        sprite.setHeight(DimensionKt.getPx(region.getHeight()));
+        return sprite;
     }
 
     public void loadStoryboard(BeatmapInfo beatmapInfo) {
@@ -686,46 +766,64 @@ public class GameScene implements GameObjectListener {
             this.sceneBorder = sceneBorder;
         }
 
-        var background = videoEnabled && video != null ? video : beatmapBackground;
-        float backgroundW = videoEnabled && video != null ? video.getWidth() : beatmapBackground.getWidth();
-        float backgroundH = videoEnabled && video != null ? video.getHeight() : beatmapBackground.getHeight();
-
-        if (dimRectangle != null) {
-            dimRectangle.detachSelf();
-        } else {
-            dimRectangle = new Rectangle(0f, 0f, 0f, 0f, engine.getVertexBufferObjectManager());
+        // Task 2 puts the video sprite here: until then a beatmap with a video shows its background.
+        if (beatmapBackground == null) {
+            beatmapBackground = createBackgroundPicture();
         }
 
-        dimRectangle.setSize(backgroundW, backgroundH);
-        dimRectangle.setColor(0f, 0f, 0f, 1f - brightness);
-        background.attachChild(dimRectangle);
+        var background = beatmapBackground;
+        var backgroundRegion = background instanceof UISprite sprite ? sprite.getTextureRegion() : null;
+        float backgroundW = backgroundRegion != null ? backgroundRegion.getWidth() : Config.getRES_WIDTH();
+        float backgroundH = backgroundRegion != null ? backgroundRegion.getHeight() : Config.getRES_HEIGHT();
+
+        if (dimRectangle == null) {
+            dimRectangle = new UIBox();
+            dimRectangle.setBackgroundColor(new com.reco1l.verktex.data.Color4(0f, 0f, 0f, 1f));
+        }
+
+        final UIBox dim = dimRectangle;
 
         if (breakAnimator != null) {
             breakAnimator.setDimBrightness(brightness);
             breakAnimator.setDimRectangle(dimRectangle);
         }
 
-        var factor = Config.isKeepBackgroundAspectRatio()
-                ? Config.getRES_HEIGHT() / backgroundH
-                : Config.getRES_WIDTH() / backgroundW;
+        final float[] placement = new float[3];
+        backgroundPlacement(Config.isKeepBackgroundAspectRatio(), backgroundW, backgroundH, Config.getRES_WIDTH(), Config.getRES_HEIGHT(), placement);
 
-        background.setScale(factor);
-        background.setPosition((Config.getRES_WIDTH() - backgroundW) / 2f, (Config.getRES_HEIGHT() - backgroundH) / 2f);
-        backdrop.setBackground(new EntityBackground(background));
+        Verktex.INSTANCE.withTreeLock(() -> {
+            dim.setWidth(DimensionKt.getPx(backgroundW));
+            dim.setHeight(DimensionKt.getPx(backgroundH));
+            dim.setAlpha(1f - brightness);
+
+            // The picture and the dim are siblings, the dim over the picture: a Verktex sprite has no children,
+            // and the alpha of a parent multiplies into its children.
+            background.removeSelf();
+            dim.removeSelf();
+            backgroundEntity.plusAssign(background);
+            backgroundEntity.plusAssign(dim);
+
+            backgroundEntity.setWidth(DimensionKt.getPx(backgroundW));
+            backgroundEntity.setHeight(DimensionKt.getPx(backgroundH));
+            backgroundEntity.setScale(placement[0]);
+            backgroundEntity.setX(DimensionKt.getPx(placement[1]));
+            backgroundEntity.setY(DimensionKt.getPx(placement[2]));
+
+            backgroundHolder.setScale(LegacyUnits.getScale());
+
+            if (scene.getBackground() != backgroundHolder) {
+                scene.setBackground(backgroundHolder);
+            }
+
+            return Unit.INSTANCE;
+        });
 
         if (storyboardComponent != null) {
             if (isStoryboardEnabled) {
                 storyboardComponent.transparentBackground = videoEnabled && video != null;
                 storyboardComponent.brightness = brightness;
 
-                if (!storyboardComponent.hasParent()) {
-                    backdrop.attachChild(storyboardComponent, 0);
-                }
-
-                // Until the storyboard moves to Verktex, its overlay layer is drawn under the whole playfield.
-                if (!storyboardComponent.overlayComponent.hasParent()) {
-                    backdrop.attachChild(storyboardComponent.overlayComponent);
-                }
+                // Task 3 attaches the storyboard components to the playfield
             } else {
                 storyboardComponent.detachSelf();
                 storyboardComponent.overlayComponent.detachSelf();
@@ -1133,7 +1231,6 @@ public class GameScene implements GameObjectListener {
         isBeatmapLoaded = false;
         isHUDEditorMode = isHUDEditor;
         startedFromHUDEditor = isHUDEditor;
-        resetPlayfieldSizeScale();
 
         // The modifiers of the previous playfield are dropped with it.
         var oldPlayfield = playfield;
@@ -1153,8 +1250,6 @@ public class GameScene implements GameObjectListener {
         playfield.plusAssign(mgScene);
         playfield.plusAssign(fgScene);
         scene.plusAssign(playfield);
-        backdrop = new Scene();
-        backdrop.setBackground(new Background(0, 0, 0));
         failcount = 0;
 
         var window = Verktex.INSTANCE.getGraphics().getWindow();
@@ -1631,7 +1726,11 @@ public class GameScene implements GameObjectListener {
 
                 // We do not want
                 if (!breakAnimator.isBreak() && dimRectangle != null) {
-                    dimRectangle.setAlpha(1f - brightness);
+                    final UIBox dim = dimRectangle;
+                    Verktex.INSTANCE.withTreeLock(() -> {
+                        dim.setAlpha(1f - brightness);
+                        return Unit.INSTANCE;
+                    });
                 }
 
                 return Unit.INSTANCE;
@@ -1874,7 +1973,6 @@ public class GameScene implements GameObjectListener {
             Multiplayer.roomScene.getChat().hide();
         }
 
-        applyPlayfieldSizeScale();
         applyBackground();
 
         if (replaySettingsPanel != null) {
@@ -1916,7 +2014,7 @@ public class GameScene implements GameObjectListener {
         engine.getEngineOptions().setWakeLockOptions(WakeLockOptions.SCREEN_BRIGHT);
         GlobalManager.getInstance().getMainActivity().reapplyWakeLock();
 
-        EngineRouter.showVerktex(scene, backdrop);
+        EngineRouter.showVerktex(scene);
         Verktex.INSTANCE.withTreeLock(() -> {
             if (hud.getParent() != gameplayLayer) {
                 gameplayLayer.addToBack(hud);
@@ -2471,7 +2569,6 @@ public class GameScene implements GameObjectListener {
                 replay.setStat(stat);
                 replay.save(replayPath);
             }
-            resetPlayfieldSizeScale();
             cancelStoryboardLoading();
             cancelVideoLoading();
             hideGameplayLayer();
@@ -2719,7 +2816,6 @@ public class GameScene implements GameObjectListener {
         }
 
         onExit();
-        resetPlayfieldSizeScale();
 
         // The modifiers of the playfield are dropped with the scene.
         var oldPlayfield = playfield;
@@ -4018,42 +4114,6 @@ public class GameScene implements GameObjectListener {
         return performanceAttributes.total;
     }
 
-    private void applyPlayfieldSizeScale() {
-        // IMPORTANT: This MUST be called only when the game scene is displayed, otherwise it will scale the currently
-        // displayed scene (the one before gameplay starts), which is not what we want.
-        if (!(GlobalManager.getInstance().getCamera() instanceof SmoothCamera camera)) {
-            return;
-        }
-
-        float playfieldSize = Config.getPlayfieldSize();
-        float playfieldHorizontalPosition = Config.getPlayfieldHorizontalPosition();
-        float playfieldVerticalPosition = Config.getPlayfieldVerticalPosition();
-
-        camera.setZoomFactorDirect(playfieldSize);
-
-        camera.setCenterDirect(
-            Config.getRES_WIDTH() * Interpolation.linear(
-                Interpolation.linear(0f, 0.5f, playfieldSize),
-                Interpolation.linear(1f, 0.5f, playfieldSize),
-                1 - playfieldHorizontalPosition
-            ),
-            Config.getRES_HEIGHT() * Interpolation.linear(
-                Interpolation.linear(0f, 0.5f, playfieldSize),
-                Interpolation.linear(1f, 0.5f, playfieldSize),
-                1 - playfieldVerticalPosition
-            )
-        );
-    }
-
-    private void resetPlayfieldSizeScale() {
-        if (!(GlobalManager.getInstance().getCamera() instanceof SmoothCamera camera)) {
-            return;
-        }
-
-        camera.setZoomFactorDirect(1f);
-        camera.setCenterDirect(Config.getRES_WIDTH() / 2f, Config.getRES_HEIGHT() / 2f);
-    }
-
     private int estimateMaximumActiveObjects() {
         if (objects == null) {
             return 0;
@@ -4944,6 +5004,19 @@ public class GameScene implements GameObjectListener {
             }
 
             return contentConstraints.constrain(new Vec2(Config.getRES_WIDTH(), Config.getRES_HEIGHT()));
+        }
+    }
+
+    /**
+     * The holder of the gameplay background, the game scene's {@link UIScene#getBackground() background}: a
+     * playfield layer scaled to the window around its top left corner, so the background fills the window
+     * and is neither padded by the safe area nor scaled by the playfield size. The scene measures its
+     * background within the window, the holder measures the background entity unbounded.
+     */
+    private static class BackgroundHolder extends PlayfieldLayer {
+
+        BackgroundHolder() {
+            setScaleOrigin(Anchor.TopLeft);
         }
     }
 }
