@@ -201,7 +201,6 @@ android {
 }
 
 dependencies {
-    implementation project(':AndEngine-GLES2')
     implementation project(':LibBASS')
     implementation project(':verktex')
     implementation 'androidx.legacy:legacy-support-v4:1.0.0'

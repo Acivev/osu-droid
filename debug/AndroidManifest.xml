@@ -2,7 +2,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application>
-        <!-- Runs in its own process so Verktex does not share engine/BASS state with AndEngine. -->
+        <!-- Runs in its own process so Verktex does not share engine/BASS state with the main process. -->
         <activity
             android:name="com.osudroid.verktex.VerktexTestActivity"
             android:exported="true"
