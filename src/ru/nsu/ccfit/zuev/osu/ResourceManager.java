@@ -4,10 +4,8 @@ import static kotlin.collections.ArraysKt.any;
 
 import android.content.Context;
 import android.graphics.Bitmap;
-import android.graphics.Color;
 import android.util.Log;
 
-import com.osudroid.resources.FontStore;
 import com.osudroid.resources.SoundStore;
 import com.osudroid.resources.TextureEntry;
 import com.osudroid.resources.TextureStore;
@@ -21,8 +19,6 @@ import com.osudroid.ui.skinning.IniReader;
 import com.osudroid.ui.skinning.SkinConverter;
 import com.reco1l.andengine.UIEngine;
 import org.andengine.engine.Engine;
-import org.andengine.opengl.font.Font;
-import org.andengine.opengl.font.StrokeFont;
 import ru.nsu.ccfit.zuev.osu.helper.Debug;
 import org.json.JSONObject;
 
@@ -59,7 +55,6 @@ public class ResourceManager {
     // gameplay start, see BeatmapSkinManager) while being read concurrently from the update/GL thread
     // during rendering - the stores are ConcurrentHashMap-backed internally specifically to stay safe
     // under that access pattern.
-    private final FontStore fontStore = new FontStore();
     private final SoundStore soundStore = new SoundStore();
     private final SoundStore customSoundStore = new SoundStore();
     private final TextureStore textureStore = new TextureStore();
@@ -88,13 +83,11 @@ public class ResourceManager {
         this.engine = engine;
         this.context = context;
 
-        fontStore.init(engine, context);
         soundStore.init(context);
         customSoundStore.init(context);
         textureStore.init(context);
         customTextureStore.init(context);
 
-        fontStore.clear();
         textureStore.clear();
         soundStore.clear();
 
@@ -106,12 +99,6 @@ public class ResourceManager {
     }
 
     public void loadSkin(String folder) {
-        loadFont("smallFont", null, 21, Color.WHITE);
-        loadFont("middleFont", null, 24, Color.WHITE);
-        loadFont("bigFont", null, 36, Color.WHITE);
-        loadFont("font", null, 28, Color.WHITE);
-        loadStrokeFont("strokeFont", null, 36, Color.BLACK, Color.WHITE);
-        loadFont("CaptionFont", null, 35, Color.WHITE);
 
         if (!folder.endsWith("/"))
             folder = folder + "/";
@@ -330,20 +317,6 @@ public class ResourceManager {
         }
 
         return frameIndex;
-    }
-
-    public Font loadFont(final String resname, final String file, final int size,
-                         final int color) {
-        return fontStore.loadFont(resname, file, size, color);
-    }
-
-    public StrokeFont loadStrokeFont(final String resname, final String file,
-                                     final int size, final int color1, final int color2) {
-        return fontStore.loadStrokeFont(resname, file, size, color1, color2);
-    }
-
-    public Font getFont(final String resname) {
-        return fontStore.getOrLoadDefault(resname);
     }
 
     public TextureEntry loadTexture(final String resname, final String file,

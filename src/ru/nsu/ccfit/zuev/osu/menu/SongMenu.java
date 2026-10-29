@@ -709,8 +709,8 @@ public class SongMenu extends UIScene implements ISkinnable, RoutedScene, MenuIt
     }
 
     /**
-     * The legacy texts were placed below each other from the line heights of their AndEngine fonts,
-     * which are kept so the texts start where they did.
+     * The legacy texts were placed below each other from line heights measured with the same Paint metrics
+     * the old AndEngine fonts used, so the texts start where they did.
      */
     private void computeInfoTextY() {
         float y = Utils.toRes(2f);
@@ -718,7 +718,7 @@ public class SongMenu extends UIScene implements ISkinnable, RoutedScene, MenuIt
 
         for (int i = 0; i < fontNames.length; i++) {
             infoTextY[i] = y;
-            y += ResourceManager.getInstance().getFont(fontNames[i]).getLineHeight() + Utils.toRes(2f);
+            y += LegacyUnits.lineHeight(fontNames[i]) + Utils.toRes(2f);
         }
     }
 

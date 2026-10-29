@@ -301,15 +301,6 @@ public class MainActivity extends BaseGameActivity implements
         ResourceManager.getInstance().loadSound("welcome", "sfx/welcome.ogg", false);
         ResourceManager.getInstance().loadSound("welcome_piano", "sfx/welcome_piano.ogg", false);
 
-        // Fonts must be loaded before SplashScene.initialize() so that the Text entities
-        // it creates get valid Font references bound to the current engine.
-        // These are moved up from their original position later in this method; do NOT load
-        // them a second time below.
-        ResourceManager.getInstance().loadFont("font", null, 28, Color.WHITE);
-        ResourceManager.getInstance().loadFont("smallFont", null, 21, Color.WHITE);
-        ResourceManager.getInstance().loadFont("xs", null, 16, Color.WHITE);
-        ResourceManager.getInstance().loadStrokeFont("strokeFont", null, 36, Color.BLACK, Color.WHITE);
-
         // Re-initialize SplashScene so its Sprite/Text children are bound to the current
         // engine's VBO manager, TextureManager, and FontManager.  On the very first launch
         // this just creates the entities for the first time (the SplashScene constructor no
@@ -416,7 +407,6 @@ public class MainActivity extends BaseGameActivity implements
                 DatabaseManager.notifyIfResetDueToDowngrade();
                 GlobalManager.getInstance().setInfo("");
                 GlobalManager.getInstance().setLoadingProgress(100);
-                ResourceManager.getInstance().loadFont("font", null, 28, Color.WHITE);
 
                 // Keep the scene switch and its follow-up in one runnable so they run together.
                 if (willReplay) {

@@ -1,5 +1,7 @@
 package com.osudroid.ui.verktex
 
+import android.graphics.Paint
+import android.graphics.Typeface
 import com.reco1l.verktex.Verktex
 import ru.nsu.ccfit.zuev.osu.Config
 
@@ -23,7 +25,7 @@ object LegacyUnits {
 
     /**
      * Font sizes of ResourceManager fonts, in virtual units. "logFont" is never registered, so it
-     * gets the default size `FontStore.getOrLoadDefault` uses (35), like any unknown name.
+     * gets the default size the old font store used (35), like any unknown name.
      */
     @JvmStatic
     fun fontSize(name: String): Float = when (name) {
@@ -35,5 +37,20 @@ object LegacyUnits {
         "bigFont" -> 36f
         "CaptionFont" -> 35f
         else -> 35f
+    }
+
+    /**
+     * Line height of the legacy font [name], measured the way the old AndEngine fonts did: ascent and
+     * descent of a Paint with the default typeface and the size divided by the texture quality as an
+     * integer division.
+     */
+    @JvmStatic
+    fun lineHeight(name: String): Float {
+        val paint = Paint()
+        paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.NORMAL)
+        paint.isAntiAlias = true
+        paint.textSize = (fontSize(name).toInt() / Config.getTextureQuality()).toFloat()
+        val fm = paint.fontMetrics
+        return -fm.ascent + fm.descent
     }
 }
