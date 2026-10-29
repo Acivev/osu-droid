@@ -34,7 +34,7 @@ import com.osudroid.verktex.bridge.RoutedScene
 import com.osudroid.verktex.bridge.VerktexBridge
 import com.reco1l.verktex.Verktex
 import com.osudroid.resources.R
-import com.reco1l.andengine.ui.SizeVariant
+import com.osudroid.ui.verktex.SizeVariant
 import com.reco1l.verktex.data.*
 import com.reco1l.verktex.input.InputEvent
 import com.reco1l.verktex.input.KeyboardEvent

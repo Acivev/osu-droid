@@ -64,7 +64,7 @@ import com.reco1l.verktex.ui.UIScene;
 import com.reco1l.verktex.ui.UISprite;
 import com.reco1l.verktex.ui.container.UIContainer;
 import com.reco1l.verktex.ui.shape.UIBox;
-import com.reco1l.andengine.sprite.UIVideoSprite;
+import com.osudroid.game.UIVideoSprite;
 import com.osudroid.resources.R;
 import com.osudroid.ui.v2.game.FollowPointConnection;
 import com.osudroid.ui.v2.hud.GameplayHUD;

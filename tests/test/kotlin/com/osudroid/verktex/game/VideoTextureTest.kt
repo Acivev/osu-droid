@@ -7,8 +7,8 @@ import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import com.osudroid.verktex.VerktexTestFixtures
-import com.reco1l.andengine.sprite.UIVideoSprite
-import com.reco1l.andengine.texture.VideoTexture
+import com.osudroid.game.UIVideoSprite
+import com.osudroid.game.VideoTexture
 import com.reco1l.verktex.Platform
 import com.reco1l.verktex.android.gles.ESExternalTexture
 import com.reco1l.verktex.data.Anchor

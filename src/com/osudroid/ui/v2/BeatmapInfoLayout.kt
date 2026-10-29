@@ -10,7 +10,7 @@ import com.osudroid.ui.verktex.*
 import com.osudroid.ui.verktex.LegacyUnits.vu
 import com.osudroid.utils.async
 import com.osudroid.utils.updateThread
-import com.reco1l.andengine.ui.SizeVariant
+import com.osudroid.ui.verktex.SizeVariant
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.data.*
 import com.reco1l.verktex.ui.container.*

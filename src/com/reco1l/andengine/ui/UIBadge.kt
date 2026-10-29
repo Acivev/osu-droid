@@ -2,12 +2,14 @@
 
 package com.reco1l.andengine.ui
 
+import com.osudroid.ui.verktex.SizeVariant
+import com.osudroid.ui.verktex.ISizeVariable
 import com.reco1l.andengine.*
 import com.reco1l.andengine.component.*
 import com.reco1l.andengine.container.*
 import com.reco1l.andengine.shape.*
 import com.reco1l.andengine.text.*
-import com.reco1l.andengine.ui.SizeVariant.*
+import com.osudroid.ui.verktex.SizeVariant.*
 import com.reco1l.framework.*
 import com.reco1l.framework.math.*
 import org.andengine.engine.camera.*

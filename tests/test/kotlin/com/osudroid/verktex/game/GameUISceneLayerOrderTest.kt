@@ -12,8 +12,8 @@ import com.osudroid.game.PlayfieldTransform
 import com.osudroid.storyboard.renderer.StoryboardComponent
 import com.osudroid.ui.verktex.LegacyUnits
 import com.osudroid.verktex.VerktexTestFixtures
-import com.reco1l.andengine.sprite.UIVideoSprite
-import com.reco1l.andengine.texture.VideoTexture
+import com.osudroid.game.UIVideoSprite
+import com.osudroid.game.VideoTexture
 import com.reco1l.verktex.Platform
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.android.gles.ESExternalTexture

@@ -2,7 +2,7 @@ package com.osudroid.ui.verktex
 
 import androidx.annotation.StringRes
 import com.osudroid.ui.verktex.LegacyUnits.vu
-import com.reco1l.andengine.ui.SizeVariant
+import com.osudroid.ui.verktex.SizeVariant
 import com.reco1l.verktex.data.Anchor
 import com.reco1l.verktex.data.Color4
 import com.reco1l.verktex.data.Padding

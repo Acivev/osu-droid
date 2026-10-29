@@ -1,4 +1,4 @@
-package com.reco1l.andengine.ui
+package com.osudroid.ui.verktex
 
 interface ISizeVariable {
 

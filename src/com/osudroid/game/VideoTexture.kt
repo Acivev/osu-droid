@@ -1,4 +1,4 @@
-package com.reco1l.andengine.texture
+package com.osudroid.game
 
 import android.net.Uri
 import android.util.Log
