@@ -691,7 +691,7 @@ public class GameScene implements GameObjectListener {
 
         videoLoadingJob = Execution.async(scope -> {
             try {
-                var video = new UIVideoSprite(beatmapInfo.getAbsoluteSetDirectory() + "/" + videoFilename, engine);
+                var video = new UIVideoSprite(beatmapInfo.getAbsoluteSetDirectory() + "/" + videoFilename);
                 video.setAlpha(0f);
 
                 ensureActive(scope.getCoroutineContext());
@@ -729,7 +729,7 @@ public class GameScene implements GameObjectListener {
     private void applyBackground() {
         // Guard: video sprite exists but dimensions not yet reported by ExoPlayer.
         // onVideoSizeChanged will trigger another applyBackground call when they arrive.
-        if (video != null && (video.getWidth() == 0 || video.getHeight() == 0)) {
+        if (video != null && (video.getVideoWidth() == 0 || video.getVideoHeight() == 0)) {
             return;
         }
 
@@ -766,15 +766,18 @@ public class GameScene implements GameObjectListener {
             this.sceneBorder = sceneBorder;
         }
 
-        // Task 2 puts the video sprite here: until then a beatmap with a video shows its background.
-        if (beatmapBackground == null) {
+        boolean showVideo = videoEnabled && video != null;
+
+        if (!showVideo && beatmapBackground == null) {
             beatmapBackground = createBackgroundPicture();
         }
 
-        var background = beatmapBackground;
-        var backgroundRegion = background instanceof UISprite sprite ? sprite.getTextureRegion() : null;
-        float backgroundW = backgroundRegion != null ? backgroundRegion.getWidth() : Config.getRES_WIDTH();
-        float backgroundH = backgroundRegion != null ? backgroundRegion.getHeight() : Config.getRES_HEIGHT();
+        UIComponent background = showVideo ? video : beatmapBackground;
+        // The picture shown before the video was ready, or the video before it was released.
+        UIComponent replaced = showVideo ? beatmapBackground : video;
+        var backgroundRegion = !showVideo && background instanceof UISprite sprite ? sprite.getTextureRegion() : null;
+        float backgroundW = showVideo ? video.getVideoWidth() : backgroundRegion != null ? backgroundRegion.getWidth() : Config.getRES_WIDTH();
+        float backgroundH = showVideo ? video.getVideoHeight() : backgroundRegion != null ? backgroundRegion.getHeight() : Config.getRES_HEIGHT();
 
         if (dimRectangle == null) {
             dimRectangle = new UIBox();
@@ -798,6 +801,10 @@ public class GameScene implements GameObjectListener {
 
             // The picture and the dim are siblings, the dim over the picture: a Verktex sprite has no children,
             // and the alpha of a parent multiplies into its children.
+            if (replaced != null) {
+                replaced.removeSelf();
+            }
+
             background.removeSelf();
             dim.removeSelf();
             backgroundEntity.plusAssign(background);

@@ -1,92 +1,51 @@
 package com.reco1l.andengine.sprite
 
-import android.opengl.GLES32
 import android.os.Handler
 import android.os.Looper
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.util.UnstableApi
 import androidx.annotation.OptIn
-import com.osudroid.utils.updateThread
 import com.reco1l.andengine.texture.*
-import com.acivev.andengine.opengl.ExternalOESShaderProgram
-import org.andengine.engine.Engine
-import org.andengine.opengl.shader.constants.ShaderProgramConstants
-import org.andengine.opengl.texture.region.*
-import org.andengine.opengl.util.GLState
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.data.Anchor
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.ui.UISprite
 
 @OptIn(UnstableApi::class)
-class UIVideoSprite(source: String, private val engine: Engine) : UISprite() {
+class UIVideoSprite internal constructor(private val texture: VideoTexture) : UISprite() {
 
-    private val texture = VideoTexture(source)
+    constructor(source: String) : this(VideoTexture(source))
+
+    /**
+     * The width the sprite was sized to once the video reported its dimensions, 0 until then.
+     */
+    var videoWidth = 0f
+        private set
+
+    /**
+     * The height the sprite was sized to once the video reported its dimensions, 0 until then.
+     */
+    var videoHeight = 0f
+        private set
 
     init {
         val w = texture.videoWidth.toFloat()
         val h = texture.videoHeight.toFloat()
-        textureRegion = TextureRegion(texture, 0f, 0f, w.coerceAtLeast(1f), h.coerceAtLeast(1f))
-        engine.textureManager.loadTexture(texture)
+        textureRegion = texture.texture.region
+
+        // The region covers the whole external texture, whose size is only nominal (the decoder sizes the buffers),
+        // so the frame is stretched over the sprite, which is sized to the video.
+        scaleType = ScaleType.Stretch
 
         // Some hardware decoders report 0×0 from prepare() and only provide dimensions
-        // on the first decoded frame. Register a listener to fix the TextureRegion then.
+        // on the first decoded frame. Register a listener to size the sprite then.
         if (w <= 0f || h <= 0f) {
             texture.onReady = Runnable {
-                updateThread {
-                    textureRegion?.setTextureWidth(texture.videoWidth.toFloat())
-                    textureRegion?.setTextureHeight(texture.videoHeight.toFloat())
-                    setSize(texture.videoWidth.toFloat(), texture.videoHeight.toFloat())
+                Verktex.scheduleOnUpdate {
+                    setVideoSize(texture.videoWidth.toFloat(), texture.videoHeight.toFloat())
                 }
             }
         }
-
-        // SurfaceTexture/OES textures have their V axis inverted relative to UISprite's UV
-        // convention — flip it so the video appears right-side up regardless of whether the
-        // device's ST matrix also applies a V-flip (both cases work out correctly).
-        flippedVertical = true
-    }
-
-    // -----------------------------------------------------------------------
-    // Custom shader binding — OES external texture + ST-transform matrix
-    // -----------------------------------------------------------------------
-
-    override fun beginDraw(pGLState: GLState) {
-        // Latch the latest video frame and update the ST matrix BEFORE onBindShader reads it.
-        texture.latch()
-        super.beginDraw(pGLState)
-    }
-
-    override fun onBindShader(pGLState: GLState) {
-        val shader = ExternalOESShaderProgram.getInstance()
-        shader.bindProgram(pGLState)
-
-        if (shader.uniformMVPMatrixLocation >= 0) {
-            GLES32.glUniformMatrix4fv(
-                shader.uniformMVPMatrixLocation,
-                1, false, pGLState.modelViewProjectionGLMatrix, 0
-            )
-        }
-
-        // ST-transform: corrects Y-flip and any other orientation from the hardware decoder.
-        if (shader.uniformSTMatrixLocation >= 0) {
-            GLES32.glUniformMatrix4fv(
-                shader.uniformSTMatrixLocation,
-                1, false, texture.getTransformMatrix(), 0
-            )
-        }
-
-        if (shader.uniformTexture0Location >= 0) {
-            GLES32.glUniform1i(shader.uniformTexture0Location, 0)
-        }
-
-        if (shader.uniformColorLocation >= 0) {
-            GLES32.glUniform4f(
-                shader.uniformColorLocation,
-                drawRed, drawGreen, drawBlue, drawAlpha
-            )
-        }
-
-        GLES32.glDisableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_COLOR_LOCATION)
-
-        // UV attribute (attribute location 3).
-        uvBuffer.beginDraw(pGLState)
     }
 
     // -----------------------------------------------------------------------
@@ -95,31 +54,35 @@ class UIVideoSprite(source: String, private val engine: Engine) : UISprite() {
 
     fun setOnReady(callback: Runnable) {
         texture.onReady = Runnable {
-            updateThread {
-                // Update the TextureRegion UV extents and Sprite vertex dimensions now that the actual video resolution is
-                // known.
-                // Both were constructed as 0×0 because ExoPlayer reports dimensions asynchronously via onVideoSizeChanged.
+            Verktex.scheduleOnUpdate {
+                // Update the Sprite dimensions now that the actual video resolution is known.
+                // It was constructed as 0×0 because ExoPlayer reports dimensions asynchronously via onVideoSizeChanged.
                 val w = texture.videoWidth.toFloat()
                 val h = texture.videoHeight.toFloat()
-                textureRegion?.setTextureWidth(w)
-                textureRegion?.setTextureHeight(h)
-                setSize(w, h)
+                setVideoSize(w, h)
 
                 // applyBackground's centering formula assumes that the scale is applied around the
-                // center of the entity. The scale center of a UIComponent is relative to its size
+                // center of the entity. The scale origin of a UIComponent is relative to its size
                 // rather than in pixels, so passing half of the video size here would move the
                 // video far off the screen.
-                setScaleCenter(0.5f, 0.5f)
+                scaleOrigin = Anchor.Center
 
                 mainHandler.post(callback)
             }
         }
     }
 
+    private fun setVideoSize(w: Float, h: Float) {
+        videoWidth = w
+        videoHeight = h
+        width = w.px
+        height = h.px
+    }
+
     fun release() {
-        // Unloading the texture triggers unloadFromHardware, which posts a single ordered block
-        // to the main handler: setVideoSurface(null) --> surface teardown --> player.release().
-        engine.textureManager.unloadTexture(texture)
+        // Detaches the sprite under the tree lock, then posts a single ordered block to the main handler:
+        // setVideoSurface(null) --> player.release() --> texture disposal on the draw thread.
+        texture.release { removeSelf() }
     }
 
     fun play() {
@@ -138,14 +101,12 @@ class UIVideoSprite(source: String, private val engine: Engine) : UISprite() {
         mainHandler.post { texture.player.playbackParameters = PlaybackParameters(speed) }
     }
 
-    override fun finalize() {
+    protected fun finalize() {
         // Guard against a partially-constructed object: if VideoTexture's init threw,
         // texture.player is null at the bytecode level despite Kotlin's non-null type.
         try {
             release()
         } catch (_: Throwable) {}
-
-        super.finalize()
     }
 
     companion object {

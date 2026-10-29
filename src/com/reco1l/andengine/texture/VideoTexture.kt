@@ -1,13 +1,7 @@
 package com.reco1l.andengine.texture
 
-import android.graphics.*
 import android.net.Uri
-import android.opengl.*
-import android.opengl.GLES32.GL_CLAMP_TO_EDGE
-import android.opengl.GLES32.GL_LINEAR
-import android.opengl.GLES20.GL_NEAREST
 import android.util.Log
-import android.view.*
 import android.os.Looper
 import android.content.Context
 import android.os.Handler
@@ -17,25 +11,20 @@ import androidx.media3.exoplayer.*
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.video.VideoRendererEventListener
 import androidx.media3.decoder.ffmpeg.ExperimentalFfmpegVideoRenderer
-import org.andengine.opengl.texture.*
-import org.andengine.opengl.texture.PixelFormat
-import org.andengine.opengl.util.GLState
+import com.osudroid.verktex.bridge.VerktexBridge
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.android.gles.ESExternalTexture
+import com.reco1l.verktex.graphics.GraphicsTexture
 import ru.nsu.ccfit.zuev.osu.GlobalManager
 import java.io.*
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
 @UnstableApi
-class VideoTexture(val source: String) : Texture(
-    null,
-    PixelFormat.UNDEFINED,
-    TextureOptions(
-        GL_NEAREST,
-        GL_LINEAR,
-        GL_CLAMP_TO_EDGE,
-        GL_CLAMP_TO_EDGE,
-        false
-    ),
-    null
+class VideoTexture(
+    val source: String,
+    playerFactory: (Context) -> ExoPlayer = ::createPlayer,
+    textureFactory: (Float, Float) -> GraphicsTexture = { w, h -> Verktex.graphics.createExternalTexture(w, h) }
 ) {
 
     val player: ExoPlayer
@@ -68,45 +57,21 @@ class VideoTexture(val source: String) : Texture(
     var videoHeight = 0
         private set
 
-    private var surfaceTexture: SurfaceTexture? = null
-    private var surface: Surface? = null
+    /**
+     * The external texture the player decodes into. It owns its [android.view.Surface] and
+     * [android.graphics.SurfaceTexture], which it creates and releases on the draw thread; its region always covers
+     * it whole (UV 0..1) and the decoder sizes the buffers, so its own size is only nominal.
+     */
+    val texture: ESExternalTexture
 
-    // ST transform matrix provided by SurfaceTexture — applied in the vertex shader to
-    // correctly orient the UV coordinates (hardware decoders often flip/rotate them).
-    private val stMatrix = FloatArray(16).also {
-        android.opengl.Matrix.setIdentityM(it, 0)
-    }
+    private val released = AtomicBoolean(false)
 
     init {
         val context = GlobalManager.getInstance().mainActivity.applicationContext
 
-        // DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON auto-discovers FfmpegAudioRenderer via reflection.
-        // ExperimentalFfmpegVideoRenderer must be appended manually because DefaultRenderersFactory looks for the old
-        // name "FfmpegVideoRenderer" (since renamed).
-        val renderersFactory = object : DefaultRenderersFactory(context) {
-            override fun buildVideoRenderers(
-                context: Context,
-                extensionRendererMode: Int,
-                mediaCodecSelector: MediaCodecSelector,
-                enableDecoderFallback: Boolean,
-                eventHandler: Handler,
-                eventListener: VideoRendererEventListener,
-                allowedVideoJoiningTimeMs: Long,
-                out: ArrayList<Renderer>
-            ) {
-                super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector,
-                    enableDecoderFallback, eventHandler, eventListener, allowedVideoJoiningTimeMs, out)
-
-                out.add(ExperimentalFfmpegVideoRenderer(
-                    allowedVideoJoiningTimeMs, eventHandler, eventListener, 50))
-            }
-        }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-
         // ExoPlayer's builder is thread-safe, but subsequent API calls are not.
         // ExoPlayer enforces that they run on its designated looper (main thread here).
-        player = ExoPlayer.Builder(context, renderersFactory)
-            .setLooper(Looper.getMainLooper())
-            .build()
+        player = playerFactory(context)
 
         mainHandler.post {
             player.volume = 0f
@@ -129,112 +94,103 @@ class VideoTexture(val source: String) : Texture(
             player.setMediaItem(MediaItem.fromUri(Uri.fromFile(File(source))))
             player.prepare()
         }
+
+        texture = textureFactory(NOMINAL_SIZE, NOMINAL_SIZE) as ESExternalTexture
+
+        // The surface is (re)created on the draw thread, on the first load and after a context loss, but
+        // setVideoSurface must be called on ExoPlayer's main-thread looper.
+        texture.onSurfaceRecreated = {
+            val surface = texture.surface
+            mainHandler.post {
+                if (!released.get()) {
+                    player.setVideoSurface(surface)
+                }
+            }
+        }
+
+        // Loaded right away, not on the first draw: a decoder (the FFmpeg one in particular) may report no size
+        // until it has a surface to decode into, and the sprite is only drawn once the size is known.
+        Verktex.scheduleOnDraw { texture.load() }
     }
 
     /**
-     * Latches the latest decoded frame into the OES texture and updates the ST transform matrix.
-     * Must be called once per frame, BEFORE [getTransformMatrix] and BEFORE [bind].
+     * Releases the video. [onDetached] runs first, on the update thread under the tree lock, to detach what draws
+     * the texture; then, on the main thread, the player's surface is cleared so the codec thread stops writing to it
+     * and the player is released; the texture (with its surface) is disposed last, on the draw thread.
+     *
+     * Only the first call has an effect.
      */
-    fun latch() {
-        if (isLoadedToHardware) {
-            surfaceTexture?.updateTexImage()
-            surfaceTexture?.getTransformMatrix(stMatrix)
+    fun release(onDetached: Runnable) {
+        if (!released.compareAndSet(false, true)) {
+            return
+        }
+
+        texture.onSurfaceRecreated = null
+
+        if (VerktexBridge.isUpdateThread) {
+            Verktex.withTreeLock { onDetached.run() }
+            releasePlayer()
+        } else {
+            Verktex.scheduleOnUpdate {
+                onDetached.run()
+                releasePlayer()
+            }
         }
     }
 
-    /** Returns the ST transform matrix updated by the most recent [latch] call. */
-    fun getTransformMatrix(): FloatArray = stMatrix
-
-    override fun writeTextureToHardware(pGLState: GLState) {
-        // Nothing – the SurfaceTexture pushes frames itself.
-    }
-
-    /**
-     * Called by [TextureManager.onReload] after context loss.
-     * We must release the old [SurfaceTexture] here because [loadToHardware] will create
-     * a fresh one; leaving the old one alive leaks its native resources.
-     */
-    override fun setNotLoadedToHardware() {
-        surfaceTexture?.release()
-        surfaceTexture = null
-        super.setNotLoadedToHardware()
-    }
-
-    override fun loadToHardware(pGLState: GLState) {
-        // Release any lingering SurfaceTexture (safety net — normally cleared by
-        // setNotLoadedToHardware, but guard against direct loadToHardware calls too).
-        surfaceTexture?.release()
-        surfaceTexture = null
-
-        val textures = IntArray(1)
-        GLES32.glGenTextures(1, textures, 0)
-        mHardwareTextureID = textures[0]
-
-        // OES external textures must be bound to the OES target.
-        GLES32.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, mHardwareTextureID)
-
-        // Required filter settings for GL_TEXTURE_EXTERNAL_OES.
-        GLES32.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES32.GL_TEXTURE_MIN_FILTER,
-            GL_LINEAR
-        )
-        GLES32.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES32.GL_TEXTURE_MAG_FILTER,
-            GL_LINEAR
-        )
-        GLES32.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES32.GL_TEXTURE_WRAP_S,
-            GL_CLAMP_TO_EDGE
-        )
-        GLES32.glTexParameteri(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, GLES32.GL_TEXTURE_WRAP_T,
-            GL_CLAMP_TO_EDGE
-        )
-
-        surfaceTexture = SurfaceTexture(mHardwareTextureID)
-
-        // SurfaceTexture must be created on the GL thread (tied to the GL texture ID),
-        // but setVideoSurface must be called on ExoPlayer's main-thread looper.
-        // The Surface is stored as a field — releasing it immediately would free the native
-        // window before ExoPlayer's playback thread has a chance to configure MediaCodec against it.
-        surface = Surface(surfaceTexture)
-
-        mainHandler.post { player.setVideoSurface(surface) }
-    }
-
-    override fun unloadFromHardware(pGLState: GLState) {
-
-        val st = surfaceTexture
-        val s = surface
-
-        surfaceTexture = null
-        surface = null
-
+    private fun releasePlayer() {
         mainHandler.post {
             // Order matters:
             // 1. Clear ExoPlayer's surface so the codec thread stops writing to the native window.
-            // 2. Release the Java Surface wrapper.
-            // 3. Release the SurfaceTexture.
-            // 4. Release the player last, after the surface it was writing to is fully torn down.
+            // 2. Release the player.
+            // 3. Release the texture and its surface on the draw thread, after the player is fully torn down.
             try {
                 player.setVideoSurface(null)
             } catch (_: Exception) {}
 
-            s?.release()
-            st?.release()
             player.release()
-        }
 
-        super.unloadFromHardware(pGLState)
-    }
-
-    /** Binds the OES texture. Call [latch] first to update the frame and ST matrix. */
-    override fun bind(pGLState: GLState) {
-        if (isLoadedToHardware) {
-            GLES32.glBindTexture(GLES11Ext.GL_TEXTURE_EXTERNAL_OES, mHardwareTextureID)
+            Verktex.scheduleOnDraw {
+                texture.dispose()
+                Verktex.graphics.unregisterResource(texture)
+            }
         }
     }
-
-    override fun getWidth() = videoWidth
-    override fun getHeight() = videoHeight
 
     companion object {
         private val mainHandler = Handler(Looper.getMainLooper())
+
+        /**
+         * The size the external texture is created with, before the video's size is known.
+         */
+        private const val NOMINAL_SIZE = 16f
+
+        private fun createPlayer(context: Context): ExoPlayer {
+            // DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON auto-discovers FfmpegAudioRenderer via reflection.
+            // ExperimentalFfmpegVideoRenderer must be appended manually because DefaultRenderersFactory looks for the old
+            // name "FfmpegVideoRenderer" (since renamed).
+            val renderersFactory = object : DefaultRenderersFactory(context) {
+                override fun buildVideoRenderers(
+                    context: Context,
+                    extensionRendererMode: Int,
+                    mediaCodecSelector: MediaCodecSelector,
+                    enableDecoderFallback: Boolean,
+                    eventHandler: Handler,
+                    eventListener: VideoRendererEventListener,
+                    allowedVideoJoiningTimeMs: Long,
+                    out: ArrayList<Renderer>
+                ) {
+                    super.buildVideoRenderers(context, extensionRendererMode, mediaCodecSelector,
+                        enableDecoderFallback, eventHandler, eventListener, allowedVideoJoiningTimeMs, out)
+
+                    out.add(ExperimentalFfmpegVideoRenderer(
+                        allowedVideoJoiningTimeMs, eventHandler, eventListener, 50))
+                }
+            }.setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
+
+            return ExoPlayer.Builder(context, renderersFactory)
+                .setLooper(Looper.getMainLooper())
+                .build()
+        }
     }
 }
