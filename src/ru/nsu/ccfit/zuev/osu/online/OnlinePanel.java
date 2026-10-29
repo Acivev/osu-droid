@@ -19,7 +19,7 @@ import com.reco1l.verktex.ui.container.UIContainer;
 import com.reco1l.verktex.ui.shape.UIBox;
 import com.reco1l.verktex.ui.text.UIText;
 
-import org.andengine.util.math.MathUtils;
+import ru.nsu.ccfit.zuev.osu.helper.MathUtils;
 
 import kotlin.Unit;
 import ru.nsu.ccfit.zuev.osu.Config;

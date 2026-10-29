@@ -5,8 +5,8 @@ import android.content.ContextWrapper;
 import android.database.DatabaseErrorHandler;
 import android.database.sqlite.SQLiteDatabase;
 
-import org.andengine.util.debug.Debug;
-import org.andengine.util.FileUtils;
+import ru.nsu.ccfit.zuev.osu.helper.Debug;
+import ru.nsu.ccfit.zuev.osu.helper.FileUtils;
 
 import java.io.File;
 import java.io.IOException;

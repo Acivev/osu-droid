@@ -67,8 +67,8 @@ import com.reco1l.verktex.ui.shape.UIBox;
 import com.reco1l.verktex.ui.text.UIText;
 
 import org.andengine.engine.Engine;
-import org.andengine.util.debug.Debug;
-import org.andengine.util.math.MathUtils;
+import ru.nsu.ccfit.zuev.osu.helper.Debug;
+import ru.nsu.ccfit.zuev.osu.helper.MathUtils;
 
 import java.io.File;
 import java.io.IOException;

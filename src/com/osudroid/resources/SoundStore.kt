@@ -1,7 +1,7 @@
 package com.osudroid.resources
 
 import android.content.Context
-import org.andengine.util.debug.Debug
+import ru.nsu.ccfit.zuev.osu.helper.Debug
 import ru.nsu.ccfit.zuev.audio.BassSoundProvider
 import java.util.concurrent.ConcurrentHashMap
 

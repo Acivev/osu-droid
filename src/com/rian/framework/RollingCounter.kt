@@ -2,7 +2,6 @@ package com.rian.framework
 
 import com.edlplan.framework.easing.Easing
 import com.reco1l.framework.interpolate
-import org.andengine.engine.handler.IUpdateHandler
 
 /**
  * A counter that keeps track of its value over a rolling window of time.
@@ -10,7 +9,7 @@ import org.andengine.engine.handler.IUpdateHandler
  * @param initialValue The initial value of this [RollingCounter].
  * @param T The type of the value being tracked by this [RollingCounter].
  */
-abstract class RollingCounter<T>(initialValue: T) : IUpdateHandler {
+abstract class RollingCounter<T>(initialValue: T) {
     /**
      * The duration of the rolling effect, in seconds.
      *
@@ -50,7 +49,7 @@ abstract class RollingCounter<T>(initialValue: T) : IUpdateHandler {
     private var rollingStartValue = initialValue
     private var rollingTime = 0f
 
-    override fun onUpdate(pSecondsElapsed: Float) {
+    open fun onUpdate(pSecondsElapsed: Float) {
         if (isRolling) {
             if (rollingDuration <= 0f) {
                 currentValue = targetValue
@@ -79,7 +78,7 @@ abstract class RollingCounter<T>(initialValue: T) : IUpdateHandler {
         rollingTime = 0f
     }
 
-    override fun reset() {
+    open fun reset() {
         currentValue = targetValue
         rollingStartValue = targetValue
         rollingTime = 0f

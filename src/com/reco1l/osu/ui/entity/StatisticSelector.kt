@@ -13,7 +13,7 @@ import com.reco1l.verktex.ui.UIComponent
 import com.reco1l.verktex.ui.UISprite
 import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.text.UIText
-import org.andengine.util.math.MathUtils
+import ru.nsu.ccfit.zuev.osu.helper.MathUtils
 import ru.nsu.ccfit.zuev.osu.scoring.StatisticV2
 import java.text.NumberFormat.getNumberInstance
 import java.util.Locale.ENGLISH

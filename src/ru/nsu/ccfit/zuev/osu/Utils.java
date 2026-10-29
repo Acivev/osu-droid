@@ -7,7 +7,7 @@ import android.net.NetworkInfo;
 
 import org.andengine.entity.sprite.Sprite;
 import org.andengine.opengl.texture.region.ITextureRegion;
-import org.andengine.util.math.MathUtils;
+import ru.nsu.ccfit.zuev.osu.helper.MathUtils;
 
 import java.util.Arrays;
 

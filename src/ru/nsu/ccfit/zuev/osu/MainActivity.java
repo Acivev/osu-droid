@@ -87,7 +87,7 @@ import org.andengine.opengl.view.RenderSurfaceView;
 import org.andengine.input.sensor.acceleration.AccelerationData;
 import org.andengine.input.sensor.acceleration.IAccelerationListener;
 import org.andengine.ui.activity.BaseGameActivity;
-import org.andengine.util.debug.Debug;
+import ru.nsu.ccfit.zuev.osu.helper.Debug;
 
 import java.io.File;
 import java.io.IOException;

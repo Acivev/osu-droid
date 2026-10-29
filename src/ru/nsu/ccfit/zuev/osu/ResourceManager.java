@@ -23,7 +23,7 @@ import com.reco1l.andengine.UIEngine;
 import org.andengine.engine.Engine;
 import org.andengine.opengl.font.Font;
 import org.andengine.opengl.font.StrokeFont;
-import org.andengine.util.debug.Debug;
+import ru.nsu.ccfit.zuev.osu.helper.Debug;
 import org.json.JSONObject;
 
 import java.io.File;

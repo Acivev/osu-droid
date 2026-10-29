@@ -6,13 +6,16 @@ import android.os.Environment;
 import kotlin.io.FilesKt;
 import net.lingala.zip4j.ZipFile;
 
-import org.andengine.util.debug.Debug;
 
 import java.io.BufferedInputStream;
+import java.io.Closeable;
 import java.io.File;
 import java.io.FileFilter;
 import java.io.FileInputStream;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.nio.file.DirectoryStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -31,6 +34,33 @@ import ru.nsu.ccfit.zuev.osu.ToastLogger;
 public class FileUtils {
 
     private FileUtils() {}
+
+    public static void copyFile(File from, File to) throws IOException {
+        InputStream in = null;
+        OutputStream out = null;
+        try {
+            in = new FileInputStream(from);
+            out = new FileOutputStream(to);
+            byte[] buffer = new byte[8 * 1024];
+            int read;
+            while ((read = in.read(buffer)) != -1) {
+                out.write(buffer, 0, read);
+            }
+            out.flush();
+        } finally {
+            closeQuietly(in);
+            closeQuietly(out);
+        }
+    }
+
+    private static void closeQuietly(Closeable closeable) {
+        if (closeable != null) {
+            try {
+                closeable.close();
+            } catch (IOException ignored) {
+            }
+        }
+    }
 
     public static void copy(File from, File to) throws IOException {
         try (Source source = Okio.source(from);

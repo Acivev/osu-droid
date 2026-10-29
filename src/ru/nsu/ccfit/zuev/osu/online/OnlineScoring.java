@@ -9,7 +9,7 @@ import com.osudroid.data.BeatmapInfo;
 import com.osudroid.utils.Execution;
 import com.osudroid.ui.SendingPanel;
 
-import org.andengine.util.debug.Debug;
+import ru.nsu.ccfit.zuev.osu.helper.Debug;
 
 import java.util.concurrent.CancellationException;
 

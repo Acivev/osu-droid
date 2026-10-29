@@ -41,7 +41,7 @@ import com.reco1l.verktex.ui.text.UIText;
 import com.reco1l.osu.ui.entity.StatisticSelector;
 
 import org.andengine.engine.Engine;
-import org.andengine.util.debug.Debug;
+import ru.nsu.ccfit.zuev.osu.helper.Debug;
 
 import com.osudroid.GameMode;
 import com.osudroid.beatmaps.Beatmap;

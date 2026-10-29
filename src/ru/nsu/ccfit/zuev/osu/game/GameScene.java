@@ -120,7 +120,7 @@ import com.rian.andengine.timing.Stopwatch;
 
 import org.andengine.engine.options.TouchOptions;
 import org.andengine.engine.options.WakeLockOptions;
-import org.andengine.util.debug.Debug;
+import ru.nsu.ccfit.zuev.osu.helper.Debug;
 
 import java.io.File;
 import java.io.FileNotFoundException;
