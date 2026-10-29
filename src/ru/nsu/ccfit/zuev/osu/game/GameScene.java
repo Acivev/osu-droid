@@ -10,6 +10,7 @@ import android.util.Log;
 import androidx.annotation.NonNull;
 
 import kotlin.Unit;
+import kotlin.collections.CollectionsKt;
 import kotlin.random.Random;
 import kotlinx.coroutines.CoroutineScope;
 import kotlinx.coroutines.Job;
@@ -569,8 +570,8 @@ public class GameScene implements GameObjectListener {
                 // kept when the beatmap is restarted. It is attached to the new scene when the background
                 // is applied.
                 if (!isReadyToStart) {
-                    loadedComponent.detachSelf();
-                    loadedComponent.overlayComponent.detachSelf();
+                    removeUnderTreeLock(loadedComponent);
+                    removeUnderTreeLock(loadedComponent.overlayComponent);
                     loadedComponent.resetPlayback();
                 }
 
@@ -648,8 +649,8 @@ public class GameScene implements GameObjectListener {
 
     private void releaseStoryboard() {
         if (storyboardComponent != null) {
-            storyboardComponent.detachSelf();
-            storyboardComponent.overlayComponent.detachSelf();
+            removeUnderTreeLock(storyboardComponent);
+            removeUnderTreeLock(storyboardComponent.overlayComponent);
             storyboardComponent.release();
             storyboardComponent = null;
         }
@@ -830,10 +831,23 @@ public class GameScene implements GameObjectListener {
                 storyboardComponent.transparentBackground = videoEnabled && video != null;
                 storyboardComponent.brightness = brightness;
 
-                // Task 3 attaches the storyboard components to the playfield
+                Verktex.INSTANCE.withTreeLock(() -> {
+                    // Before the scene border, as AndEngine's attachChild(storyboardComponent, 0) put it before the
+                    // border attached at index 0 earlier.
+                    if (!storyboardComponent.hasParent()) {
+                        playfield.add(0, storyboardComponent);
+                    }
+
+                    // Between mgScene and fgScene, where AndEngine's attachChild(overlay, childCount - 1) put it.
+                    if (!storyboardComponent.overlayComponent.hasParent()) {
+                        playfield.add(CollectionsKt.indexOf(playfield, fgScene), storyboardComponent.overlayComponent);
+                    }
+
+                    return Unit.INSTANCE;
+                });
             } else {
-                storyboardComponent.detachSelf();
-                storyboardComponent.overlayComponent.detachSelf();
+                removeUnderTreeLock(storyboardComponent);
+                removeUnderTreeLock(storyboardComponent.overlayComponent);
             }
         }
     }
@@ -1460,7 +1474,7 @@ public class GameScene implements GameObjectListener {
         // The playfield is a Verktex tree with skin textures, built on the update thread while loading waits. The
         // HUD should be to the last so we ensure everything is initialized and ready to be used by the HUD
         // elements in their constructors.
-        runOnUpdateThreadAndWait(() -> Verktex.INSTANCE.withTreeLock(() -> {
+        Execution.updateThreadAndWait(() -> Verktex.INSTANCE.withTreeLock(() -> {
             preparePlayfield(playableBeatmap, cursorCount);
             prepareHUD(playableBeatmap);
             return Unit.INSTANCE;
@@ -1763,29 +1777,6 @@ public class GameScene implements GameObjectListener {
     private static void loopMoveX(final UIComponent component, final float fromX, final float toX, final float duration) {
         component.setX(DimensionKt.getPx(fromX));
         VerktexModifiers.moveToX(component, toX, duration).after(target -> loopMoveX(component, fromX, toX, duration));
-    }
-
-    /**
-     * Runs {@code action} on the update thread, waiting for it when called from another thread.
-     */
-    private static void runOnUpdateThreadAndWait(final Runnable action) {
-        if (VerktexBridge.isUpdateThread()) {
-            action.run();
-            return;
-        }
-
-        var done = new CompletableFuture<Void>();
-
-        Execution.updateThread(() -> {
-            try {
-                action.run();
-                done.complete(null);
-            } catch (Throwable t) {
-                done.completeExceptionally(t);
-            }
-        });
-
-        done.join();
     }
 
     /**

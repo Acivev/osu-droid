@@ -1,71 +1,52 @@
 package com.osudroid.storyboard.renderer
 
-import android.opengl.GLES32
 import com.osudroid.storyboard.playback.PlayableSprite
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
-import java.nio.FloatBuffer
-import java.nio.ShortBuffer
+import com.reco1l.verktex.BuiltIn
+import com.reco1l.verktex.data.Color4
+import com.reco1l.verktex.graphics.BlendMode
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.graphics.GraphicsShader
+import com.reco1l.verktex.graphics.GraphicsTexture
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
-import org.andengine.opengl.shader.constants.ShaderProgramConstants
-import org.andengine.opengl.texture.ITexture
-import org.andengine.opengl.texture.region.TextureRegion
-import org.andengine.opengl.util.GLState
 
 /**
  * A quad batch for storyboard rendering.
  *
  * Quads are accumulated into a client-side vertex array with the layout
- * `[x, y, u, v, r, g, b, a]` per vertex and flushed with a single indexed draw call whenever the
- * texture or blend mode changes, or the batch is full.
+ * `[x, y, u, v, r, g, b, a]` per vertex and flushed into the [GraphicsRenderer] as two triangles
+ * per quad whenever the texture or blend mode changes, or the batch is full. The renderer merges
+ * consecutive flushes of the same texture and blend mode into one draw command.
  *
  * Storyboard textures are uploaded with straight (non-premultiplied) alpha
- * ([org.andengine.opengl.texture.TextureOptions.BILINEAR] has `mPreMultiplyAlpha = false`), so
- * vertex colors are straight as well and normal blending uses `(SRC_ALPHA,
- * ONE_MINUS_SRC_ALPHA)` while additive blending uses `(SRC_ALPHA, ONE)` - matching osu!stable
- * and the previous renderer, which selected these factors based on the texture's premultiply
- * flag. Getting this wrong burns glow textures (colored white with the shape in the alpha
- * channel) into solid rectangles.
+ * ([StoryboardTextureSource] un-premultiplies on upload through
+ * [com.reco1l.verktex.android.AndroidTextureSource], as AndEngine's `BILINEAR` upload did), so
+ * vertex colors are straight as well and normal blending uses
+ * `(SRC_ALPHA, ONE_MINUS_SRC_ALPHA)` while additive blending uses `(SRC_ALPHA, ONE)` - matching
+ * osu!stable and the previous renderer, which selected these factors based on the texture's
+ * premultiply flag. Getting this wrong burns glow textures (colored white with the shape in the
+ * alpha channel) into solid rectangles.
  *
- * The GL state handling is ported from the previous storyboard renderer (`TextureQuadBatch`),
- * which embeds hard-won fixes for keeping AndEngine's [GLState] caches authoritative: shader,
- * texture and array-buffer binds are routed through [GLState], and the vertex attribute arrays
- * are restored to the state AndEngine expects after the batch finishes.
+ * The renderer does not transform geometry for the batch: every vertex is put through the
+ * renderer's current matrix (so the storyboard follows the playfield scale and offset) and every
+ * alpha is multiplied by its base color alpha (the alpha of the drawing component and its parents).
  */
 class StoryboardBatch {
     private val vertices = FloatArray(MAX_QUADS * FLOATS_PER_QUAD)
-    private val vertexBuffer: FloatBuffer = ByteBuffer
-        .allocateDirect(MAX_QUADS * FLOATS_PER_QUAD * Float.SIZE_BYTES)
-        .order(ByteOrder.nativeOrder())
-        .asFloatBuffer()
 
-    private val indexBuffer: ShortBuffer = ByteBuffer
-        .allocateDirect(MAX_QUADS * 6 * Short.SIZE_BYTES)
-        .order(ByteOrder.nativeOrder())
-        .asShortBuffer()
-        .also {
-            var vertex = 0
+    // The quads are drawn with the built-in texture quad shader, which multiplies the vertex color
+    // with the sample. An explicit empty set, the renderer would keep the last draw's uniforms
+    // (such as a rounded corner radius) otherwise.
+    private val uniforms = GraphicsShader.UniformSet()
 
-            for (i in 0 until MAX_QUADS) {
-                val v0 = vertex.toShort()
-                val v1 = (vertex + 1).toShort()
-                val v2 = (vertex + 2).toShort()
-                val v3 = (vertex + 3).toShort()
-
-                it.put(v0).put(v1).put(v2)
-                it.put(v1).put(v3).put(v2)
-                vertex += 4
-            }
-
-            it.position(0)
-        }
+    // Transformed corner positions of the quad being flushed.
+    private val points = FloatArray(8)
 
     private var offset = 0
-    private var texture: ITexture? = null
+    private var texture: GraphicsTexture? = null
     private var additiveBlend = false
-    private var glState: GLState? = null
+    private var renderer: GraphicsRenderer? = null
 
     // The transform from storyboard space into the current component space, applied on the CPU so
     // that all layers can share one batch regardless of the letterbox mapping.
@@ -76,10 +57,10 @@ class StoryboardBatch {
     /**
      * Begins a batch. Must be called from the draw thread before any quads are added.
      *
-     * @param pGLState The current [GLState].
+     * @param renderer The [GraphicsRenderer] to draw into.
      */
-    fun begin(pGLState: GLState) {
-        glState = pGLState
+    fun begin(renderer: GraphicsRenderer) {
+        this.renderer = renderer
         offset = 0
         texture = null
         additiveBlend = false
@@ -113,13 +94,13 @@ class StoryboardBatch {
      * @param colorMultiplier An additional color multiplier, used to dim the sprite.
      */
     @JvmOverloads
-    fun draw(sprite: PlayableSprite, region: TextureRegion, alphaMultiplier: Float, colorMultiplier: Float = 1f) {
+    fun draw(sprite: PlayableSprite, region: GraphicsTexture.Region, alphaMultiplier: Float, colorMultiplier: Float = 1f) {
         val alpha = sprite.alpha * alphaMultiplier
 
         prepare(region.texture, sprite.additiveBlend)
 
-        val width = region.width.toFloat()
-        val height = region.height.toFloat()
+        val width = region.width
+        val height = region.height
         val origin = sprite.element.origin
 
         // Flips and negative vector scales mirror the sprite in place, keeping the geometry
@@ -135,10 +116,10 @@ class StoryboardBatch {
         var r = l + width * scaleX
         var b = t + height * scaleY
 
-        var u1 = region.u
-        var u2 = region.u2
-        var v1 = region.v
-        var v2 = region.v2
+        var u1 = region.u0
+        var u2 = region.u1
+        var v1 = region.v0
+        var v2 = region.v1
 
         if (mirrorX) {
             val tmp = u1; u1 = u2; u2 = tmp
@@ -201,17 +182,17 @@ class StoryboardBatch {
      * @param alpha The alpha component.
      */
     fun drawQuad(
-        region: TextureRegion,
+        region: GraphicsTexture.Region,
         left: Float, top: Float, right: Float, bottom: Float,
         red: Float, green: Float, blue: Float, alpha: Float
     ) {
         prepare(region.texture, false)
 
         var i = offset
-        i = putVertex(i, left, top, region.u, region.v, red, green, blue, alpha)
-        i = putVertex(i, right, top, region.u2, region.v, red, green, blue, alpha)
-        i = putVertex(i, left, bottom, region.u, region.v2, red, green, blue, alpha)
-        i = putVertex(i, right, bottom, region.u2, region.v2, red, green, blue, alpha)
+        i = putVertex(i, left, top, region.u0, region.v0, red, green, blue, alpha)
+        i = putVertex(i, right, top, region.u1, region.v0, red, green, blue, alpha)
+        i = putVertex(i, left, bottom, region.u0, region.v1, red, green, blue, alpha)
+        i = putVertex(i, right, bottom, region.u1, region.v1, red, green, blue, alpha)
         offset = i
 
         if (offset == vertices.size) {
@@ -220,17 +201,15 @@ class StoryboardBatch {
     }
 
     /**
-     * Flushes any pending quads and restores the GL state AndEngine expects.
+     * Flushes any pending quads.
      */
     fun end() {
         flush()
 
-        // Release the shader binding through GLState so the cache reflects program = 0.
-        glState?.useProgram(0)
-        glState = null
+        renderer = null
     }
 
-    private fun prepare(texture: ITexture, additive: Boolean) {
+    private fun prepare(texture: GraphicsTexture, additive: Boolean) {
         if (texture !== this.texture || additive != this.additiveBlend) {
             flush()
             this.texture = texture
@@ -257,73 +236,56 @@ class StoryboardBatch {
     }
 
     /**
-     * Issues the pending quads with a single indexed draw call. Automatically called on texture
-     * or blend changes, on capacity, and by [end].
+     * Issues the pending quads to the renderer. Automatically called on texture or blend changes,
+     * on capacity, and by [end].
      */
     fun flush() {
-        val glState = glState ?: return
+        val renderer = renderer ?: return
         val texture = texture
 
         if (offset == 0 || texture == null) {
             return
         }
 
-        val shader = StoryboardShaderProgram.getInstance()
-        shader.bind(glState)
-
-        glState.enableBlend()
-        glState.blendFunction(
-            GLES32.GL_SRC_ALPHA,
-            if (additiveBlend) GLES32.GL_ONE else GLES32.GL_ONE_MINUS_SRC_ALPHA
+        renderer.setState(
+            shader = BuiltIn.Shaders.TextureQuad,
+            texture = texture,
+            blendMode = if (additiveBlend) BlendMode.Additive else BlendMode.Alpha,
+            uniformSet = uniforms
         )
 
-        // Route texture binds through GLState so its per-unit texture cache stays authoritative
-        // (see Issue 28 of the GLES2 migration review).
-        glState.activeTexture(GLES32.GL_TEXTURE0)
-        glState.bindTexture(texture.hardwareTextureID)
+        val ary = vertices
+        val count = offset
+        val p = points
 
-        // Unbind any VBO so glVertexAttribPointer reads from the client-side buffer.
-        glState.bindArrayBuffer(0)
-        GLES32.glBindBuffer(GLES32.GL_ELEMENT_ARRAY_BUFFER, 0)
+        renderer.drawGeometry { transform, baseColor ->
+            val alphaMultiplier = baseColor.alpha
+            var i = 0
 
-        vertexBuffer.position(0)
-        vertexBuffer.put(vertices, 0, offset)
+            while (i < count) {
+                // The four vertices of a quad share their color.
+                val color = Color4(ary[i + 4], ary[i + 5], ary[i + 6], ary[i + 7] * alphaMultiplier)
 
-        vertexBuffer.position(0)
-        GLES32.glEnableVertexAttribArray(StoryboardShaderProgram.ATTRIBUTE_POSITION_LOCATION)
-        GLES32.glVertexAttribPointer(
-            StoryboardShaderProgram.ATTRIBUTE_POSITION_LOCATION, 2,
-            GLES32.GL_FLOAT, false, VERTEX_STRIDE_BYTES, vertexBuffer
-        )
+                for (corner in 0 until 4) {
+                    val base = i + corner * FLOATS_PER_VERTEX
+                    transform.transform(ary[base], ary[base + 1], p, corner * 2)
+                }
 
-        vertexBuffer.position(2)
-        GLES32.glEnableVertexAttribArray(StoryboardShaderProgram.ATTRIBUTE_TEXCOORD_LOCATION)
-        GLES32.glVertexAttribPointer(
-            StoryboardShaderProgram.ATTRIBUTE_TEXCOORD_LOCATION, 2,
-            GLES32.GL_FLOAT, false, VERTEX_STRIDE_BYTES, vertexBuffer
-        )
+                // The two triangles of the quad, as the index buffer of the AndEngine batch did:
+                // (0, 1, 2) and (1, 3, 2).
+                with(renderer) {
+                    addVertex(p[0], p[1], ary[i + 2], ary[i + 3], color)
+                    addVertex(p[2], p[3], ary[i + 10], ary[i + 11], color)
+                    addVertex(p[4], p[5], ary[i + 18], ary[i + 19], color)
 
-        vertexBuffer.position(4)
-        GLES32.glEnableVertexAttribArray(StoryboardShaderProgram.ATTRIBUTE_COLOR_LOCATION)
-        GLES32.glVertexAttribPointer(
-            StoryboardShaderProgram.ATTRIBUTE_COLOR_LOCATION, 4,
-            GLES32.GL_FLOAT, false, VERTEX_STRIDE_BYTES, vertexBuffer
-        )
+                    addVertex(p[2], p[3], ary[i + 10], ary[i + 11], color)
+                    addVertex(p[6], p[7], ary[i + 26], ary[i + 27], color)
+                    addVertex(p[4], p[5], ary[i + 18], ary[i + 19], color)
+                }
 
-        indexBuffer.position(0)
-        GLES32.glDrawElements(
-            GLES32.GL_TRIANGLES,
-            offset / FLOATS_PER_QUAD * 6,
-            GLES32.GL_UNSIGNED_SHORT,
-            indexBuffer
-        )
-
-        // Restore the vertex attribute arrays AndEngine expects to be enabled: slot 0 = position,
-        // slot 1 = color. The storyboard-specific color slot (2) must be disabled.
-        GLES32.glDisableVertexAttribArray(StoryboardShaderProgram.ATTRIBUTE_TEXCOORD_LOCATION)
-        GLES32.glDisableVertexAttribArray(StoryboardShaderProgram.ATTRIBUTE_COLOR_LOCATION)
-        GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_POSITION_LOCATION)
-        GLES32.glEnableVertexAttribArray(ShaderProgramConstants.ATTRIBUTE_COLOR_LOCATION)
+                i += FLOATS_PER_QUAD
+            }
+        }
 
         offset = 0
     }
@@ -332,6 +294,5 @@ class StoryboardBatch {
         private const val MAX_QUADS = 1024
         private const val FLOATS_PER_VERTEX = 8
         private const val FLOATS_PER_QUAD = 4 * FLOATS_PER_VERTEX
-        private const val VERTEX_STRIDE_BYTES = FLOATS_PER_VERTEX * Float.SIZE_BYTES
     }
 }

@@ -954,8 +954,8 @@ public class MainActivity extends BaseGameActivity implements
         com.reco1l.andengine.buffered.Buffer.onContextLost();
         // Reset the TriangleRenderer VBO so it is re-created against the new context.
         com.edlplan.andengine.TriangleRenderer.get().resetForContextLoss();
-        // Note: the storyboard shader (StoryboardShaderProgram) extends ShaderProgram and is
-        // reset by ShaderProgram.resetAllForContextLoss() called in EngineRenderer.onSurfaceCreated.
+        // Note: the storyboard draws through the Verktex renderer, its shader and textures are
+        // recreated by the Verktex context loss recovery in VerktexBridge.onSurfaceCreated below.
         if (VerktexBridge.isInitialized()) {
             VerktexBridge.onSurfaceCreated();
         }

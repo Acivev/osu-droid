@@ -2,6 +2,7 @@
 
 package com.osudroid.utils
 
+import com.osudroid.verktex.bridge.VerktexBridge
 import com.reco1l.verktex.Verktex
 import java.util.concurrent.CompletableFuture
 import kotlin.coroutines.EmptyCoroutineContext
@@ -95,6 +96,29 @@ fun updateThread(block: Runnable) = GlobalManager.getInstance().engine.runOnUpda
  * Run a task that edits the Verktex component tree on the update thread, under [Verktex.withTreeLock].
  */
 fun updateThreadUnderTreeLock(block: Runnable) = updateThread { Verktex.withTreeLock { block.run() } }
+
+/**
+ * Runs a task on the update thread, waiting for it when called from another thread.
+ */
+fun updateThreadAndWait(block: Runnable) {
+    if (VerktexBridge.isUpdateThread) {
+        block.run()
+        return
+    }
+
+    val done = CompletableFuture<Void?>()
+
+    updateThread {
+        try {
+            block.run()
+            done.complete(null)
+        } catch (t: Throwable) {
+            done.completeExceptionally(t)
+        }
+    }
+
+    done.join()
+}
 
 /**
  * Wraps a [Job.cancelAndJoin] call inside a coroutine. Useful for asynchronously canceling and joining a [Job] with

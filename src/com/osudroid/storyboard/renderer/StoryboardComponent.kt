@@ -1,7 +1,5 @@
 package com.osudroid.storyboard.renderer
 
-import android.graphics.Color
-import com.edlplan.andengine.TextureHelper
 import com.osudroid.beatmaps.hitobjects.BankHitSampleInfo
 import com.osudroid.game.GameplayHitSampleInfo
 import com.osudroid.storyboard.model.Storyboard
@@ -10,14 +8,14 @@ import com.osudroid.storyboard.model.StoryboardLayerType
 import com.osudroid.storyboard.model.StoryboardSample
 import com.osudroid.storyboard.parser.StoryboardParser
 import com.osudroid.storyboard.playback.StoryboardPlayback
-import com.reco1l.andengine.component.UIComponent
+import com.osudroid.utils.updateThreadAndWait
+import com.reco1l.verktex.data.px
+import com.reco1l.verktex.graphics.GraphicsRenderer
+import com.reco1l.verktex.ui.UIComponent
 import java.io.File
 import kotlin.math.min
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ensureActive
-import org.andengine.engine.camera.Camera
-import org.andengine.opengl.texture.region.TextureRegion
-import org.andengine.opengl.util.GLState
 import ru.nsu.ccfit.zuev.audio.BassSoundProvider
 import ru.nsu.ccfit.zuev.osu.Config
 import ru.nsu.ccfit.zuev.osu.game.GameHelper
@@ -84,13 +82,14 @@ class StoryboardComponent : UIComponent() {
         get() = playback?.earliestEventTime
 
     init {
-        width = Config.getRES_WIDTH().toFloat()
-        height = Config.getRES_HEIGHT().toFloat()
+        width = Config.getRES_WIDTH().toFloat().px
+        height = Config.getRES_HEIGHT().toFloat().px
     }
 
     /**
-     * Loads the storyboard of a beatmap. Parsing, playback compilation and texture loading are
-     * performed on the calling thread, so this is meant to be called from a background thread.
+     * Loads the storyboard of a beatmap. Parsing, playback compilation and texture decoding are
+     * performed on the calling thread, so this is meant to be called from a background thread. The
+     * textures are then registered on the update thread, which the calling thread waits for.
      *
      * @param osuPath The path of the beatmap's `.osu` file.
      * @param scope The [CoroutineScope] to use for cancellation checkpoints.
@@ -119,6 +118,10 @@ class StoryboardComponent : UIComponent() {
             loadSounds(storyboard, directory, scope)
 
             playback = StoryboardPlayback(storyboard).also { it.onSamplePlayed = ::playSample }
+
+            // Verktex textures are created on the update thread.
+            scope?.ensureActive()
+            updateThreadAndWait { pool.register() }
         }
 
         loadedOsuPath = osuPath
@@ -250,14 +253,19 @@ class StoryboardComponent : UIComponent() {
         sounds = null
     }
 
-    override fun doDraw(pGLState: GLState, pCamera: Camera) {
-        beginDraw(pGLState)
+    /**
+     * Whether this component is attached, as the AndEngine entity's `hasParent()`.
+     */
+    fun hasParent() = parent != null
 
+    // The component's alpha (AndEngine's draw alpha) reaches the quads through the renderer's base
+    // color, which the batch multiplies into every vertex, so the alpha passed here is 1.
+    override fun onDraw(renderer: GraphicsRenderer) {
         val playback = playback ?: return
 
-        batch.begin(pGLState)
+        batch.begin(renderer)
         drawBackground(playback)
-        drawLayers(playback, MAIN_LAYERS, drawAlpha)
+        drawLayers(playback, MAIN_LAYERS, 1f)
         drawDim()
         batch.end()
     }
@@ -275,8 +283,8 @@ class StoryboardComponent : UIComponent() {
     ) {
         val pool = texturePool ?: return
 
-        val screenWidth = width
-        val screenHeight = height
+        val screenWidth = bounds.width
+        val screenHeight = bounds.height
         val scale = min(screenWidth / STORYBOARD_WIDTH, screenHeight / STORYBOARD_HEIGHT)
         val offsetX = (screenWidth - STORYBOARD_WIDTH * scale) / 2
         val offsetY = (screenHeight - STORYBOARD_HEIGHT * scale) / 2
@@ -319,11 +327,14 @@ class StoryboardComponent : UIComponent() {
 
         val storyboard = playback.storyboard
         val backgroundFilename = storyboard.backgroundFilename
+        val whiteRegion = texturePool?.whiteRegion ?: return
+        val width = bounds.width
+        val height = bounds.height
 
         if (storyboard.usesBackgroundImage() || backgroundFilename == null) {
             // The storyboard displays the background itself - cover the static background
             // with black.
-            batch.drawQuad(blackRegion, 0f, 0f, width, height, 0f, 0f, 0f, 1f)
+            batch.drawQuad(whiteRegion, 0f, 0f, width, height, 0f, 0f, 0f, 1f)
             return
         }
 
@@ -335,24 +346,25 @@ class StoryboardComponent : UIComponent() {
         val top = (height - backgroundHeight) / 2
 
         batch.drawQuad(
-            blackRegion, 0f, 0f, width, height,
+            whiteRegion, 0f, 0f, width, height,
             0f, 0f, 0f, 1f
         )
         batch.drawQuad(
             region,
             left, top, left + backgroundWidth, top + backgroundHeight,
-            1f, 1f, 1f, drawAlpha
+            1f, 1f, 1f, 1f
         )
     }
 
     private fun drawDim() {
-        val dimAlpha = (1f - brightness) * drawAlpha
+        val whiteRegion = texturePool?.whiteRegion ?: return
+        val dimAlpha = 1f - brightness
 
         if (dimAlpha < ALPHA_EPSILON) {
             return
         }
 
-        batch.drawQuad(blackRegion, 0f, 0f, width, height, 0f, 0f, 0f, dimAlpha)
+        batch.drawQuad(whiteRegion, 0f, 0f, bounds.width, bounds.height, 0f, 0f, 0f, dimAlpha)
     }
 
     companion object {
@@ -369,9 +381,5 @@ class StoryboardComponent : UIComponent() {
             StoryboardLayerType.Foreground,
             StoryboardLayerType.Custom
         )
-
-        private val blackRegion: TextureRegion by lazy {
-            TextureHelper.create1xRegion(Color.argb(255, 0, 0, 0))
-        }
     }
 }

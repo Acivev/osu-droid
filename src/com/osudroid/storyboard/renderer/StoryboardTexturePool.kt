@@ -7,25 +7,28 @@ import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.PorterDuff
 import android.graphics.PorterDuffXfermode
-import com.edlplan.andengine.TextureHelper
 import com.osudroid.storyboard.model.Storyboard
+import com.osudroid.ui.verktex.SkinTextures
+import com.osudroid.verktex.bridge.VerktexBridge
 import com.reco1l.andengine.texture.BlankTextureRegion
+import com.reco1l.verktex.Verktex
+import com.reco1l.verktex.graphics.GraphicsTexture
+import com.reco1l.verktex.texture.Textures
 import java.io.File
-import org.andengine.opengl.texture.ITexture
-import org.andengine.opengl.texture.TextureOptions
-import org.andengine.opengl.texture.atlas.bitmap.BitmapTextureAtlas
-import org.andengine.opengl.texture.region.TextureRegion
-import ru.nsu.ccfit.zuev.osu.GlobalManager
+import java.util.concurrent.atomic.AtomicInteger
 import ru.nsu.ccfit.zuev.osu.ResourceManager
-import ru.nsu.ccfit.zuev.osu.helper.QualityFileBitmapSource
 
 /**
  * Loads and manages the textures of a storyboard, rooted at the beatmap folder.
  *
  * Textures that are referenced frequently (at least [PACK_USAGE_THRESHOLD] times) and are small
- * enough are shelf-packed into shared [BitmapTextureAtlas] pages so that the sprite batch can
- * draw them without texture switches. All other textures are loaded individually. Missing or
- * corrupt files resolve to a 1x1 red placeholder, matching the previous implementation.
+ * enough are shelf-packed into shared page textures so that the sprite batch can draw them
+ * without texture switches. All other textures are loaded individually. Missing or corrupt files
+ * resolve to a 1x1 red placeholder, matching the previous implementation.
+ *
+ * Loading happens in two steps: [load] decodes and packs the bitmaps on the calling (worker)
+ * thread, [register] turns them into Verktex textures on the update thread. Every path a draw can
+ * ask for is registered up front, an unknown path at draw time yields the placeholder.
  */
 class StoryboardTexturePool @JvmOverloads constructor(
     private val directory: File,
@@ -35,8 +38,25 @@ class StoryboardTexturePool @JvmOverloads constructor(
      */
     private val useSkinSprites: Boolean = false
 ) {
-    private val textures = HashMap<String, TextureRegion>()
-    private val createdTextures = HashSet<ITexture>()
+    private val textures = HashMap<String, GraphicsTexture.Region>()
+
+    // What load() decoded for register(): the single textures, the pages and the names provided by the skin.
+    private val singles = LinkedHashMap<String, StoryboardTextureSource>()
+    private val pages = ArrayList<Page>()
+    private val skinNames = ArrayList<String>()
+
+    /**
+     * The prefix of the [Textures] keys of this pool.
+     */
+    internal val keyPrefix = "$KEY_PREFIX${nextPoolId.incrementAndGet()}:"
+
+    private var placeholder: GraphicsTexture.Region? = null
+
+    /**
+     * The white 1x1 region the black quads are drawn with in black, available after [register].
+     */
+    var whiteRegion: GraphicsTexture.Region? = null
+        private set
 
     private val bitmapOptions = BitmapFactory.Options().also { it.inPremultiplied = true }
 
@@ -62,9 +82,10 @@ class StoryboardTexturePool @JvmOverloads constructor(
         if (useSkinSprites) {
             // Textures provided by the skin are owned by the skin, so they are neither packed nor
             // loaded from the beatmap folder.
+            // Their Verktex regions are fetched in register().
             counts.keys.removeAll { name ->
-                val region = getSkinTexture(name) ?: return@removeAll false
-                textures[name] = region
+                if (!isSkinTexture(name)) return@removeAll false
+                skinNames.add(name)
                 true
             }
         }
@@ -79,41 +100,91 @@ class StoryboardTexturePool @JvmOverloads constructor(
     }
 
     /**
-     * Returns the texture region of the given path, loading it individually if it has not been
-     * loaded yet.
+     * Creates the Verktex textures of what [load] decoded. Must be called on the update thread,
+     * once, after [load].
+     */
+    fun register() {
+        VerktexBridge.checkUpdateThread()
+
+        val placeholder = shared(PLACEHOLDER_KEY) { errorBitmap() }
+        this.placeholder = placeholder
+        whiteRegion = shared(WHITE_KEY) { whiteBitmap() }
+
+        for ((index, page) in pages.withIndex()) {
+            val region = Textures.load(keyPrefix + "page" + index, page.source, standalone = true)
+
+            for (info in page.infos) {
+                textures[info.name] = if (region == null) placeholder.also { page.source.recycle() } else GraphicsTexture.Region(
+                    region.texture, page.source,
+                    info.x.toFloat(), info.y.toFloat(),
+                    info.width.toFloat(), info.height.toFloat()
+                )
+            }
+        }
+
+        for ((name, source) in singles) {
+            textures[name] = Textures.load(keyPrefix + name, source, standalone = true) ?: placeholder.also { source.recycle() }
+        }
+
+        for (name in skinNames) {
+            textures[name] = SkinTextures.getWithBeatmapSkin(name.substringBeforeLast('.')) ?: placeholder
+        }
+
+        // The textures own the sources now.
+        pages.clear()
+        singles.clear()
+        skinNames.clear()
+    }
+
+    /**
+     * Returns the texture region of the given path, or the placeholder if the path was not
+     * registered. Nothing is loaded here.
      *
      * @param name The texture path relative to the beatmap folder.
      */
-    fun get(name: String): TextureRegion = textures[name] ?: add(name)
+    fun get(name: String): GraphicsTexture.Region =
+        textures[name] ?: checkNotNull(placeholder) { "The storyboard textures are not registered." }
 
     /**
-     * Unloads all textures created by this pool.
+     * Unloads all textures created by this pool. The unload runs on the update thread, it is
+     * scheduled there when called from another thread.
      */
     fun clear() {
         textures.clear()
+        placeholder = null
+        whiteRegion = null
 
-        val textureManager = GlobalManager.getInstance().engine?.textureManager
+        // Never handed to a texture, so nothing else uploads or recycles them.
+        pages.forEach { it.source.recycle() }
+        singles.values.forEach { it.recycle() }
+        pages.clear()
+        singles.clear()
+        skinNames.clear()
 
-        for (texture in createdTextures) {
-            textureManager?.unloadTexture(texture)
+        val prefix = keyPrefix
+        val unload = { Textures.unloadAll { key, _ -> key.startsWith(prefix) } }
+
+        if (VerktexBridge.isUpdateThread) {
+            unload()
+        } else {
+            Verktex.scheduleOnUpdate(unload)
         }
 
-        createdTextures.clear()
         currentPage = 0
         currentX = 0
         currentY = 0
         lineMaxY = 0
     }
 
-    private fun getSkinTexture(name: String): TextureRegion? {
+    private fun isSkinTexture(name: String): Boolean {
         val resources = ResourceManager.getInstance()
         val skinName = name.substringBeforeLast('.')
 
         if (!resources.isTextureLoaded(skinName)) {
-            return null
+            return false
         }
 
-        return resources.getTexture(skinName)?.takeIf { it !is BlankTextureRegion }
+        return resources.getTexture(skinName)?.takeIf { it !is BlankTextureRegion } != null
     }
 
     /**
@@ -136,24 +207,13 @@ class StoryboardTexturePool @JvmOverloads constructor(
         return file
     }
 
-    private fun add(name: String): TextureRegion {
-        if (useSkinSprites) {
-            val region = getSkinTexture(name)
+    private fun add(name: String) {
+        val file = resolve(name)
 
-            if (region != null) {
-                textures[name] = region
-                return region
-            }
-        }
+        // A missing or corrupt file is not registered, it draws the shared placeholder.
+        val bitmap = decodeBitmap(file) ?: return
 
-        val bitmap = loadBitmap(resolve(name))
-        val region = TextureHelper.createRegion(bitmap)
-
-        createdTextures.add(region.texture)
-        textures[name] = region
-        bitmap.recycle()
-
-        return region
+        singles[name] = StoryboardTextureSource(bitmap) { loadBitmap(file) }
     }
 
     private fun packAll(names: List<String>) {
@@ -176,15 +236,24 @@ class StoryboardTexturePool @JvmOverloads constructor(
             return
         }
 
-        val textureManager = GlobalManager.getInstance().engine.textureManager
         val byPage = toPack.groupBy { it.pageIndex }
 
         // The first (and possibly only) page can be shrunk to the used height.
         val singlePageHeight = if (byPage.size == 1) lineMaxY + 10 else PAGE_SIZE
+        val pageHeight = singlePageHeight.coerceAtMost(PAGE_SIZE)
 
+        // One bitmap per page: Verktex uploads from the source when the page is first drawn.
+        for ((_, pageInfos) in byPage) {
+            val source = StoryboardTextureSource(composePage(pageInfos, pageHeight)) { composePage(pageInfos, pageHeight) }
+
+            pages.add(Page(source, pageInfos))
+        }
+    }
+
+    private fun composePage(pageInfos: List<TextureInfo>, pageHeight: Int): Bitmap {
         val pageBitmap = Bitmap.createBitmap(
             PAGE_SIZE,
-            singlePageHeight.coerceAtMost(PAGE_SIZE),
+            pageHeight,
             Bitmap.Config.ARGB_8888
         )
         val canvas = Canvas(pageBitmap)
@@ -193,32 +262,15 @@ class StoryboardTexturePool @JvmOverloads constructor(
             it.xfermode = PorterDuffXfermode(PorterDuff.Mode.SRC)
         }
 
-        for ((_, pageInfos) in byPage) {
-            pageBitmap.eraseColor(Color.argb(0, 0, 0, 0))
+        pageBitmap.eraseColor(Color.argb(0, 0, 0, 0))
 
-            for (info in pageInfos) {
-                val bitmap = loadBitmap(resolve(info.name))
-                canvas.drawBitmap(bitmap, info.x.toFloat(), info.y.toFloat(), paint)
-                bitmap.recycle()
-            }
-
-            val source = QualityFileBitmapSource(TextureHelper.createFactoryFromBitmap(pageBitmap))
-            val atlas = BitmapTextureAtlas(textureManager, PAGE_SIZE, PAGE_SIZE, TextureOptions.BILINEAR)
-
-            atlas.addTextureAtlasSource(source, 0, 0)
-            textureManager.loadTexture(atlas)
-            createdTextures.add(atlas)
-
-            for (info in pageInfos) {
-                textures[info.name] = TextureRegion(
-                    atlas,
-                    info.x.toFloat(), info.y.toFloat(),
-                    info.width.toFloat(), info.height.toFloat()
-                )
-            }
+        for (info in pageInfos) {
+            val bitmap = loadBitmap(resolve(info.name))
+            canvas.drawBitmap(bitmap, info.x.toFloat(), info.y.toFloat(), paint)
+            bitmap.recycle()
         }
 
-        pageBitmap.recycle()
+        return pageBitmap
     }
 
     private fun placeInPack(info: TextureInfo) {
@@ -254,17 +306,33 @@ class StoryboardTexturePool @JvmOverloads constructor(
         }
     }
 
-    private fun loadBitmap(file: File): Bitmap {
+    private fun loadBitmap(file: File): Bitmap = decodeBitmap(file) ?: errorBitmap()
+
+    private fun decodeBitmap(file: File): Bitmap? {
+        if (!file.isFile) {
+            return null
+        }
+
         return try {
-            BitmapFactory.decodeFile(file.absolutePath, bitmapOptions) ?: errorBitmap()
+            BitmapFactory.decodeFile(file.absolutePath, bitmapOptions)
         } catch (_: Exception) {
-            errorBitmap()
+            null
         }
     }
 
     private fun errorBitmap(): Bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).also {
         it.setPixel(0, 0, Color.argb(255, 255, 0, 0))
     }
+
+    private fun whiteBitmap(): Bitmap = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).also {
+        it.setPixel(0, 0, Color.argb(255, 255, 255, 255))
+    }
+
+    /**
+     * The region of a texture all pools share, created on first use and kept.
+     */
+    private fun shared(key: String, create: () -> Bitmap): GraphicsTexture.Region =
+        Textures[key] ?: checkNotNull(Textures.load(key, StoryboardTextureSource(create(), create), standalone = true))
 
     private class TextureInfo(@JvmField val name: String) {
         @JvmField var width = 1
@@ -273,6 +341,8 @@ class StoryboardTexturePool @JvmOverloads constructor(
         @JvmField var y = 0
         @JvmField var pageIndex = -1
     }
+
+    private class Page(@JvmField val source: StoryboardTextureSource, @JvmField val infos: List<TextureInfo>)
 
     companion object {
         /**
@@ -285,5 +355,13 @@ class StoryboardTexturePool @JvmOverloads constructor(
         private const val MARGIN = 2
 
         private val IMAGE_EXTENSIONS = arrayOf(".jpeg", ".jpg", ".png")
+
+        private const val KEY_PREFIX = "storyboard:"
+
+        // Shared by all pools and outside every pool's prefix, so clear() keeps them.
+        private const val PLACEHOLDER_KEY = "storyboard:<placeholder>"
+        private const val WHITE_KEY = "storyboard:white"
+
+        private val nextPoolId = AtomicInteger()
     }
 }

@@ -3,6 +3,7 @@ package com.osudroid.verktex.game
 import android.content.SharedPreferences
 import android.preference.PreferenceManager
 import com.osudroid.game.PlayfieldTransform
+import com.osudroid.storyboard.renderer.StoryboardComponent
 import com.osudroid.ui.verktex.LegacyUnits
 import com.osudroid.verktex.VerktexTestFixtures
 import com.reco1l.verktex.Verktex
@@ -122,6 +123,43 @@ class GameUISceneLayerOrderTest {
 
         val playfield = field("playfield") as UIContainer
         val expected = listOf(field("sceneBorder"), field("bgScene"), field("mgScene"), field("fgScene"))
+
+        assertEquals(expected, Verktex.withTreeLock { playfield.toList() })
+    }
+
+    // What loadStoryboard leaves for applyBackground once the storyboard is loaded.
+    private fun withStoryboard(): StoryboardComponent {
+        val preferences = preferencesField.get(null) as SharedPreferences
+        preferences.edit().putBoolean("enableStoryboard", true).commit()
+
+        return StoryboardComponent().also { setField("storyboardComponent", it) }
+    }
+
+    @Test fun storyboardSitsInsideThePlayfield() {
+        val storyboard = withStoryboard()
+
+        applyBackground()
+        // Applying again, as every load step does, attaches it once.
+        applyBackground()
+
+        val playfield = field("playfield") as UIContainer
+        val children = Verktex.withTreeLock { playfield.toList() }
+
+        // Before the border, as AndEngine's attachChild(storyboard, 0) put it before the border attached at index 0.
+        assertSame(playfield, storyboard.parent)
+        assertSame(storyboard, children[0])
+        assertSame(field("sceneBorder"), children[1])
+        assertEquals(1, children.count { it === storyboard })
+    }
+
+    @Test fun overlaySitsBetweenMgAndFg() {
+        val storyboard = withStoryboard()
+
+        applyBackground()
+        applyBackground()
+
+        val playfield = field("playfield") as UIContainer
+        val expected = listOf(storyboard, field("sceneBorder"), field("bgScene"), field("mgScene"), storyboard.overlayComponent, field("fgScene"))
 
         assertEquals(expected, Verktex.withTreeLock { playfield.toList() })
     }
