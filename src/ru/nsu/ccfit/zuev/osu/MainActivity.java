@@ -2,8 +2,6 @@ package ru.nsu.ccfit.zuev.osu;
 
 import static android.view.ViewGroup.LayoutParams.MATCH_PARENT;
 
-import static com.reco1l.andengine.buffered.Buffer.*;
-
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.ActivityManager;
@@ -43,10 +41,8 @@ import androidx.preference.PreferenceManager;
 import com.edlplan.ui.ActivityOverlay;
 import com.google.firebase.analytics.FirebaseAnalytics;
 import com.google.firebase.crashlytics.FirebaseCrashlytics;
-import com.osudroid.BuildSettings;
 import com.osudroid.beatmaps.BeatmapCache;
 import com.osudroid.data.DatabaseManager;
-import com.osudroid.debug.DebugPlaygroundScene;
 import com.osudroid.resources.R;
 import com.osudroid.ui.FPSCounter;
 import com.osudroid.ui.verktex.FullWindowContainer;
@@ -378,10 +374,6 @@ public class MainActivity extends BaseGameActivity implements
     }
 
     private Scene onLoadScene() {
-        if (BuildSettings.DEBUG_PLAYGROUND) {
-            return DebugPlaygroundScene.INSTANCE;
-        }
-
         return EngineRouter.getEmptyAndEngineScene();
     }
 
@@ -427,21 +419,19 @@ public class MainActivity extends BaseGameActivity implements
                 ResourceManager.getInstance().loadFont("font", null, 28, Color.WHITE);
 
                 // Keep the scene switch and its follow-up in one runnable so they run together.
-                if (!BuildSettings.DEBUG_PLAYGROUND) {
-                    if (willReplay) {
-                        final String replayFile = fileToAdd;
-                        fileToAdd = null;
-                        willReplay = false;
-                        Execution.updateThread(() -> {
-                            EngineRouter.showVerktex(GlobalManager.getInstance().getMainMenuV2());
-                            GlobalManager.getInstance().getMainMenuV2().watchReplay(replayFile);
-                        });
-                    } else {
-                        Execution.updateThread(() -> {
-                            EngineRouter.showVerktex(GlobalManager.getInstance().getMainMenuV2());
-                            GlobalManager.getInstance().getMainMenuV2().loadBeatmap();
-                        });
-                    }
+                if (willReplay) {
+                    final String replayFile = fileToAdd;
+                    fileToAdd = null;
+                    willReplay = false;
+                    Execution.updateThread(() -> {
+                        EngineRouter.showVerktex(GlobalManager.getInstance().getMainMenuV2());
+                        GlobalManager.getInstance().getMainMenuV2().watchReplay(replayFile);
+                    });
+                } else {
+                    Execution.updateThread(() -> {
+                        EngineRouter.showVerktex(GlobalManager.getInstance().getMainMenuV2());
+                        GlobalManager.getInstance().getMainMenuV2().loadBeatmap();
+                    });
                 }
                 initPreferences();
                 availableInternalMemory();
@@ -948,12 +938,6 @@ public class MainActivity extends BaseGameActivity implements
 
     @Override
     public synchronized void onSurfaceCreated(final GLState pGLState) {
-        // Reset all VBO IDs so they are re-generated against the new EGL context.
-        // This handles the case where the system destroyed the context while the app
-        // was backgrounded (context loss recovery).
-        com.reco1l.andengine.buffered.Buffer.onContextLost();
-        // Reset the TriangleRenderer VBO so it is re-created against the new context.
-        com.edlplan.andengine.TriangleRenderer.get().resetForContextLoss();
         // Note: the storyboard draws through the Verktex renderer, its shader and textures are
         // recreated by the Verktex context loss recovery in VerktexBridge.onSurfaceCreated below.
         if (VerktexBridge.isInitialized()) {

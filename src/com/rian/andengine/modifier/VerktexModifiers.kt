@@ -16,12 +16,11 @@ import java.util.function.Consumer
 //region Target
 
 /**
- * What a [UniversalModifier] animates. Implemented by the reco1l
- * [com.reco1l.andengine.component.UIComponent] with its own members and, for Verktex components, by
- * [VerktexModifierTarget].
+ * What a [UniversalModifier] animates. Implemented for Verktex components by [VerktexModifierTarget];
+ * the AndEngine UIComponent implemented it with its own members.
  *
- * The accessors are named after the AndEngine `Entity` members, so the reco1l component implements
- * most of them through what it inherits.
+ * The accessors are named after the AndEngine `Entity` members, so the AndEngine UIComponent
+ * implemented most of them through what it inherited.
  */
 interface ModifierTarget {
 

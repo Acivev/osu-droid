@@ -4,7 +4,6 @@ import androidx.annotation.NonNull;
 
 import com.edlplan.framework.utils.interfaces.Consumer;
 import com.osudroid.ui.v2.hud.HUDSkinData;
-import com.reco1l.andengine.ui.Theme;
 import com.reco1l.framework.Color4;
 import com.reco1l.framework.HexComposition;
 
@@ -190,10 +189,7 @@ public class SkinJsonReader extends SkinReader {
 
     @Override
     protected void loadTheme() {
-        var accentColor =
-            new Color4(currentThemeData.optString("accentColor", "#C2CAFF"), HexComposition.RRGGBB);
-
-        Theme.Companion.setCurrent(new Theme(accentColor));
+        // The accent colour has no consumer since the menus moved to Verktex.
     }
 
     public void load(String tag, @NonNull JSONObject data, Consumer<JSONObject> consumer) {

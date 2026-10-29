@@ -2,26 +2,20 @@ package com.reco1l.andengine
 
 import android.app.Activity
 import android.view.*
-import androidx.core.view.ViewCompat
-import androidx.core.view.WindowInsetsCompat
 import com.osudroid.ui.verktex.ISkinnable as VerktexSkinnable
 import com.osudroid.ui.verktex.SkinTextures
 import com.osudroid.verktex.bridge.EngineRouter
 import com.osudroid.verktex.bridge.InputRouter
 import com.osudroid.verktex.bridge.VerktexBridge
 import com.reco1l.verktex.Verktex
-import com.reco1l.andengine.component.*
-import com.reco1l.andengine.ui.*
-import com.rian.andengine.HUD
 import com.rian.andengine.timing.IClockProvider
 import com.rian.andengine.timing.ThrottledFrameClock
 import org.andengine.engine.Engine
+import org.andengine.engine.camera.hud.HUD
 import org.andengine.engine.options.EngineOptions
-import org.andengine.entity.IEntity
 import org.andengine.entity.scene.*
 import org.andengine.input.touch.*
 import org.andengine.opengl.util.GLState
-import kotlin.math.*
 import org.andengine.engine.camera.Camera
 
 class UIEngine(val context: Activity, options: EngineOptions) : Engine(options),
@@ -31,40 +25,7 @@ class UIEngine(val context: Activity, options: EngineOptions) : Engine(options),
     /**
      * The global HUD used for overlays (menus, dialogs, etc).
      */
-    val overlay = HUD().also { it.updateClock(clock) }
-
-    /**
-     * The resource manager for loading and accessing UI resources (fonts, textures, etc).
-     */
-    val resources = UIResourceManager(context)
-
-    /**
-     * The current focused entity.
-     */
-    var focusedEntity: UIComponent? = null
-        set(value) {
-            if (value != null && value !is IFocusable) {
-                throw IllegalArgumentException("value must be an instance of IFocusable")
-            }
-
-            if (field != value) {
-                (field as? IFocusable)?.onBlur()
-                field = value
-
-                if (value != null) {
-                    value.onFocus()
-
-                    val (_, sceneY) = value.convertLocalToSceneCoordinates(0f, value.height)
-                    val (_, surfaceY) = camera.convertSceneToSurfaceCoordinates(0f, sceneY, invertYAxis = false)
-
-                    focusedEntitySurfacePositionY = surfaceY
-                }
-            }
-        }
-
-
-    private var focusedEntitySurfacePositionY = 0f
-
+    val overlay = HUD()
 
     init {
         current = this
@@ -73,34 +34,6 @@ class UIEngine(val context: Activity, options: EngineOptions) : Engine(options),
 
 
     override fun onDrawScene(pGLState: GLState, pCamera: Camera) {
-        val focusedEntity = focusedEntity
-
-        if (focusedEntity != null) {
-
-            if (focusedEntity is UITextInput) {
-
-                val keyboardHeight = ViewCompat.getRootWindowInsets(context.window.decorView)
-                    ?.getInsets(WindowInsetsCompat.Type.ime())
-                    ?.bottom
-                    ?.toFloat() ?: 0f
-
-                val offset = max(0f, focusedEntitySurfacePositionY - (surfaceHeight - keyboardHeight))
-
-                val (_, sceneOffset) = camera.convertSurfaceToSceneCoordinates(0f, offset)
-
-                // Current scene isn't supposed to have any other position rather than 0,0
-                // so we assume it is safe to override the position.
-                scene.setPosition(0f, -sceneOffset)
-                scene.childScene?.setPosition(0f, -sceneOffset)
-                overlay.setPosition(0f, -sceneOffset)
-            }
-
-        } else {
-            scene.setPosition(0f, 0f)
-            scene.childScene?.setPosition(0f, 0f)
-            overlay.setPosition(0f, 0f)
-        }
-
         // Verktex draws above the AndEngine scene and below its HUD.
         scene?.onDraw(pGLState, pCamera)
         VerktexBridge.pumpDraw(pGLState)
@@ -120,75 +53,14 @@ class UIEngine(val context: Activity, options: EngineOptions) : Engine(options),
                 Verktex.scene.propagate { (it as? VerktexSkinnable)?.onSkinChanged() }
             }
         }
-
-        val scene = scene ?: return
-
-        fun IEntity.propagateSkinChange() {
-
-            if (this is ISkinnable) {
-                onSkinChanged()
-            }
-
-            forEach { it.propagateSkinChange() }
-        }
-
-        scene.propagateSkinChange()
     }
 
     /**
-     * Called when the theme is changed.
+     * Called when a key is pressed. The AndEngine tree holds no key handlers since the menus moved
+     * to Verktex.
      */
-    fun onThemeChange(theme: Theme) {
-        val scene = scene ?: return
-
-        fun IEntity.propagateThemeChange() {
-
-            if (this is UIComponent) {
-                onThemeChanged(theme)
-            }
-
-            if (this is Scene) {
-                childScene?.propagateThemeChange()
-            }
-
-            forEach { it.propagateThemeChange() }
-        }
-
-        scene.propagateThemeChange()
-    }
-
-    /**
-     * Called when a key is pressed.
-     */
-    fun onKeyPress(keyCode: Int, event: KeyEvent): Boolean {
-
-        fun IEntity.propagateKeyPress(keyCode: Int, event: KeyEvent): Boolean {
-
-            if (this is UIComponent && onKeyPress(keyCode, event)) {
-                return true
-            }
-
-            for (i in childCount - 1 downTo 0) {
-                if (getChildByIndex(i).propagateKeyPress(keyCode, event)) {
-                    return true
-                }
-            }
-
-            return false
-        }
-
-        if (overlay.propagateKeyPress(keyCode, event)) {
-            return true
-        }
-
-        val scene = scene ?: return false
-
-        if (scene.childScene?.propagateKeyPress(keyCode, event) == true) {
-            return true
-        }
-
-        return scene.propagateKeyPress(keyCode, event)
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun onKeyPress(keyCode: Int, event: KeyEvent): Boolean = false
 
 
     /**
@@ -215,25 +87,6 @@ class UIEngine(val context: Activity, options: EngineOptions) : Engine(options),
         )
     }
 
-    override fun onTouchHUD(camera: Camera, event: TouchEvent): Boolean {
-
-        if (checkFocusedEntityBounds(event)) {
-            return true
-        }
-
-        return super.onTouchHUD(camera, event)
-    }
-
-
-    override fun onTouchScene(scene: Scene, event: TouchEvent): Boolean {
-
-        if (checkFocusedEntityBounds(event)) {
-            return true
-        }
-
-        return super.onTouchScene(scene, event)
-    }
-
     override fun onUpdate(pNanosecondsElapsed: Long) {
         clock.processFrame()
 
@@ -248,28 +101,6 @@ class UIEngine(val context: Activity, options: EngineOptions) : Engine(options),
         }
         super.setScene(scene)
         scene?.onAttached()
-    }
-
-    /**
-     * Checks whether a [TouchEvent] is outside the bounds of [focusedEntity] and blurs [focusedEntity] if so.
-     *
-     * @param event The [TouchEvent] to check against the [focusedEntity]'s bounds.
-     * @return `true` if [focusedEntity] exists and was blurred, `false` otherwise.
-     */
-    private fun checkFocusedEntityBounds(event: TouchEvent): Boolean {
-        val focusedEntity = focusedEntity
-
-        if (focusedEntity != null) {
-            val (left, top) = focusedEntity.convertLocalToSceneCoordinates(0f, 0f)
-            val (right, bottom) = focusedEntity.convertLocalToSceneCoordinates(focusedEntity.width, focusedEntity.height)
-
-            if (event.x < left || event.x > right || event.y < top || event.y > bottom) {
-                (focusedEntity as IFocusable).blur()
-                return true
-            }
-        }
-
-        return false
     }
 
     companion object {

@@ -5,8 +5,6 @@ import android.graphics.PointF;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 
-import org.andengine.entity.sprite.Sprite;
-import org.andengine.opengl.texture.region.ITextureRegion;
 import ru.nsu.ccfit.zuev.osu.helper.MathUtils;
 
 import java.util.Arrays;
@@ -38,16 +36,6 @@ public class Utils {
                                final float percent) {
         return new PointF(v1.x * (1 - percent) + v2.x * percent, v1.y
                 * (1 - percent) + v2.y * percent);
-    }
-
-    public static void putSpriteAnchorCenter(float x, float y, Sprite sprite) {
-        final ITextureRegion tex = sprite.getTextureRegion();
-        sprite.setPosition(x - tex.getWidth() / 2f, y - tex.getHeight() / 2f);
-    }
-
-    public static void putSpriteAnchorCenter(PointF pos, Sprite sprite) {
-        final ITextureRegion tex = sprite.getTextureRegion();
-        sprite.setPosition(pos.x - tex.getWidth() / 2f, pos.y - tex.getHeight() / 2f);
     }
 
     public static PointF trackToRealCoords(final PointF coords) {

@@ -2851,10 +2851,6 @@ public class GameScene implements GameObjectListener {
         DifficultyCalculationManager.calculateDifficulties();
     }
 
-
-    public void reset() {
-    }
-
     private void notifyStoryboardOfHit() {
         if (storyboardComponent != null && storyboardComponent.hasParent()) {
             storyboardComponent.onHitObjectHit();
