@@ -24,7 +24,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import com.osudroid.multiplayer.Multiplayer;
-import org.andengine.opengl.exception.GLESVersionUnsupportedException;
+import com.osudroid.verktex.bridge.GLESVersionUnsupportedException;
 import org.apache.http.HttpException;
 import org.json.JSONException;
 import org.json.JSONObject;

@@ -4,7 +4,6 @@ import com.osudroid.verktex.VerktexTestFixtures
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.ui.container.UIContainer
 import com.reco1l.verktex.ui.UIScene
-import org.andengine.entity.scene.Scene
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -14,8 +13,6 @@ import org.junit.Before
 import org.junit.Test
 
 class EngineRouterTest {
-    private val set = mutableListOf<Scene>()
-    private val defaultSceneSetter = EngineRouter.andEngineSceneSetter
 
     private class FakeRoutedScene : UIScene(), RoutedScene {
         var shownCount = 0
@@ -41,21 +38,18 @@ class EngineRouterTest {
     @Before
     fun setUp() {
         VerktexTestFixtures.ensureInitialized()
-        EngineRouter.andEngineSceneSetter = { set += it }
         EngineRouter.leaveVerktex()
     }
 
     @After
     fun tearDown() {
         EngineRouter.leaveVerktex()
-        EngineRouter.andEngineSceneSetter = defaultSceneSetter
     }
 
     @Test
-    fun showVerktexEmptiesAndEngineAndPushesScene() {
+    fun showVerktexPushesScene() {
         val s = UIScene()
         EngineRouter.showVerktex(s)
-        assertSame(EngineRouter.emptyAndEngineScene, set.single())
         assertSame(s, Verktex.scene)
         assertTrue(EngineRouter.isVerktexActive)
     }
@@ -71,15 +65,6 @@ class EngineRouterTest {
     }
 
     @Test
-    fun showAndEngineLeavesVerktexAndSetsScene() {
-        EngineRouter.showVerktex(UIScene())
-        val a = Scene()
-        EngineRouter.showAndEngine(a)
-        assertFalse(EngineRouter.isVerktexActive)
-        assertSame(a, set.last())
-    }
-
-    @Test
     fun leaveVerktexClearsStack() {
         EngineRouter.showVerktex(UIScene())
         EngineRouter.leaveVerktex()
@@ -88,14 +73,11 @@ class EngineRouterTest {
     }
 
     @Test
-    fun showDispatchesOnDestinationType() {
+    fun showShowsTheVerktexDestination() {
         val v = UIScene()
         EngineRouter.show(Destination.Verktex(v))
         assertSame(v, Verktex.scene)
-        val a = Scene()
-        EngineRouter.show(Destination.AndEngine(a))
-        assertSame(a, set.last())
-        assertFalse(EngineRouter.isVerktexActive)
+        assertTrue(EngineRouter.isVerktexActive)
     }
 
     @Test
@@ -176,14 +158,6 @@ class EngineRouterTest {
         assertEquals(1, a.hidden)
         assertEquals(1, b.shown)
         assertEquals(0, b.hidden)
-    }
-
-    @Test
-    fun showingAndEngineHidesTheVerktexScene() {
-        val a = RecordingScene()
-        EngineRouter.showVerktex(a)
-        EngineRouter.showAndEngine(Scene())
-        assertEquals(1, a.hidden)
     }
 
     @Test

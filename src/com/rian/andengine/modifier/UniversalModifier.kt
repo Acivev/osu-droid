@@ -8,13 +8,12 @@ import com.rian.andengine.timing.IClock
 import com.reco1l.framework.interpolate
 import kotlin.math.max
 import kotlin.math.min
-import org.andengine.entity.modifier.IEntityModifier
 
 /**
  * A modifier that can be used to apply different types of modifications to a [ModifierTarget]. This allows
  * instances of the class to be recycled in a pool.
  *
- * Unlike regular [IEntityModifier]s, which rely on relative timing from the frame it is registered, [UniversalModifier]
+ * Unlike AndEngine's `IEntityModifier`s, which rely on relative timing from the frame it is registered, [UniversalModifier]
  * uses absolute timing from the [target]'s [IClock] to determine when it should run, effectively removing the need of
  * delay, parallel, and sequence modifiers.
  *

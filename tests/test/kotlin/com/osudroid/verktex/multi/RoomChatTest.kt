@@ -33,7 +33,6 @@ import org.robolectric.RobolectricTestRunner
 @RunWith(RobolectricTestRunner::class)
 class RoomChatTest {
 
-    private val defaultSceneSetter = EngineRouter.andEngineSceneSetter
     private val textures = listOf("chat.png", "send.png")
     private val previousTextureSizes = mutableMapOf<String, Pair<Float, Float>?>()
 
@@ -48,7 +47,6 @@ class RoomChatTest {
             provider.textureSizes[it] = 64f to 64f
         }
 
-        EngineRouter.andEngineSceneSetter = {}
         EngineRouter.leaveVerktex()
 
         chat = Verktex.withTreeLock { RoomChat() }.apply {
@@ -60,7 +58,6 @@ class RoomChatTest {
     @After fun tearDown() {
         chat.hide()
         EngineRouter.leaveVerktex()
-        EngineRouter.andEngineSceneSetter = defaultSceneSetter
 
         val provider = VerktexTestFixtures.ensureInitialized()
         previousTextureSizes.forEach { (path, size) ->

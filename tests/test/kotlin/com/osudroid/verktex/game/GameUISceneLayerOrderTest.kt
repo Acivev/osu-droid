@@ -87,7 +87,7 @@ class GameUISceneLayerOrderTest {
         previousPlayfieldSize = Config.getPlayfieldSize()
         Config.setPlayfieldSize(0.8f)
 
-        game = GameScene(null)
+        game = GameScene()
 
         // The playfield transform startGame applies.
         val transform = field("playfieldTransform") as FloatArray

@@ -4,15 +4,11 @@ import com.osudroid.ui.verktex.PersistentOverlays
 import com.reco1l.verktex.Verktex
 import com.reco1l.verktex.ui.UIComponent
 import com.reco1l.verktex.ui.UIScene
-import org.andengine.entity.scene.Scene
-import org.andengine.entity.scene.background.Background
-import ru.nsu.ccfit.zuev.osu.GlobalManager
 
 /**
- * Where the screen is shown: an AndEngine scene or a Verktex scene.
+ * Where the screen is shown: a Verktex scene.
  */
 sealed class Destination {
-    data class AndEngine(val scene: Scene) : Destination()
     data class Verktex(val scene: UIScene) : Destination()
 }
 
@@ -20,34 +16,19 @@ sealed class Destination {
 interface RoutedScene {
     fun onShown()
 
-    /** The scene stopped being Verktex's scene: another Verktex scene, AndEngine, or [EngineRouter.leaveVerktex]. */
+    /** The scene stopped being Verktex's scene: another Verktex scene or [EngineRouter.leaveVerktex]. */
     fun onHidden() {}
 }
 
 /**
- * The only switch between AndEngine and Verktex. Verktex is kept at its base scene whenever
- * AndEngine owns the screen; `UIEngine.setScene` calls [leaveVerktex] to guarantee that.
+ * The switch between the shown Verktex scenes. [leaveVerktex] returns Verktex to its base scene.
  *
- * Components passed to [showOverlay] are tracked overlays: they make Verktex active over an
- * AndEngine scene, and every scene change ([leaveVerktex], [showVerktex]) hides them. Verktex
- * modals add themselves through `Verktex.addOverlay` and belong to their scene, so the router
- * neither tracks nor touches them.
+ * Components passed to [showOverlay] are tracked overlays: they make Verktex active over its base
+ * scene, and every scene change ([leaveVerktex], [showVerktex]) hides them. Verktex modals add
+ * themselves through `Verktex.addOverlay` and belong to their scene, so the router neither tracks
+ * nor touches them.
  */
 object EngineRouter {
-
-    /**
-     * Sets the active AndEngine scene. Replaceable for tests.
-     */
-    @JvmStatic
-    var andEngineSceneSetter: (Scene) -> Unit = { GlobalManager.getInstance().engine.scene = it }
-
-    /**
-     * The scene AndEngine shows while Verktex owns the screen.
-     */
-    @JvmStatic
-    val emptyAndEngineScene: Scene by lazy {
-        Scene().apply { background = Background(0f, 0f, 0f) }
-    }
 
     private val trackedOverlays = mutableSetOf<UIComponent>()
 
@@ -81,26 +62,17 @@ object EngineRouter {
 
     @JvmStatic
     fun show(destination: Destination) = when (destination) {
-        is Destination.AndEngine -> showAndEngine(destination.scene)
         is Destination.Verktex -> showVerktex(destination.scene)
     }
 
     @JvmStatic
     fun showVerktex(scene: UIScene) {
-        andEngineSceneSetter(emptyAndEngineScene)
-
         Verktex.withTreeLock {
             hideTrackedOverlays()
             popToBase()?.onHidden()
             Verktex.pushScene(scene)
             (scene as? RoutedScene)?.onShown()
         }
-    }
-
-    @JvmStatic
-    fun showAndEngine(scene: Scene) {
-        leaveVerktex()
-        andEngineSceneSetter(scene)
     }
 
     @JvmStatic

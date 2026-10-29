@@ -30,7 +30,6 @@ import ru.nsu.ccfit.zuev.osu.GlobalManager
 @RunWith(RobolectricTestRunner::class)
 class CalibrationSceneTest {
 
-    private val defaultSceneSetter = EngineRouter.andEngineSceneSetter
     // Read in setUp, the scene must be built after the fonts are set up.
     private lateinit var defaultMainThreadPost: (() -> Unit) -> Unit
     private lateinit var defaultOverlayDisplayed: () -> Boolean
@@ -56,7 +55,6 @@ class CalibrationSceneTest {
         previousPreferences = preferencesField.get(null) as SharedPreferences?
         preferencesField.set(null, PreferenceManager.getDefaultSharedPreferences(RuntimeEnvironment.getApplication()))
 
-        EngineRouter.andEngineSceneSetter = {}
         EngineRouter.leaveVerktex()
 
         songService = GlobalManager.getInstance().songService
@@ -81,7 +79,6 @@ class CalibrationSceneTest {
         CalibrationScene.settingsFragment = null
         GlobalManager.getInstance().songService = songService
         EngineRouter.leaveVerktex()
-        EngineRouter.andEngineSceneSetter = defaultSceneSetter
         preferencesField.set(null, previousPreferences)
         previousPreferences = null
         iconFontField.set(null, previousIconFont)

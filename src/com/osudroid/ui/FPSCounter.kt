@@ -7,6 +7,7 @@ import com.osudroid.math.Interpolation
 import com.osudroid.ui.verktex.LegacyUnits
 import com.osudroid.ui.verktex.LegacyUnits.vu
 import com.osudroid.ui.verktex.times
+import com.osudroid.verktex.bridge.VerktexBridge
 import com.reco1l.verktex.data.Anchor
 import com.reco1l.verktex.data.Padding
 import com.reco1l.verktex.data.px
@@ -27,7 +28,7 @@ import ru.nsu.ccfit.zuev.osu.GlobalManager.getInstance as getGlobal
  * Represents an FPS counter.
  */
 class FPSCounter : UIText() {
-    // The AndEngine engine's clock, which the Verktex update is pumped from.
+    // The update loop's clock, which the Verktex update is pumped from.
     private val updateClock
         get() = clockProvider()
 
@@ -35,7 +36,7 @@ class FPSCounter : UIText() {
      * The clock the frame rate is measured with. Replaced by the tests.
      */
     @VisibleForTesting
-    internal var clockProvider: () -> ThrottledFrameClock = { getGlobal().engine.clock }
+    internal var clockProvider: () -> ThrottledFrameClock = { VerktexBridge.updateLoop.clock }
 
     /**
      * The display refresh rate. Replaced by the tests.

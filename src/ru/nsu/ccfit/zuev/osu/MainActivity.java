@@ -12,6 +12,7 @@ import android.provider.OpenableColumns;
 import android.content.ServiceConnection;
 import android.content.SharedPreferences;
 import android.content.SharedPreferences.Editor;
+import android.content.pm.ActivityInfo;
 import android.content.pm.PackageInfo;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
@@ -23,11 +24,14 @@ import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
 import android.os.IBinder;
+import android.os.PowerManager;
+import android.os.PowerManager.WakeLock;
 import android.os.StatFs;
 import android.util.DisplayMetrics;
 import android.view.Display;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.Window;
 import android.view.WindowManager;
 import android.widget.FrameLayout;
 import android.widget.RelativeLayout;
@@ -35,6 +39,7 @@ import android.widget.RelativeLayout.LayoutParams;
 import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.appcompat.app.AppCompatActivity;
 import androidx.core.content.PermissionChecker;
 import androidx.preference.PreferenceManager;
 
@@ -49,10 +54,13 @@ import com.osudroid.ui.verktex.FullWindowContainer;
 import com.osudroid.ui.v2.menu.main.MainMenuV2;
 import com.osudroid.utils.Execution;
 import com.osudroid.verktex.bridge.EngineRouter;
+import com.osudroid.verktex.bridge.GameSurfaceView;
 import com.osudroid.verktex.bridge.HostedTextInput;
 import com.osudroid.verktex.bridge.InputRouter;
+import com.osudroid.verktex.bridge.TouchController;
+import com.osudroid.verktex.bridge.UpdateLoop;
 import com.osudroid.verktex.bridge.VerktexBridge;
-import com.reco1l.andengine.UIEngine;
+import com.osudroid.verktex.bridge.WakeLockMode;
 import com.osudroid.multiplayer.api.LobbyAPI;
 import com.osudroid.multiplayer.api.RoomAPI;
 import com.osudroid.utils.AccessibilityDetector;
@@ -65,24 +73,10 @@ import com.reco1l.verktex.GameHost;
 import com.reco1l.verktex.Verktex;
 import com.reco1l.verktex.ui.ITextInput;
 import com.osudroid.difficulty.BeatmapDifficultyCalculator;
+import com.rian.andengine.timing.ThrottledFrameClock;
 import net.lingala.zip4j.ZipFile;
 
-import org.andengine.engine.Engine;
-import org.andengine.engine.camera.Camera;
-import org.andengine.engine.camera.SmoothCamera;
-import org.andengine.engine.options.EngineOptions;
-import org.andengine.engine.options.ScreenOrientation;
-import org.andengine.engine.options.WakeLockOptions;
-import org.andengine.engine.options.resolutionpolicy.RatioResolutionPolicy;
-import org.andengine.entity.scene.Scene;
-import org.andengine.input.touch.controller.MultiTouch;
-import org.andengine.input.touch.controller.MultiTouchController;
-import org.andengine.input.touch.TouchEvent;
-import org.andengine.opengl.util.GLState;
-import org.andengine.opengl.view.RenderSurfaceView;
-import org.andengine.input.sensor.acceleration.AccelerationData;
-import org.andengine.input.sensor.acceleration.IAccelerationListener;
-import org.andengine.ui.activity.BaseGameActivity;
+import kotlin.Unit;
 import ru.nsu.ccfit.zuev.osu.helper.Debug;
 
 import java.io.File;
@@ -96,6 +90,8 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.TimeUnit;
 
+import javax.microedition.khronos.opengles.GL10;
+
 import okio.Okio;
 import ru.nsu.ccfit.zuev.audio.Status;
 import ru.nsu.ccfit.zuev.audio.serviceAudio.SaveServiceObject;
@@ -106,8 +102,7 @@ import ru.nsu.ccfit.zuev.osu.menu.SplashScene;
 import ru.nsu.ccfit.zuev.osu.online.OnlineManager;
 import ru.nsu.ccfit.zuev.osuplus.BuildConfig;
 
-public class MainActivity extends BaseGameActivity implements
-        IAccelerationListener, GameHost {
+public class MainActivity extends AppCompatActivity implements GameHost {
 
     public static String versionName;
     public static SongService songService;
@@ -128,6 +123,18 @@ public class MainActivity extends BaseGameActivity implements
     private int maxRefreshRateModeId = 0;
     private MessageDialog multiWindowAlert;
     private HostedTextInput hostedTextInput;
+    // Plain objects until onCreate starts the thread: an uncreated activity touches no Context or GL.
+    private final UpdateLoop updateLoop = new UpdateLoop(new ThrottledFrameClock(), () -> {
+        onUpdateTick();
+        return Unit.INSTANCE;
+    });
+    private final TouchController touchController = new TouchController(VerktexBridge::dispatchPointer);
+    private GameSurfaceView mRenderSurfaceView;
+    private WakeLock wakeLock;
+    private WakeLockMode wakeLockMode = WakeLockMode.Dim;
+    private boolean gamePaused;
+    private boolean gameCreated;
+    private boolean createGameCalled;
 
     // Multiplayer
     private Uri roomInviteLink;
@@ -136,15 +143,13 @@ public class MainActivity extends BaseGameActivity implements
     // process after the full Activity lifecycle has run (Firebase, SongService, SharedPrefs, etc.).
     public volatile boolean killOnDestroy = false;
 
-    @Override
-    public EngineOptions onCreateEngineOptions() {
+    /**
+     * Returns false when the activity is finishing (redirected to PermissionActivity): onCreate then
+     * skips the bridge, the update loop, fullscreen and the content view.
+     */
+    private boolean onCreateOptions() {
         if (!checkPermissions()) {
-            // Activity is finishing (redirected to PermissionActivity).
-            // Return a minimal valid EngineOptions so BaseGameActivity does not NPE
-            // before the Activity is destroyed — the engine will be torn down with the Activity.
-            Camera stubCamera = new SmoothCamera(0, 0, 1, 1, 0, 0, 1);
-            return new EngineOptions(false, ScreenOrientation.LANDSCAPE_SENSOR,
-                    new RatioResolutionPolicy(1, 1), stubCamera);
+            return false;
         }
         analytics = FirebaseAnalytics.getInstance(this);
         crashlytics = FirebaseCrashlytics.getInstance();
@@ -191,35 +196,38 @@ public class MainActivity extends BaseGameActivity implements
             }
         }
 
-        Camera mCamera = new SmoothCamera(0, 0, Config.getRES_WIDTH(),
-                Config.getRES_HEIGHT(), 0, 1800, 1);
-        final EngineOptions opt = new EngineOptions(true,
-                ScreenOrientation.LANDSCAPE_SENSOR, new RatioResolutionPolicy(
-                Config.getRES_WIDTH(), Config.getRES_HEIGHT()),
-                mCamera);
-        opt.setWakeLockOptions(WakeLockOptions.SCREEN_DIM);
-
-        GlobalManager.getInstance().setCamera(mCamera);
-        return opt;
+        return true;
     }
 
-    @Override
-    public Engine onCreateEngine(final EngineOptions pEngineOptions) {
-        UIEngine engine = new UIEngine(this, pEngineOptions);
-
-        if (!MultiTouch.isSupported(this)) {
+    private void onCreateEngine() {
+        if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_TOUCHSCREEN_MULTITOUCH)) {
             // Warning player that they will have to single tap forever.
             ToastLogger.showText(StringTable.get(R.string.message_info_multitouch), false);
         }
-        engine.setTouchController(new MultiTouchController());
 
-        GlobalManager.getInstance().setEngine(engine);
+        VerktexBridge.initialize(this, this, updateLoop, touchController);
+    }
 
-        // Finishing means onCreateEngineOptions returned a stub, the game never starts.
-        if (!isFinishing()) {
-            VerktexBridge.initialize(this, this, engine.getUpdateThread());
-        }
-        return GlobalManager.getInstance().getEngine();
+    /**
+     * One frame of the update thread, run by the update loop under its frame lock.
+     */
+    private void onUpdateTick() {
+        updateLoop.getClock().processFrame();
+        touchController.drain();
+        updateLoop.getQueue().drain();
+        VerktexBridge.pumpUpdate();
+    }
+
+    /**
+     * The window setup AndEngine applied for the fullscreen, landscape-sensor engine options.
+     */
+    private void applyWindowOptions() {
+        final Window window = getWindow();
+        window.addFlags(WindowManager.LayoutParams.FLAG_FULLSCREEN);
+        window.clearFlags(WindowManager.LayoutParams.FLAG_FORCE_NOT_FULLSCREEN);
+        window.requestFeature(Window.FEATURE_NO_TITLE);
+
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
     }
 
     private void initialGameDirectory() {
@@ -283,18 +291,40 @@ public class MainActivity extends BaseGameActivity implements
         }
     }
 
-    @Override
-    public void onCreateResources(final OnCreateResourcesCallback pOnCreateResourcesCallback) throws Exception {
-        if (isFinishing()) {
-            pOnCreateResourcesCallback.onCreateResourcesFinished();
+    /**
+     * Creates the game on the GL thread when the first surface is ready: the resources, then the
+     * scene population, then {@link #onGameCreated()} and the resume on the UI thread.
+     */
+    private synchronized void onCreateGame() {
+        try {
+            if (!isFinishing()) {
+                onLoadResources();
+            }
+        } catch (final Throwable t) {
+            Debug.e("MainActivity.onCreateGame failed.", t);
             return;
         }
-        onLoadResources();
-        pOnCreateResourcesCallback.onCreateResourcesFinished();
+
+        try {
+            if (!isFinishing()) {
+                onLoadComplete();
+            }
+        } catch (final Throwable t) {
+            Debug.e("MainActivity.onPopulateScene failed.", t);
+            return;
+        }
+
+        try {
+            onGameCreated();
+        } catch (final Throwable t) {
+            Debug.e("MainActivity.onGameCreated failed.", t);
+        }
+
+        runOnUiThread(this::onResumeGame);
     }
 
     private void onLoadResources() {
-        ResourceManager.getInstance().Init(mEngine, this);
+        ResourceManager.getInstance().Init(this);
         ResourceManager.getInstance().loadHighQualityAsset("welcome", "gfx/welcome.png");
         ResourceManager.getInstance().loadHighQualityAsset("loading_start", "gfx/loading.png");
 
@@ -355,27 +385,22 @@ public class MainActivity extends BaseGameActivity implements
         // method, before SplashScene.initialize(), so they are NOT reloaded here.
     }
 
-    @Override
-    public void onCreateScene(final OnCreateSceneCallback pOnCreateSceneCallback) throws Exception {
-        if (isFinishing()) {
-            pOnCreateSceneCallback.onCreateSceneFinished(new Scene());
-            return;
-        }
-        pOnCreateSceneCallback.onCreateSceneFinished(onLoadScene());
+    private synchronized void onGameCreated() {
+        gameCreated = true;
     }
 
-    private Scene onLoadScene() {
-        return EngineRouter.getEmptyAndEngineScene();
+    private synchronized void onResumeGame() {
+        updateLoop.start();
+        touchController.setRunning(true);
+
+        gamePaused = false;
     }
 
-    @Override
-    public void onPopulateScene(final Scene pScene, final OnPopulateSceneCallback pOnPopulateSceneCallback) throws Exception {
-        if (isFinishing()) {
-            pOnPopulateSceneCallback.onPopulateSceneFinished();
-            return;
-        }
-        onLoadComplete();
-        pOnPopulateSceneCallback.onPopulateSceneFinished();
+    private synchronized void onPauseGame() {
+        gamePaused = true;
+
+        touchController.setRunning(false);
+        updateLoop.stop();
     }
 
     private void onLoadComplete() {
@@ -463,14 +488,30 @@ public class MainActivity extends BaseGameActivity implements
     }
 
     @SuppressLint("ResourceType")
-    @Override
-    protected void onSetContentView() {
-        this.mRenderSurfaceView = new RenderSurfaceView(this);
-        this.mRenderSurfaceView.setEGLConfigChooser(8, 8, 8, 8, 24, 0);
+    private void onSetContentView() {
+        this.mRenderSurfaceView = new GameSurfaceView(this);
         this.mRenderSurfaceView.getHolder().setFormat(PixelFormat.RGB_888);
-        this.mRenderSurfaceView.setRenderer(this.mEngine, this);
+        this.mRenderSurfaceView.setup(new GameSurfaceView.Renderer() {
+            @Override
+            public void onSurfaceReady() {
+                MainActivity.this.onSurfaceCreated();
+            }
+
+            @Override
+            public void onSurfaceChanged(final GL10 gl, final int width, final int height) {
+                MainActivity.this.onSurfaceChanged(width, height);
+            }
+
+            @Override
+            public void onFrame() {
+                updateLoop.onDrawFrame(() -> {
+                    VerktexBridge.pumpDraw();
+                    return Unit.INSTANCE;
+                });
+            }
+        });
         if (VerktexBridge.isInitialized()) {
-            VerktexBridge.attachSurfaceView(mRenderSurfaceView, mEngine);
+            VerktexBridge.attachSurfaceView(mRenderSurfaceView, touchController);
         }
 
         RelativeLayout mainLayout = new RelativeLayout(this);
@@ -694,13 +735,20 @@ public class MainActivity extends BaseGameActivity implements
 
         super.onCreate(pSavedInstanceState);
 
+        this.gamePaused = true;
+
+        if (onCreateOptions()) {
+            onCreateEngine();
+            updateLoop.startThread();
+
+            applyWindowOptions();
+
+            onSetContentView();
+        }
+
         try {
             versionName = getPackageManager().getPackageInfo(getPackageName(), PackageManager.GET_ACTIVITIES).versionName;
         } catch (Exception ignored) {
-        }
-
-        if (this.mEngine == null) {
-            return;
         }
 
         if (BuildConfig.DEBUG) {
@@ -759,13 +807,12 @@ public class MainActivity extends BaseGameActivity implements
             final var globalManager = GlobalManager.getInstance();
 
             Execution.updateThread(() -> {
-                if (mEngine != null) {
-                    var scene = mEngine.getScene();
+                if (VerktexBridge.isInitialized()) {
                     var gameScene = globalManager.getGameScene();
 
                     // Ensure gameplay is cleaned up before joining the lobby to prevent any potential issues with
                     // lingering game state.
-                    if (scene != null && gameScene != null && gameScene.isInGameplay()) {
+                    if (gameScene != null && gameScene.isInGameplay()) {
                         gameScene.quit();
                     }
                 }
@@ -890,7 +937,12 @@ public class MainActivity extends BaseGameActivity implements
 
     @Override
     public void onResume() {
-        super.onResume();
+        synchronized (this) {
+            super.onResume();
+
+            acquireWakeLock();
+            mRenderSurfaceView.onResume();
+        }
         activityVisible = true;
 
         if (VerktexBridge.isInitialized()) {
@@ -904,7 +956,7 @@ public class MainActivity extends BaseGameActivity implements
         }
         logFlushFuture = scheduledExecutor.scheduleAtFixedRate(Multiplayer::flushLog, 0, 5, TimeUnit.SECONDS);
 
-        if (mEngine == null) {
+        if (!VerktexBridge.isInitialized()) {
             return;
         }
 
@@ -915,9 +967,7 @@ public class MainActivity extends BaseGameActivity implements
 
         var gameScene = GlobalManager.getInstance().getGameScene();
 
-        if (gameScene != null && gameScene.isInGameplay()) {
-            mEngine.onReloadResources();
-        } else {
+        if (gameScene == null || !gameScene.isInGameplay()) {
             var songService = GlobalManager.getInstance().getSongService();
 
             if (songService != null && songService.getStatus() == Status.PAUSED) {
@@ -926,19 +976,28 @@ public class MainActivity extends BaseGameActivity implements
         }
     }
 
-    @Override
-    public synchronized void onSurfaceCreated(final GLState pGLState) {
+    /**
+     * Runs on the GL thread for every new surface: the first one creates the game, a recreated one
+     * resumes it. Verktex recovers its own GPU state, nothing else is reloaded.
+     */
+    private synchronized void onSurfaceCreated() {
         // Note: the storyboard draws through the Verktex renderer, its shader and textures are
         // recreated by the Verktex context loss recovery in VerktexBridge.onSurfaceCreated below.
         if (VerktexBridge.isInitialized()) {
             VerktexBridge.onSurfaceCreated();
         }
-        super.onSurfaceCreated(pGLState);
+
+        if (gameCreated) {
+            if (gamePaused) {
+                onResumeGame();
+            }
+        } else if (!createGameCalled) {
+            createGameCalled = true;
+            onCreateGame();
+        }
     }
 
-    @Override
-    public synchronized void onSurfaceChanged(final GLState pGLState, final int pWidth, final int pHeight) {
-        super.onSurfaceChanged(pGLState, pWidth, pHeight);
+    private synchronized void onSurfaceChanged(final int pWidth, final int pHeight) {
         if (VerktexBridge.isInitialized()) {
             VerktexBridge.onSurfaceChanged(pWidth, pHeight);
         }
@@ -947,6 +1006,13 @@ public class MainActivity extends BaseGameActivity implements
     @Override
     public void onPause() {
         super.onPause();
+
+        mRenderSurfaceView.onPause();
+        releaseWakeLock();
+
+        if (!gamePaused) {
+            onPauseGame();
+        }
         activityVisible = false;
 
         if (VerktexBridge.isInitialized()) {
@@ -959,7 +1025,7 @@ public class MainActivity extends BaseGameActivity implements
 
         Multiplayer.flushLog();
 
-        if (mEngine == null) {
+        if (!VerktexBridge.isInitialized()) {
             return;
         }
 
@@ -997,6 +1063,13 @@ public class MainActivity extends BaseGameActivity implements
     protected void onDestroy() {
         super.onDestroy();
 
+        // Before the bridge is disposed: after the join no tick runs and no frame draws.
+        updateLoop.joinThread();
+
+        synchronized (this) {
+            gameCreated = false;
+        }
+
         if (VerktexBridge.isInitialized()) {
             VerktexBridge.dispose();
         }
@@ -1024,7 +1097,7 @@ public class MainActivity extends BaseGameActivity implements
             // Firebase Analytics and Crashlytics have had a chance to flush/close their
             // sessions, SongService has been unbound, and SharedPreferences writes have been
             // committed.  Killing the process here ensures that all static singletons
-            // (the Verktex bridge, ResourceManager, UIEngine.current, etc.) are fully reset
+            // (the Verktex bridge, ResourceManager, etc.) are fully reset
             // on the next launch, preventing stale GL resource references (black fonts,
             // broken textures) if the user re-launches from the task switcher.
             android.os.Process.killProcess(android.os.Process.myPid());
@@ -1034,15 +1107,21 @@ public class MainActivity extends BaseGameActivity implements
 
     @Override
     public void onWindowFocusChanged(boolean hasFocus) {
-        super.onWindowFocusChanged(hasFocus);
+        synchronized (this) {
+            super.onWindowFocusChanged(hasFocus);
+
+            if (hasFocus && gamePaused && gameCreated) {
+                onResumeGame();
+            }
+        }
         if (VerktexBridge.isInitialized()) {
             VerktexBridge.onWindowFocusChanged(hasFocus);
         }
-        if (this.mEngine == null) {
+        if (!VerktexBridge.isInitialized()) {
             return;
         }
 
-        if (getEngine() != null && !hasFocus) {
+        if (!hasFocus) {
             var gameScene = GlobalManager.getInstance().getGameScene();
 
             if (gameScene != null && gameScene.isInGameplay() && !gameScene.isPaused() && !Multiplayer.isMultiplayer) {
@@ -1078,31 +1157,35 @@ public class MainActivity extends BaseGameActivity implements
         }
     }
 
-    @Override
-    public void onAccelerationAccuracyChanged(final AccelerationData arg0) {
-        // no-op
-    }
-
-    @Override
-    public void onAccelerationChanged(final AccelerationData arg0) {
-        if (this.mEngine == null) {
-            return;
-        }
-        if (GlobalManager.getInstance().getCamera().getRotation() == 0 && arg0.getY() < -5) {
-            GlobalManager.getInstance().getCamera().setRotation(180);
-        } else if (GlobalManager.getInstance().getCamera().getRotation() == 180 && arg0.getY() > 5) {
-            GlobalManager.getInstance().getCamera().setRotation(0);
-        }
-    }
-
-    public void reapplyWakeLock() {
+    /**
+     * Switches between the dimming (menus) and the bright (gameplay) screen wake lock.
+     */
+    public void setWakeLockMode(final WakeLockMode mode) {
+        wakeLockMode = mode;
         releaseWakeLock();
         acquireWakeLock();
     }
 
+    @SuppressLint("InvalidWakeLockTag") // the tag AndEngine's host used, kept so battery stats read as before
+    private void acquireWakeLock() {
+        final PowerManager pm = (PowerManager) getSystemService(POWER_SERVICE);
+        wakeLock = pm.newWakeLock(wakeLockMode.getFlag() | PowerManager.ON_AFTER_RELEASE, "AndEngine");
+        try {
+            wakeLock.acquire();
+        } catch (final SecurityException e) {
+            Debug.e("You have to add\n\t<uses-permission android:name=\"android.permission.WAKE_LOCK\"/>\nto your AndroidManifest.xml !", e);
+        }
+    }
+
+    private void releaseWakeLock() {
+        if (wakeLock != null && wakeLock.isHeld()) {
+            wakeLock.release();
+        }
+    }
+
     @Override
     public boolean onKeyMultiple(int keyCode, int repeatCount, KeyEvent event) {
-        if (this.mEngine == null) {
+        if (!VerktexBridge.isInitialized()) {
             return false;
         }
 
@@ -1110,45 +1193,22 @@ public class MainActivity extends BaseGameActivity implements
             return false;
         }
 
-        if (GlobalManager.getInstance().getEngine() == null) {
-            return super.onKeyMultiple(keyCode, repeatCount, event);
-        }
-
-        var action = event.getAction();
-
-        // See:
-        // - https://stackoverflow.com/a/7232186
-        // - https://developer.android.com/reference/android/view/KeyEvent#ACTION_MULTIPLE
-        // For now, we are only interested in using this for input to support characters that require multiple key
-        // presses to be inputted.
-        if (action == KeyEvent.ACTION_MULTIPLE && UIEngine.getCurrent().onKeyPress(keyCode, event)) {
-            return true;
-        }
-
         return super.onKeyMultiple(keyCode, repeatCount, event);
     }
 
     @Override
     public boolean onKeyDown(final int keyCode, final KeyEvent event) {
-        if (this.mEngine == null) {
+        if (!VerktexBridge.isInitialized()) {
             return false;
         }
 
         if (AccessibilityDetector.isIllegalServiceDetected())
             return false;
 
-        if (GlobalManager.getInstance().getEngine() == null) {
-            return super.onKeyDown(keyCode, event);
-        }
-
         // A key the shown overlay step left unconsumed is not offered to Verktex again by the steps below.
         var verktexKey = new InputRouter.KeyOffer(() -> VerktexBridge.dispatchKey(event));
 
         if (InputRouter.INSTANCE.routeKey(EngineRouter.getHasShownOverlay(), verktexKey::dispatch, () -> false)) {
-            return true;
-        }
-
-        if (UIEngine.getCurrent().onKeyPress(keyCode, event)) {
             return true;
         }
 

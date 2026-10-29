@@ -5,10 +5,7 @@ import com.osudroid.verktex.bridge.Destination;
 import com.osudroid.data.BeatmapInfo;
 import com.osudroid.data.DatabaseManager;
 import com.osudroid.utils.Execution;
-import com.reco1l.andengine.UIEngine;
 import com.reco1l.verktex.Verktex;
-
-import org.andengine.engine.camera.Camera;
 
 import ru.nsu.ccfit.zuev.audio.serviceAudio.SaveServiceObject;
 import ru.nsu.ccfit.zuev.audio.serviceAudio.SongService;
@@ -21,8 +18,6 @@ import ru.nsu.ccfit.zuev.osu.scoring.ScoringScene;
  */
 public class GlobalManager {
     private static GlobalManager instance;
-    private UIEngine engine;
-    private Camera camera;
     private GameScene gameScene;
     private MainMenuV2 mainMenuV2;
     private ScoringScene scoring;
@@ -60,38 +55,22 @@ public class GlobalManager {
         setInfo("Loading skin...");
         ResourceManager.getInstance().loadSkin(Config.getSkinPath());
         setLoadingProgress(30);
-        setGameScene(new GameScene(getEngine()));
+        setGameScene(new GameScene());
         setSongMenu(Verktex.INSTANCE.withTreeLock(SongMenu::new));
         setLoadingProgress(40);
         var songMenu = getSongMenu();
         // The song menu's init() and load() both assert the update thread; this init() runs on an async thread.
         Execution.updateThread(() -> {
-            songMenu.init(mainActivity, getEngine(), getGameScene());
+            songMenu.init(mainActivity, getGameScene());
             songMenu.load();
         });
-        setScoring(Verktex.INSTANCE.withTreeLock(() -> new ScoringScene(getEngine(), getGameScene(), songMenu)));
+        setScoring(Verktex.INSTANCE.withTreeLock(() -> new ScoringScene(getGameScene(), songMenu)));
         songMenu.setScoringScene(getScoring());
         getGameScene().setScoringScene(getScoring());
         getGameScene().setOldScene(new Destination.Verktex(songMenu));
         if (songService != null) {
             songService.stop();
         }
-    }
-
-    public UIEngine getEngine() {
-        return engine;
-    }
-
-    public void setEngine(UIEngine engine) {
-        this.engine = engine;
-    }
-
-    public Camera getCamera() {
-        return camera;
-    }
-
-    public void setCamera(Camera camera) {
-        this.camera = camera;
     }
 
     public GameScene getGameScene() {

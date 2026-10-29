@@ -5,7 +5,7 @@ import java.util.concurrent.ConcurrentLinkedQueue
 
 /**
  * A [LoopWorker] that owns no thread. The host advances it by calling [pump] from a thread it
- * already controls (such as AndEngine's GL or update thread), which runs the scheduled tasks and
+ * already controls (such as the host's GL or update thread), which runs the scheduled tasks and
  * then one iteration of the loop.
  */
 class ManualLoopWorker(override val name: String, private val loop: () -> Unit) : LoopWorker {

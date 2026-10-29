@@ -5,6 +5,7 @@ import androidx.annotation.NonNull;
 import com.osudroid.ui.verktex.FullWindowContainer;
 import com.osudroid.ui.verktex.LegacyUnits;
 import com.osudroid.ui.verktex.SkinTextures;
+import com.osudroid.utils.Execution;
 import com.reco1l.verktex.data.DimensionKt;
 import com.reco1l.verktex.data.Vec2;
 import com.reco1l.verktex.graphics.GraphicsTexture;
@@ -96,7 +97,7 @@ public class PauseMenu {
             protected void onUpdate(@NonNull final TickingClock clock) {
                 if (!game.isInGameplay()) {
                     // Removed on the next tick so the overlay list stays stable throughout this one.
-                    GlobalManager.getInstance().getEngine().runOnUpdateThread(PauseMenu.this::close);
+                    Execution.updateThread(PauseMenu.this::close);
                     return;
                 }
                 // Speed-up the fade-in animation (original was 1 s; 2.5× makes it ~0.4 s).

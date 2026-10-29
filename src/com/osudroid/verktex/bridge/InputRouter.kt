@@ -1,14 +1,9 @@
 package com.osudroid.verktex.bridge
 
 /**
- * The order a touch is offered in while AndEngine and Verktex share the screen: the AndEngine
- * HUD, then Verktex, then the AndEngine scene. The first one to consume it ends the dispatch.
+ * The order a key is offered in.
  */
 object InputRouter {
-
-    fun routeTouch(hud: () -> Boolean, verktex: () -> Boolean, scene: () -> Boolean): Boolean {
-        return hud() || verktex() || scene()
-    }
 
     /**
      * The order a key is offered in: a shown router overlay first, then the rest of the dispatch.

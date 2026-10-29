@@ -145,7 +145,7 @@ class HUDBarHitErrorMeter : HUDHitErrorMeter() {
             if (alpha <= 0f) {
                 alpha = 0f
                 expiredIndicators.release(this)
-                updateThread {
+                updateThreadUnderTreeLock {
                     activeIndicators.remove(this)
                 }
             }

@@ -8,7 +8,7 @@ import com.reco1l.verktex.audio.AudioDriver
 import com.reco1l.verktex.worker.LoopWorker
 
 /**
- * [Platform.Implementation] for Verktex hosted inside AndEngine's render loop. Workers own no
+ * [Platform.Implementation] for Verktex hosted by the activity's render loop. Workers own no
  * threads, the host pumps them by name through [worker].
  */
 class HostedPlatform(context: Context) : Platform.Implementation {

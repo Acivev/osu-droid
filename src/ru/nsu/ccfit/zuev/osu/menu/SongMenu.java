@@ -66,7 +66,6 @@ import com.reco1l.verktex.ui.UIComponent;
 import com.reco1l.verktex.ui.shape.UIBox;
 import com.reco1l.verktex.ui.text.UIText;
 
-import org.andengine.engine.Engine;
 import ru.nsu.ccfit.zuev.osu.helper.Debug;
 import ru.nsu.ccfit.zuev.osu.helper.MathUtils;
 
@@ -112,7 +111,6 @@ import ru.nsu.ccfit.zuev.skins.SkinLayout;
 public class SongMenu extends UIScene implements ISkinnable, RoutedScene, MenuItemListener {
     private ListLayer frontLayer = new ListLayer();
     SortOrder sortOrder = SortOrder.Title;
-    private Engine engine;
     public GameScene game;
     private ScoringScene scoreScene;
     private final ListScroller scroller = new ListScroller(Config.getRES_WIDTH(), Config.getRES_HEIGHT(), Utils::toRes);
@@ -218,11 +216,9 @@ public class SongMenu extends UIScene implements ISkinnable, RoutedScene, MenuIt
         return items;
     }
 
-    public void init(final Activity context, final Engine engine,
-                     final GameScene pGame) {
+    public void init(final Activity context, final GameScene pGame) {
         VerktexBridge.checkUpdateThread();
 
-        this.engine = engine;
         game = pGame;
         this.context = context;
     }

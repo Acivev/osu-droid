@@ -5,7 +5,6 @@ import com.osudroid.verktex.VerktexTestFixtures
 import com.reco1l.verktex.input.InputEvent
 import com.reco1l.verktex.input.PointerEvent
 import com.reco1l.verktex.ui.UIScene
-import org.andengine.input.touch.TouchEvent
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -13,7 +12,6 @@ import org.junit.Before
 import org.junit.Test
 
 class VerktexBridgeDispatchTest {
-    private val defaultSceneSetter = EngineRouter.andEngineSceneSetter
 
     // VerktexBridge.initialize needs Android; the fixtures initialize Verktex itself, so only the flag is set.
     private val initializedField = VerktexBridge::class.java.getDeclaredField("isInitialized").apply {
@@ -41,14 +39,12 @@ class VerktexBridgeDispatchTest {
     fun setUp() {
         VerktexTestFixtures.ensureInitialized()
         initializedField.setBoolean(null, true)
-        EngineRouter.andEngineSceneSetter = {}
         EngineRouter.showVerktex(scene)
     }
 
     @After
     fun tearDown() {
         EngineRouter.leaveVerktex()
-        EngineRouter.andEngineSceneSetter = defaultSceneSetter
         initializedField.setBoolean(null, false)
     }
 
@@ -58,40 +54,40 @@ class VerktexBridgeDispatchTest {
 
     @Test
     fun mapsActions() {
-        dispatch(TouchEvent.ACTION_DOWN)
+        dispatch(MotionEvent.ACTION_DOWN)
         assertEquals(PointerEvent.Action.Down, scene.action)
-        dispatch(TouchEvent.ACTION_MOVE)
+        dispatch(MotionEvent.ACTION_MOVE)
         assertEquals(PointerEvent.Action.Move, scene.action)
-        dispatch(TouchEvent.ACTION_UP)
+        dispatch(MotionEvent.ACTION_UP)
         assertEquals(PointerEvent.Action.Up, scene.action)
-        dispatch(TouchEvent.ACTION_OUTSIDE)
+        dispatch(MotionEvent.ACTION_OUTSIDE)
         assertEquals(PointerEvent.Action.Unknown, scene.action)
     }
 
     @Test
     fun cancelIsDispatchedAsCancel() {
-        dispatch(TouchEvent.ACTION_DOWN)
-        dispatch(TouchEvent.ACTION_CANCEL)
+        dispatch(MotionEvent.ACTION_DOWN)
+        dispatch(MotionEvent.ACTION_CANCEL)
         assertEquals(PointerEvent.Action.Cancel, scene.action)
     }
 
     @Test
     fun eventTimeIsForwarded() {
-        dispatch(TouchEvent.ACTION_DOWN, eventTime = 1234L)
+        dispatch(MotionEvent.ACTION_DOWN, eventTime = 1234L)
         assertEquals(1234L, scene.time)
-        dispatch(TouchEvent.ACTION_MOVE, eventTime = 1250L)
+        dispatch(MotionEvent.ACTION_MOVE, eventTime = 1250L)
         assertEquals(1250L, scene.time)
     }
 
     @Test
     fun mapsButtons() {
-        dispatch(TouchEvent.ACTION_DOWN, MotionEvent.BUTTON_PRIMARY)
+        dispatch(MotionEvent.ACTION_DOWN, MotionEvent.BUTTON_PRIMARY)
         assertEquals(PointerEvent.Button.Left, scene.button)
-        dispatch(TouchEvent.ACTION_DOWN, MotionEvent.BUTTON_SECONDARY)
+        dispatch(MotionEvent.ACTION_DOWN, MotionEvent.BUTTON_SECONDARY)
         assertEquals(PointerEvent.Button.Right, scene.button)
-        dispatch(TouchEvent.ACTION_DOWN, MotionEvent.BUTTON_TERTIARY)
+        dispatch(MotionEvent.ACTION_DOWN, MotionEvent.BUTTON_TERTIARY)
         assertEquals(PointerEvent.Button.Unknown, scene.button)
-        dispatch(TouchEvent.ACTION_DOWN, 0)
+        dispatch(MotionEvent.ACTION_DOWN, 0)
         assertEquals(PointerEvent.Button.Unknown, scene.button)
     }
 }

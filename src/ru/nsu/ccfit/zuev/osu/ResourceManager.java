@@ -17,8 +17,6 @@ import com.osudroid.resources.skin.SoundResolution;
 import com.osudroid.resources.skin.TextureResolution;
 import com.osudroid.ui.skinning.IniReader;
 import com.osudroid.ui.skinning.SkinConverter;
-import com.reco1l.andengine.UIEngine;
-import org.andengine.engine.Engine;
 import ru.nsu.ccfit.zuev.osu.helper.Debug;
 import org.json.JSONObject;
 
@@ -64,7 +62,6 @@ public class ResourceManager {
      */
     private final Map<String, File> customTextureFiles = new ConcurrentHashMap<>();
 
-    private Engine engine;
     private Context context;
     private String backgroundFile;
 
@@ -75,12 +72,7 @@ public class ResourceManager {
         return mgr;
     }
 
-    public Engine getEngine() {
-        return engine;
-    }
-
-    public void Init(final Engine engine, final Context context) {
-        this.engine = engine;
+    public void Init(final Context context) {
         this.context = context;
 
         soundStore.init(context);
@@ -113,7 +105,7 @@ public class ResourceManager {
 
         textureStore.markAbsent("lighting");
 
-        UIEngine.getCurrent().onSkinChange();
+        SkinTextures.onSkinChange();
     }
 
     public void loadCustomSkin(String folder) {

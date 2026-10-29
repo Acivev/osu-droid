@@ -717,7 +717,6 @@ class SettingsFragment : SettingsFragment() {
             // the correct skin path.
             Config.setSkinPath(path)
             ResourceManager.getInstance().loadSkin(path)
-            GlobalManager.getInstance().engine.onReloadResources()
 
             mainThread {
                 loading.dismiss()

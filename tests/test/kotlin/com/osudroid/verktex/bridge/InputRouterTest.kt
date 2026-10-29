@@ -8,28 +8,6 @@ import org.junit.Test
 class InputRouterTest {
 
     @Test
-    fun hudConsumesFirst() {
-        var verktexCalled = false
-        var sceneCalled = false
-        assertTrue(InputRouter.routeTouch({ true }, { verktexCalled = true; true }, { sceneCalled = true; true }))
-        assertFalse(verktexCalled)
-        assertFalse(sceneCalled)
-    }
-
-    @Test
-    fun verktexConsumesBeforeScene() {
-        var sceneCalled = false
-        assertTrue(InputRouter.routeTouch({ false }, { true }, { sceneCalled = true; true }))
-        assertFalse(sceneCalled)
-    }
-
-    @Test
-    fun fallsThroughToScene() {
-        assertTrue(InputRouter.routeTouch({ false }, { false }, { true }))
-        assertFalse(InputRouter.routeTouch({ false }, { false }, { false }))
-    }
-
-    @Test
     fun routeKeyPrefersOverlayWhenShown() {
         var restCalled = false
         assertTrue(InputRouter.routeKey(true, { true }, { restCalled = true; false }))

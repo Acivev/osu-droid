@@ -209,7 +209,7 @@ object SkinTextures {
     }
 
     /**
-     * Unloads every "skin:" key and forgets recorded misses, called from UIEngine.onSkinChange. Safe
+     * Unloads every "skin:" key and forgets recorded misses, called from [onSkinChange]. Safe
      * from any thread: the work is handed to the Verktex update worker.
      */
     @JvmStatic
@@ -220,6 +220,21 @@ object SkinTextures {
             Textures.unloadAll { key, _ -> key.startsWith(KEY_PREFIX) }
             misses.clear()
             SharedBackground.invalidate()
+        }
+    }
+
+    /**
+     * Called when the skin is changed.
+     */
+    @JvmStatic
+    fun onSkinChange() {
+        invalidate()
+
+        // Runs after the invalidation, both are tasks of the Verktex update worker.
+        if (VerktexBridge.isInitialized) {
+            Verktex.scheduleOnUpdate {
+                Verktex.scene.propagate { (it as? ISkinnable)?.onSkinChanged() }
+            }
         }
     }
 }

@@ -47,9 +47,10 @@ import com.osudroid.verktex.bridge.VerktexBridge;
 import com.osudroid.game.GameplayTickingClock;
 import com.osudroid.game.PlayfieldTransform;
 import com.osudroid.verktex.bridge.RoutedScene;
+import com.osudroid.verktex.bridge.TouchOptions;
+import com.osudroid.verktex.bridge.WakeLockMode;
 import com.osudroid.ui.verktex.SharedBackground;
 import com.osudroid.ui.verktex.SkinTextures;
-import com.reco1l.andengine.UIEngine;
 import com.reco1l.verktex.data.Anchor;
 import com.reco1l.verktex.data.ClipMode;
 import com.reco1l.verktex.data.Vec2;
@@ -118,8 +119,6 @@ import com.osudroid.utils.ModUtils;
 import com.rian.andengine.timing.IFrameBasedClock;
 import com.rian.andengine.timing.Stopwatch;
 
-import org.andengine.engine.options.TouchOptions;
-import org.andengine.engine.options.WakeLockOptions;
 import ru.nsu.ccfit.zuev.osu.helper.Debug;
 
 import java.io.File;
@@ -162,7 +161,6 @@ import ru.nsu.ccfit.zuev.skins.BeatmapSkinManager;
 public class GameScene implements GameObjectListener {
     public static final int CursorCount = 10;
     private final int maximumActiveCursorCount = 3;
-    private final UIEngine engine;
     private Cursor[] cursors = new Cursor[CursorCount];
     public String audioFilePath = null;
     private GameUIScene scene;
@@ -409,8 +407,7 @@ public class GameScene implements GameObjectListener {
     private ScoreBoardItem lastScoreSent = null;
 
 
-    public GameScene(final UIEngine engine) {
-        this.engine = engine;
+    public GameScene() {
         gameplayClock = new GameplayFrameStabilityClock(new FramedBeatmapClock(true, true));
         scene = new GameUIScene();
         playfield = new PlayfieldLayer();
@@ -2003,14 +2000,13 @@ public class GameScene implements GameObjectListener {
             touchOptions.setProcessHistoricalEvents(Config.isHighPrecisionInput());
             touchOptions.setUseRawPointer(Config.isHighPrecisionInput());
 
-            var touchController = engine.getTouchController();
+            var touchController = VerktexBridge.getTouchController();
             touchController.applyTouchOptions(touchOptions);
             touchController.resetRawPointers();
         }
 
         // Disable screen dimming
-        engine.getEngineOptions().setWakeLockOptions(WakeLockOptions.SCREEN_BRIGHT);
-        GlobalManager.getInstance().getMainActivity().reapplyWakeLock();
+        GlobalManager.getInstance().getMainActivity().setWakeLockMode(WakeLockMode.Bright);
 
         EngineRouter.showVerktex(scene);
         Verktex.INSTANCE.withTreeLock(() -> {
@@ -2604,11 +2600,10 @@ public class GameScene implements GameObjectListener {
             var touchOptions = new TouchOptions();
             touchOptions.setProcessHistoricalEvents(false);
             touchOptions.setUseRawPointer(false);
-            engine.getTouchController().applyTouchOptions(touchOptions);
+            VerktexBridge.getTouchController().applyTouchOptions(touchOptions);
 
             // Enable screen dimming
-            engine.getEngineOptions().setWakeLockOptions(WakeLockOptions.SCREEN_DIM);
-            GlobalManager.getInstance().getMainActivity().reapplyWakeLock();
+            GlobalManager.getInstance().getMainActivity().setWakeLockMode(WakeLockMode.Dim);
 
             if (video != null) {
                 video.release();
@@ -2798,13 +2793,12 @@ public class GameScene implements GameObjectListener {
         touchOptions.setProcessHistoricalEvents(false);
         touchOptions.setUseRawPointer(false);
 
-        var touchController = engine.getTouchController();
+        var touchController = VerktexBridge.getTouchController();
         touchController.applyTouchOptions(touchOptions);
         touchController.resetRawPointers();
 
         // Enable screen dimming
-        engine.getEngineOptions().setWakeLockOptions(WakeLockOptions.SCREEN_DIM);
-        GlobalManager.getInstance().getMainActivity().reapplyWakeLock();
+        GlobalManager.getInstance().getMainActivity().setWakeLockMode(WakeLockMode.Dim);
 
         releaseStoryboard();
 
@@ -4847,7 +4841,7 @@ public class GameScene implements GameObjectListener {
         }
 
         private void applyRawPointerFastPath() {
-            var touchController = engine.getTouchController();
+            var touchController = VerktexBridge.getTouchController();
 
             if (touchController == null || !touchController.isUseRawPointer()) {
                 return;
@@ -4912,7 +4906,7 @@ public class GameScene implements GameObjectListener {
         }
 
         private boolean tryReadRawPointer(int pointerId) {
-            var touchController = engine.getTouchController();
+            var touchController = VerktexBridge.getTouchController();
 
             if (touchController == null) {
                 return false;

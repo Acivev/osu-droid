@@ -324,7 +324,7 @@ class HUDAimErrorMeter : HUDElement() {
                 alpha = 0f
                 expiredIndicators.release(this)
 
-                updateThread {
+                updateThreadUnderTreeLock {
                     activeIndicators.remove(this)
                 }
             }

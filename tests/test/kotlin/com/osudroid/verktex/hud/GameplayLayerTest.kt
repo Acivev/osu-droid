@@ -30,7 +30,6 @@ import ru.nsu.ccfit.zuev.osu.Config
 
 class GameplayLayerTest {
 
-    private val defaultSceneSetter = EngineRouter.andEngineSceneSetter
     private val overlays = mutableListOf<UIComponent>()
 
     private lateinit var layer: GameplayLayer
@@ -39,7 +38,6 @@ class GameplayLayerTest {
     @Before
     fun setUp() {
         VerktexTestFixtures.ensureInitialized()
-        EngineRouter.andEngineSceneSetter = {}
         EngineRouter.leaveVerktex()
 
         Config.setRES_WIDTH(1280)
@@ -60,7 +58,6 @@ class GameplayLayerTest {
         layer.hide()
         overlays.forEach(Verktex::removeOverlay)
         EngineRouter.leaveVerktex()
-        EngineRouter.andEngineSceneSetter = defaultSceneSetter
     }
 
     private fun addOverlay(component: UIComponent) {

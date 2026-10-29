@@ -19,14 +19,12 @@ import com.reco1l.verktex.input.KeyboardEvent
 import com.reco1l.verktex.input.PointerEvent
 import com.reco1l.verktex.time.SystemClock
 import com.rian.andengine.modifier.ModifierRegistry
-import org.andengine.engine.Engine
-import org.andengine.input.touch.TouchEvent
-import org.andengine.opengl.util.GLState
 import ru.nsu.ccfit.zuev.osuplus.BuildConfig
 
 /**
- * Runs Verktex inside AndEngine: AndEngine owns the EGL context, the threads and the input, and
- * pumps Verktex's workers from its own frame. Removed together with AndEngine.
+ * Runs Verktex hosted by the activity: the activity owns the EGL context (its [GameSurfaceView]), the
+ * update thread ([UpdateLoop]) and the input ([TouchController]), and pumps Verktex's workers from
+ * its own frame.
  */
 object VerktexBridge {
 
@@ -40,6 +38,20 @@ object VerktexBridge {
     lateinit var platform: HostedPlatform
     lateinit var window: HostedWindow
 
+    /**
+     * The activity's update loop, set by [initialize].
+     */
+    @JvmStatic
+    lateinit var updateLoop: UpdateLoop
+        private set
+
+    /**
+     * The activity's touch controller, set by [initialize].
+     */
+    @JvmStatic
+    lateinit var touchController: TouchController
+        private set
+
     // The first surface is created after initialize(), every later one is a recreated context.
     private var surfaceGeneration = 0
 
@@ -48,7 +60,10 @@ object VerktexBridge {
 
 
     @JvmStatic
-    fun initialize(host: GameHost, context: Context, updateThread: Thread) {
+    fun initialize(host: GameHost, context: Context, updateLoop: UpdateLoop, touchController: TouchController) {
+        this.updateLoop = updateLoop
+        this.touchController = touchController
+
         platform = HostedPlatform(context)
         window = HostedWindow()
 
@@ -74,25 +89,24 @@ object VerktexBridge {
 
         Verktex.start()
         // Runnables posted to the update thread can run before the update worker is first pumped.
-        platform.worker(UPDATE_WORKER).bindThread(updateThread)
+        platform.worker(UPDATE_WORKER).bindThread(updateLoop.thread)
         isInitialized = true
         host.onEngineStarted()
     }
 
     /**
-     * Must be called after `RenderSurfaceView.setRenderer`, which installs the engine as the touch
-     * listener. This one takes its place and forwards touches to the engine, which queues them for
-     * the update thread, except mouse wheel scrolls, which the engine does not queue.
+     * Installs the surface's touch listener: touches go to [touchController], which queues them for
+     * the update thread, except mouse wheel scrolls, which it does not queue.
      */
     @JvmStatic
-    fun attachSurfaceView(view: View, engine: Engine) {
+    fun attachSurfaceView(view: View, touchController: TouchController) {
         window.attachInsetsListener(view)
 
-        view.setOnTouchListener { touchedView, event ->
+        view.setOnTouchListener { _, event ->
             if (event.action == MotionEvent.ACTION_SCROLL) {
                 dispatchScroll(event)
             } else {
-                engine.onTouch(touchedView, event)
+                touchController.onTouch(event)
             }
         }
     }
@@ -113,29 +127,28 @@ object VerktexBridge {
     }
 
     /**
-     * Draws Verktex on AndEngine's GL thread, between the AndEngine scene and its HUD.
+     * Draws Verktex on the surface view's GL thread, after its renderer cleared the frame.
      */
     @JvmStatic
-    fun pumpDraw(glState: GLState) {
+    fun pumpDraw() {
         if (!isInitialized || window.windowWidth == 0 || window.windowHeight == 0) {
             return
         }
 
         platform.worker(DRAW_WORKER).pump()
-        glState.resyncAfterExternalDraw()
-        // The window holds the surface size from onSurfaceChanged, which AndEngine's viewport uses.
+        // The window holds the surface size from onSurfaceChanged.
         GLES32.glViewport(0, 0, window.windowWidth, window.windowHeight)
     }
 
     /**
-     * Updates Verktex on AndEngine's update thread. The modifiers are ticked first, so the update
+     * Updates Verktex on the update thread. The modifiers are ticked first, so the update
      * and the next draw see their values.
      *
      * Their delta is measured here from [SystemClock], the time source of [Verktex.clock], because
      * that clock only advances inside the pump (after the update worker's throttle sleep). The sum
      * matches the clock's, each frame may be off by that sleep.
      *
-     * While AndEngine is stopped (the activity is in the background) this is not called, so the
+     * While the update loop is stopped (the activity is in the background) this is not called, so the
      * first tick after resuming covers the whole background time. It is left uncapped on purpose, as
      * on the reco1l path. Only [Verktex.pause] is skipped, its clock does not run then.
      */
@@ -158,7 +171,7 @@ object VerktexBridge {
     }
 
     /**
-     * True when the current thread is AndEngine's update thread, which pumps the update worker.
+     * True when the current thread is the update thread, which pumps the update worker.
      */
     @JvmStatic
     val isUpdateThread: Boolean
@@ -172,7 +185,7 @@ object VerktexBridge {
     }
 
     /**
-     * Dispatches an AndEngine touch to Verktex, [action] being one of `TouchEvent.ACTION_*` and
+     * Dispatches a touch to Verktex, [action] being one of `MotionEvent.ACTION_*` and
      * [x], [y] being surface coordinates and [eventTime] the `MotionEvent` uptime in milliseconds.
      */
     @JvmStatic
@@ -182,10 +195,10 @@ object VerktexBridge {
         }
 
         val pointerAction = when (action) {
-            TouchEvent.ACTION_DOWN -> PointerEvent.Action.Down
-            TouchEvent.ACTION_UP -> PointerEvent.Action.Up
-            TouchEvent.ACTION_MOVE -> PointerEvent.Action.Move
-            TouchEvent.ACTION_CANCEL -> PointerEvent.Action.Cancel
+            MotionEvent.ACTION_DOWN -> PointerEvent.Action.Down
+            MotionEvent.ACTION_UP -> PointerEvent.Action.Up
+            MotionEvent.ACTION_MOVE -> PointerEvent.Action.Move
+            MotionEvent.ACTION_CANCEL -> PointerEvent.Action.Cancel
             else -> PointerEvent.Action.Unknown
         }
 

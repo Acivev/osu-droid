@@ -91,7 +91,7 @@ public class SplashScene extends UIScene {
 
     public void playWelcomeAnimation()
     {
-        Execution.updateThread(() -> {
+        Execution.updateThreadUnderTreeLock(() -> {
             mStarting = false;
 
             loadingAlpha.animateTo(0f, 0.2f, Easing.Companion.getNone());
@@ -109,7 +109,7 @@ public class SplashScene extends UIScene {
         {
         }
 
-        Execution.updateThread(() -> {
+        Execution.updateThreadUnderTreeLock(() -> {
             var welcomeTex = SkinTextures.get("welcome", "gfx/welcome.png");
             welcomeSprite = new UISprite(welcomeTex);
 

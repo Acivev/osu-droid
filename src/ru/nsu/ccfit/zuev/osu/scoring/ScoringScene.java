@@ -40,7 +40,6 @@ import com.reco1l.verktex.ui.shape.UIBox;
 import com.reco1l.verktex.ui.text.UIText;
 import com.reco1l.osu.ui.entity.StatisticSelector;
 
-import org.andengine.engine.Engine;
 import ru.nsu.ccfit.zuev.osu.helper.Debug;
 
 import com.osudroid.GameMode;
@@ -85,7 +84,6 @@ import ru.nsu.ccfit.zuev.osu.online.OnlineScoring;
 import ru.nsu.ccfit.zuev.osuplus.BuildConfig;
 
 public class ScoringScene extends UIScene implements RoutedScene, ISkinnable {
-    private final Engine engine;
     private final GameScene game;
     private final SongMenu menu;
     private SongService songService;
@@ -101,9 +99,8 @@ public class ScoringScene extends UIScene implements RoutedScene, ISkinnable {
     // Each pointer's events go to the child that consumed its press, until it is lifted.
     private final HashMap<Integer, UIComponent> touchAreaBindings = new HashMap<>();
 
-    public ScoringScene(final Engine pEngine, final GameScene pGame,
+    public ScoringScene(final GameScene pGame,
                         final SongMenu pMenu) {
-        engine = pEngine;
         game = pGame;
         menu = pMenu;
     }

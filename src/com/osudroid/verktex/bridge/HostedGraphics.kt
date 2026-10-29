@@ -24,7 +24,7 @@ import kotlin.math.max
  */
 class HostedContext : GraphicsContext {
 
-    override val version = "hosted by AndEngine"
+    override val version = "hosted"
 
     override fun makeCurrent() {}
 
@@ -155,16 +155,11 @@ class HostedRenderer(
     override fun begin() {
         super.begin()
 
-        // AndEngine's context is current on the draw thread from here on, the device was created without one.
+        // The host's context is current on the draw thread from here on, the device was created without one.
         if (!capabilitiesRefreshed) {
             capabilitiesRefreshed = true
             device.refreshCapabilities()
         }
-
-        // AndEngine leaves array 3 enabled, pointing at its last VBO; Verktex only uses 0..2 and an
-        // enabled array with a dangling pointer is undefined behaviour on ES.
-        GLES32.glDisableVertexAttribArray(3)
-        GLES32.glDisableVertexAttribArray(4)
 
         GLES32.glViewport(0, 0, window.windowWidth, window.windowHeight)
     }

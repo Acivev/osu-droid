@@ -1117,7 +1117,7 @@ class MainMenuV2 : UIScene(), ISkinnable, RoutedScene {
 
         // Finish after the 3-second fade completes.
         // killOnDestroy = true ensures onDestroy() calls Process.killProcess(), fully
-        // clearing all static singletons (ResourceManager, GlobalManager, UIEngine, etc.).
+        // clearing all static singletons (ResourceManager, GlobalManager, etc.).
         // Without this, the process stays alive and on the next launch from the task switcher
         // the new Engine's FontManager is unaware of fonts still held in ResourceManager
         // (registered against the old Engine), causing black fonts and black icon squares.
