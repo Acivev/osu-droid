@@ -4,6 +4,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import ru.nsu.ccfit.zuev.osu.Config
+import ru.nsu.ccfit.zuev.osu.helper.Debug
 import java.io.File
 import java.io.FileInputStream
 import java.io.IOException
@@ -153,6 +154,7 @@ class TextureStore {
     }
 
     fun unload(name: String) {
+        if (get(name) == null) return
         textures.remove(name)
     }
 
@@ -172,12 +174,15 @@ class TextureStore {
          */
         @JvmStatic
         fun decodeFile(file: File, sampleSize: Int, source: TextureEntry.Source): TextureEntry? =
-            decode({ FileInputStream(file) }, sampleSize)?.let { (width, height) ->
+            decode({ FileInputStream(file) }, sampleSize, file)?.let { (width, height) ->
                 TextureEntry(source, file, width, height)
             }
 
-        /** Bounds, then a full decode that is discarded; the bounds' size, or `null` on failure. */
-        private fun decode(open: () -> InputStream, sampleSize: Int): Pair<Int, Int>? {
+        /**
+         * Bounds, then a full decode that is discarded; the bounds' size, or `null` on failure. A
+         * failed [file] read is logged as QualityFileBitmapSource logged it; assets fail silently.
+         */
+        private fun decode(open: () -> InputStream, sampleSize: Int, file: File? = null): Pair<Int, Int>? {
             val bounds = BitmapFactory.Options().also {
                 it.inJustDecodeBounds = true
                 it.inSampleSize = sampleSize
@@ -186,6 +191,9 @@ class TextureStore {
             try {
                 open().use { BitmapFactory.decodeStream(it, null, bounds) }
             } catch (e: IOException) {
+                if (file != null) {
+                    Debug.e("Failed loading Bitmap in FileBitmapTextureAtlasSource. File: $file", e)
+                }
                 return null
             }
 
@@ -201,6 +209,9 @@ class TextureStore {
             val bitmap = try {
                 open().use { BitmapFactory.decodeStream(it, null, options) }
             } catch (e: IOException) {
+                if (file != null) {
+                    Debug.e("Failed loading Bitmap in FileBitmapTextureAtlasSource. File: $file", e)
+                }
                 null
             } ?: return null
 

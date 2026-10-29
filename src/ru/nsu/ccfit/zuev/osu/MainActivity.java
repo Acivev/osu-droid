@@ -331,11 +331,10 @@ public class MainActivity extends AppCompatActivity implements GameHost {
         ResourceManager.getInstance().loadSound("welcome", "sfx/welcome.ogg", false);
         ResourceManager.getInstance().loadSound("welcome_piano", "sfx/welcome_piano.ogg", false);
 
-        // Re-initialize SplashScene so its Sprite/Text children are bound to the current
-        // engine's VBO manager, TextureManager, and FontManager.  On the very first launch
-        // this just creates the entities for the first time (the SplashScene constructor no
-        // longer does so).  On subsequent launches within the same process this safely
-        // replaces stale GL references with fresh ones.
+        // Re-initialize SplashScene so it rebuilds its loading sprite and progress/info texts
+        // and resets its animations.  On the very first launch this just creates the entities
+        // for the first time (the SplashScene constructor no longer does so).  On subsequent
+        // launches within the same process this replaces the previous launch's children.
         Verktex.INSTANCE.withTreeLock(() -> {
             SplashScene.INSTANCE.initialize();
             return null;
@@ -381,8 +380,6 @@ public class MainActivity extends AppCompatActivity implements GameHost {
         }
         // ResourceManager.getInstance().loadHighQualityAsset("exit", "exit.png");
         ResourceManager.getInstance().loadSound("heartbeat", "sfx/heartbeat.ogg", false);
-        // Note: fonts ("font", "smallFont", "xs", "strokeFont") are loaded earlier in this
-        // method, before SplashScene.initialize(), so they are NOT reloaded here.
     }
 
     private synchronized void onGameCreated() {

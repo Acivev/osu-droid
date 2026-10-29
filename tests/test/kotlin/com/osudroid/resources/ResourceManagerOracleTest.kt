@@ -35,7 +35,7 @@ class ResourceManagerOracleTest {
 
     private lateinit var textureStore: TextureStore
 
-    // ResourceManager.Init needs the AndEngine Engine for its fonts; the texture side only needs the context.
+    // ResourceManager.Init also sets up the sound stores and reads the app signature; the texture side only needs the context.
     private fun field(name: String) = ResourceManager::class.java.getDeclaredField(name).also { it.isAccessible = true }
 
     @Before
@@ -59,6 +59,16 @@ class ResourceManagerOracleTest {
 
         assertNull(resources.getTexture("lighting"))
         assertTrue(resources.isTextureLoaded("lighting"))
+    }
+
+    @Test
+    fun unloadingAbsentKeepsItAbsent() {
+        textureStore.markAbsent("lighting")
+
+        resources.unloadTexture("lighting")
+
+        assertTrue(resources.isTextureLoaded("lighting"))
+        assertNull(resources.getTextureIfLoaded("lighting"))
     }
 
     @Test

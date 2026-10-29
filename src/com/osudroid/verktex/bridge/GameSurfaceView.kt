@@ -162,15 +162,16 @@ class GameSurfaceView(context: Context) : GLSurfaceView(context) {
     }
 
     /**
-     * Reads every config the display offers and lets [EglConfigLadder] pick one.
+     * Reads the configs `eglChooseConfig` returns for AndEngine's fallback attribute list (window-capable,
+     * ES2-renderable, EGL-sorted), as `ConfigChooser` did, and lets [EglConfigLadder] pick one.
      */
     private class LadderConfigChooser : EGLConfigChooser {
 
         override fun chooseConfig(egl: EGL10, display: EGLDisplay): EGLConfig {
             val count = IntArray(1)
-            val configs = if (egl.eglGetConfigs(display, null, 0, count) && count[0] > 0) {
+            val configs = if (egl.eglChooseConfig(display, FALLBACK_ATTRIBUTES, null, 0, count) && count[0] > 0) {
                 val all = arrayOfNulls<EGLConfig>(count[0])
-                if (egl.eglGetConfigs(display, all, all.size, count)) all.take(count[0]).filterNotNull() else emptyList()
+                if (egl.eglChooseConfig(display, FALLBACK_ATTRIBUTES, all, all.size, count)) all.take(count[0]).filterNotNull() else emptyList()
             } else {
                 emptyList()
             }
@@ -180,7 +181,10 @@ class GameSurfaceView(context: Context) : GLSurfaceView(context) {
                 ?: throw GLESVersionUnsupportedException("OpenGL ES 3.0", "no EGL config", deviceName(), Build.HARDWARE, androidVersion())
 
             val t = tuples[index]
-            Log.i(TAG, "Chose EGL config: red=${t[0]} green=${t[1]} blue=${t[2]} alpha=${t[3]} depth=${t[4]} stencil=${t[5]} renderableType=0x${Integer.toHexString(t[6])}")
+            val sampleBuffers = getConfigAttrib(egl, display, configs[index], EGL10.EGL_SAMPLE_BUFFERS)
+            val samples = getConfigAttrib(egl, display, configs[index], EGL10.EGL_SAMPLES)
+            val surfaceType = getConfigAttrib(egl, display, configs[index], EGL10.EGL_SURFACE_TYPE)
+            Log.i(TAG, "Chose EGL config: red=${t[0]} green=${t[1]} blue=${t[2]} alpha=${t[3]} depth=${t[4]} stencil=${t[5]} renderableType=0x${Integer.toHexString(t[6])} sampleBuffers=$sampleBuffers samples=$samples surfaceType=0x${Integer.toHexString(surfaceType)}")
 
             return configs[index]
         }
@@ -191,6 +195,18 @@ class GameSurfaceView(context: Context) : GLSurfaceView(context) {
         }
 
         private companion object {
+            /** AndEngine's `EGLCONFIG_ATTRIBUTES_FALLBACK`: R5 G6 B5 A0 D16 S0, ES2-renderable. */
+            val FALLBACK_ATTRIBUTES = intArrayOf(
+                EGL10.EGL_RED_SIZE, 5,
+                EGL10.EGL_GREEN_SIZE, 6,
+                EGL10.EGL_BLUE_SIZE, 5,
+                EGL10.EGL_ALPHA_SIZE, 0,
+                EGL10.EGL_DEPTH_SIZE, 16,
+                EGL10.EGL_STENCIL_SIZE, 0,
+                EGL10.EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+                EGL10.EGL_NONE,
+            )
+
             val ATTRIBUTES = intArrayOf(
                 EGL10.EGL_RED_SIZE,
                 EGL10.EGL_GREEN_SIZE,

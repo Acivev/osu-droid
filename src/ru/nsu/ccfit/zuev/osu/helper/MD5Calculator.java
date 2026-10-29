@@ -1,6 +1,5 @@
 package ru.nsu.ccfit.zuev.osu.helper;
 
-
 import java.io.File;
 import java.io.FileInputStream;
 import java.math.BigInteger;

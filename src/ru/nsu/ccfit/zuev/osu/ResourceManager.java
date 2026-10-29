@@ -499,7 +499,7 @@ public class ResourceManager {
         return soundStore.get(resname);
     }
 
-    public TextureEntry loadCustomTexture(final File file) {
+    public void loadCustomTexture(final File file) {
         String resname = file.getName();
         resname = resname.substring(0, resname.length() - 4).toLowerCase();
         boolean multiframe = false;
@@ -513,13 +513,13 @@ public class ResourceManager {
                 }
                 multiframe = true;
             } else {
-                return null;
+                return;
             }
         }
         TextureEntry region = TextureStore.decodeFile(file, 1, TextureEntry.Source.BeatmapSkin);
 
         if (region == null) {
-            return null;
+            return;
         }
         if (multiframe) {
             int i = 0;
@@ -556,7 +556,6 @@ public class ResourceManager {
                 }
             }
         }
-        return region;
     }
 
     public void unloadTexture(final String name) {
