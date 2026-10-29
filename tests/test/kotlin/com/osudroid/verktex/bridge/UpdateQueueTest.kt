@@ -2,56 +2,67 @@ package com.osudroid.verktex.bridge
 
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
-import org.andengine.engine.handler.runnable.RunnableHandler
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class RunnableHandlerTest {
+class UpdateQueueTest {
 
     @Test
     fun postingWhileABatchRunsDoesNotBlock() {
-        val handler = RunnableHandler()
+        val queue = UpdateQueue()
         val started = CountDownLatch(1)
         val release = CountDownLatch(1)
         val secondRan = CountDownLatch(1)
 
-        handler.postRunnable {
+        queue.post {
             started.countDown()
             release.await(10, TimeUnit.SECONDS)
         }
 
-        val worker = Thread { handler.onUpdate(0f) }.apply { isDaemon = true; start() }
+        val worker = Thread { queue.drain() }.apply { isDaemon = true; start() }
         assertTrue(started.await(5, TimeUnit.SECONDS))
 
-        val poster = Thread { handler.postRunnable { secondRan.countDown() } }.apply { isDaemon = true; start() }
+        val poster = Thread { queue.post { secondRan.countDown() } }.apply { isDaemon = true; start() }
         poster.join(1000)
         val blocked = poster.isAlive
 
         release.countDown()
         worker.join(5000)
         poster.join(5000)
-        assertTrue("postRunnable blocked while a batch was running", !blocked)
+        assertTrue("post blocked while a batch was running", !blocked)
 
-        handler.onUpdate(0f)
+        queue.drain()
         assertEquals(0L, secondRan.count)
     }
 
     @Test
-    fun runnablesPostedDuringABatchRunOnTheNextUpdate() {
-        val handler = RunnableHandler()
+    fun runnablesPostedDuringABatchRunOnTheNextDrain() {
+        val queue = UpdateQueue()
         val log = mutableListOf<String>()
 
-        handler.postRunnable {
+        queue.post {
             log += "a"
-            handler.postRunnable { log += "b" }
+            queue.post { log += "b" }
         }
 
-        handler.onUpdate(0f)
+        queue.drain()
         assertEquals(listOf("a"), log)
-        handler.onUpdate(0f)
+        queue.drain()
         assertEquals(listOf("a", "b"), log)
-        handler.onUpdate(0f)
+        queue.drain()
+        assertEquals(listOf("a", "b"), log)
+    }
+
+    @Test
+    fun postsBeforeTheFirstDrainAreKept() {
+        val queue = UpdateQueue()
+        val log = mutableListOf<String>()
+
+        queue.post { log += "a" }
+        queue.post { log += "b" }
+
+        queue.drain()
         assertEquals(listOf("a", "b"), log)
     }
 }
