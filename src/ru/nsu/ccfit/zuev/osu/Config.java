@@ -918,6 +918,10 @@ public class Config {
         return getBoolean("highPrecisionInput", false);
     }
 
+    public static boolean isStylusMultiTouch() {
+        return getBoolean("stylusMultiTouch", false);
+    }
+
     // Shared Preferences
     // It's preferred to use these methods to access shared preferences instead of adding new fields to this class.
     // If the option is expected to be accessed frequently consider storing it locally as a field where it's needed.

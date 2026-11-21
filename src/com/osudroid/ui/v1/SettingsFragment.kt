@@ -1,5 +1,6 @@
 package com.osudroid.ui.v1
 
+import android.Manifest
 import android.annotation.SuppressLint
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -8,8 +9,12 @@ import android.graphics.Color
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import android.text.InputType.TYPE_CLASS_TEXT
 import android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.ContextThemeWrapper
 import android.view.LayoutInflater
@@ -20,6 +25,7 @@ import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.XmlRes
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.core.app.ActivityCompat
 import androidx.core.content.getSystemService
 import androidx.core.os.LocaleListCompat
 import androidx.core.view.forEach
@@ -36,6 +42,8 @@ import com.edlplan.ui.fragment.SettingsFragment
 import com.google.android.material.snackbar.Snackbar
 import com.osudroid.UpdateManager
 import com.osudroid.data.DatabaseManager
+import com.osudroid.input.RawTouchInput
+import com.osudroid.input.RawTouchPairing
 import com.osudroid.multiplayer.api.LobbyAPI
 import com.osudroid.multiplayer.api.RoomAPI
 import com.osudroid.multiplayer.api.data.RoomTeam
@@ -49,6 +57,7 @@ import com.osudroid.multiplayer.Multiplayer
 import com.osudroid.ui.v2.CalibrationScene
 import com.osudroid.ui.v2.songselect.BeatmapCoverCache
 import com.reco1l.osu.ui.InputPreference
+import com.reco1l.osu.ui.MessageDialog
 import com.reco1l.osu.ui.Option
 import com.reco1l.osu.ui.SelectPreference
 import com.reco1l.framework.android.cornerRadius
@@ -254,6 +263,7 @@ class SettingsFragment : SettingsFragment() {
 
 
     override fun dismiss() {
+        RawTouchInput.onConnectionChanged = null
         Config.loadConfig(requireActivity())
 
         if (!Multiplayer.isMultiplayer) {
@@ -569,7 +579,125 @@ class SettingsFragment : SettingsFragment() {
     }
 
 
+    private fun onStylusMultiTouchStatus(status: RawTouchInput.Status) {
+        if (!isAdded) {
+            return
+        }
+
+        when (status) {
+            RawTouchInput.Status.READY -> Unit
+            RawTouchInput.Status.FAILED -> ToastLogger.showText(R.string.stylusMultiTouch_failed, true)
+
+            RawTouchInput.Status.PAIRING_REQUIRED, RawTouchInput.Status.DEBUGGING_REQUIRED -> {
+                val isPairing = status == RawTouchInput.Status.PAIRING_REQUIRED
+
+                // The pairing code is asked for in a notification.
+                if (isPairing && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    ActivityCompat.requestPermissions(requireActivity(), arrayOf(Manifest.permission.POST_NOTIFICATIONS), 0)
+                }
+
+                var message = getString(
+                    if (isPairing) R.string.stylusMultiTouch_pairing_message
+                    else R.string.stylusMultiTouch_debugging_message
+                )
+
+                val computerCommand = RawTouchInput.computerCommand
+
+                if (computerCommand != null) {
+                    message += "\n\n" + getString(R.string.stylusMultiTouch_computer_message, computerCommand)
+                }
+
+                val dialog = MessageDialog()
+                    .setTitle(getString(R.string.opt_stylusMultiTouch_title))
+                    .setMessage(message)
+
+                if (computerCommand != null) {
+                    dialog.addButton(getString(R.string.stylusMultiTouch_copy_command)) {
+                        requireContext().getSystemService<ClipboardManager>()
+                            ?.setPrimaryClip(ClipData.newPlainText(null, computerCommand))
+                    }
+                }
+
+                dialog
+                    .addButton(getString(R.string.stylusMultiTouch_open_settings)) {
+                        it.dismiss()
+
+                        val context = requireContext()
+
+                        if (isPairing) {
+                            RawTouchPairing.begin(context)
+                        }
+
+                        try {
+                            startActivity(Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS))
+                        } catch (_: Exception) {
+                            // The developer options are not enabled.
+                            startActivity(Intent(Settings.ACTION_DEVICE_INFO_SETTINGS))
+                        }
+                    }
+                    .show()
+            }
+        }
+    }
+
     private fun handleInputSectionPreferences() {
+        val stylusMultiTouch = findPreference<CheckBoxPreference>("stylusMultiTouch")!!
+
+        fun updateStylusMultiTouchStatus(isEnabled: Boolean) {
+            if (!isAdded) {
+                return
+            }
+
+            val summary = SpannableStringBuilder(getString(R.string.opt_stylusMultiTouch_summary))
+
+            if (isEnabled) {
+                val isConnected = RawTouchInput.isConnected
+                val isConnecting = !isConnected && RawTouchInput.isConnecting
+                val start = summary.append("\n").length
+
+                summary.append(
+                    getString(
+                        when {
+                            isConnected -> R.string.stylusMultiTouch_status_running
+                            isConnecting -> R.string.stylusMultiTouch_status_checking
+                            else -> R.string.stylusMultiTouch_status_stopped
+                        }
+                    )
+                )
+
+                summary.setSpan(
+                    ForegroundColorSpan(
+                        when {
+                            isConnected -> 0xFF6BD968.toInt()
+                            isConnecting -> 0xFFFFC857.toInt()
+                            else -> 0xFFFF6B6B.toInt()
+                        }
+                    ),
+                    start,
+                    summary.length,
+                    Spanned.SPAN_EXCLUSIVE_EXCLUSIVE
+                )
+            }
+
+            stylusMultiTouch.summary = summary
+        }
+
+        updateStylusMultiTouchStatus(stylusMultiTouch.isChecked)
+        RawTouchInput.onConnectionChanged = { updateStylusMultiTouchStatus(stylusMultiTouch.isChecked) }
+
+        stylusMultiTouch.setOnPreferenceChangeListener { _, newValue ->
+            updateStylusMultiTouchStatus(newValue == true)
+
+            if (newValue == true) {
+                RawTouchInput.connect(::onStylusMultiTouchStatus)
+            } else {
+                RawTouchPairing.cancel(requireContext())
+                RawTouchInput.stop()
+            }
+
+            true
+        }
+
         findPreference<Preference>("block_areas")!!.setOnPreferenceClickListener {
             BlockAreaEditorFragment().show()
             true

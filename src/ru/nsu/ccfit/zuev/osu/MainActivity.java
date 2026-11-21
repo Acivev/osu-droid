@@ -52,6 +52,7 @@ import com.osudroid.beatmaplisting.BeatmapListing;
 import com.osudroid.beatmaps.BeatmapCache;
 import com.osudroid.data.DatabaseManager;
 import com.osudroid.debug.DebugPlaygroundScene;
+import com.osudroid.input.RawTouchInput;
 import com.osudroid.resources.R;
 import com.osudroid.ui.FPSCounter;
 import com.osudroid.ui.v2.GameLoaderScene;
@@ -183,6 +184,7 @@ public class MainActivity extends BaseGameActivity implements
         reportGlesVersion();
 
         Config.loadConfig(this);
+        RawTouchInput.prepare(this);
         // Fonts rasterize in physical pixels; Config measured the real display width in the same call.
         FontManager.setRasterScale(Config.getRealDisplayWidth() / (float) Math.max(1, Config.getRES_WIDTH()));
         StringTable.setContext(this);
@@ -1240,6 +1242,13 @@ public class MainActivity extends BaseGameActivity implements
         }
 
         return super.onKeyMultiple(keyCode, repeatCount, event);
+    }
+
+    /**
+     * The view that the game is rendered to, or <code>null</code> if it has not been created yet.
+     */
+    public View getRenderSurface() {
+        return mRenderSurfaceView;
     }
 
     @Override

@@ -214,6 +214,16 @@ dependencies {
     // Localizations
     implementation 'com.github.osudroid:language-pack:2026.0606.2'
 
+    implementation 'com.github.MuntashirAkon:libadb-android:3.1.1'
+    implementation 'com.github.MuntashirAkon:sun-security-android:1.1'
+    implementation 'org.conscrypt:conscrypt-android:2.5.3'
+
+    // The Android build of Conscrypt replaces the one that Robolectric brings along, and cannot load its native
+    // library on the machine that runs the unit tests.
+    configurations.matching { it.name.endsWith('UnitTestRuntimeClasspath') }.configureEach {
+        exclude group: 'org.conscrypt', module: 'conscrypt-android'
+    }
+
     // Tools
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.0"
     implementation 'commons-io:commons-io:2.18.0'

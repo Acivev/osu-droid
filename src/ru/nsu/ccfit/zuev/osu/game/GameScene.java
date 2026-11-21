@@ -14,6 +14,7 @@ import kotlinx.coroutines.Job;
 import ru.nsu.ccfit.zuev.audio.serviceAudio.SongService;
 import com.osudroid.audio.SongServiceClock;
 import com.osudroid.beatmaps.constants.HitObjectType;
+import com.osudroid.input.RawTouchInput;
 import com.osudroid.game.FramedBeatmapClock;
 import com.osudroid.game.GameplayFrameStabilityClock;
 
@@ -151,6 +152,21 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     private final int maximumActiveCursorCount = 3;
     private final UIEngine engine;
     private Cursor[] cursors = new Cursor[CursorCount];
+
+    // The last cursors are reserved for finger contacts read from the touchscreen directly while a stylus is in range:
+    // one per contact, followed by one per finger whose contact is placed at the hovering stylus instead.
+    private static final int rawTouchSlotCount = 3;
+    private static final int firstRawTouchCursorId = CursorCount - rawTouchSlotCount * 2;
+    private boolean rawTouchEnabled;
+    private final float[] rawTouchCoords = new float[2];
+    private final RawTouchInput.Sink rawTouchSink = this::onRawTouch;
+
+    // Whether the first of the reserved cursors is shown at the hovering stylus without being pressed.
+    private volatile boolean stylusHoverCursorShown;
+
+    // Whether the fingers of the contacts that press at the position of the hovering stylus are down.
+    private final boolean[] passiveCursorDown = new boolean[rawTouchSlotCount];
+
     public String audioFilePath = null;
     private GameUIScene scene;
     private UIScene bgScene, mgScene, fgScene;
@@ -1598,7 +1614,14 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
             var touchController = engine.getTouchController();
             touchController.applyTouchOptions(touchOptions);
             touchController.resetRawPointers();
+
+            rawTouchEnabled = Config.isStylusMultiTouch() && RawTouchInput.start();
+            Arrays.fill(passiveCursorDown, false);
+        } else {
+            rawTouchEnabled = false;
         }
+
+        RawTouchInput.setActive(rawTouchEnabled);
 
         // Disable screen dimming
         engine.getEngineOptions().setWakeLockOptions(WakeLockOptions.SCREEN_BRIGHT);
@@ -2380,6 +2403,9 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     }
 
     public void quit() {
+        rawTouchEnabled = false;
+        RawTouchInput.setActive(false);
+
         // Disable historical event processing for more efficient ACTION_MOVE reports, since frequent reports are
         // not that relevant outside gameplay.
         var touchOptions = new TouchOptions();
@@ -2848,6 +2874,140 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
     }
 
     public boolean onSceneTouchEvent(final Scene pScene, final TouchEvent event) {
+        // These cursors are reserved for raw finger contacts.
+        if (rawTouchEnabled && event.getPointerID() >= firstRawTouchCursorId) {
+            return false;
+        }
+
+        return handleCursorEvent(event);
+    }
+
+    /**
+     * Handles a finger contact that was read from the touchscreen directly, because the system withholds it while a
+     * stylus is in range.
+     */
+    private void onRawTouch(int slot, int action, float surfaceX, float surfaceY, long eventTime) {
+        int id;
+
+        if (slot >= RawTouchInput.FINGER_SLOT_OFFSET) {
+            // The finger of a contact that presses at the position of the hovering stylus.
+            slot -= RawTouchInput.FINGER_SLOT_OFFSET;
+            id = firstRawTouchCursorId + rawTouchSlotCount + slot;
+        } else {
+            id = firstRawTouchCursorId + slot;
+        }
+
+        if (!rawTouchEnabled || paused || slot < 0 || slot >= rawTouchSlotCount) {
+            return;
+        }
+
+        int touchAction;
+
+        if (action == RawTouchInput.ACTION_DOWN) {
+            if (cursors[id].isMouseDown()) {
+                return;
+            }
+
+            touchAction = TouchEvent.ACTION_DOWN;
+        } else if (action == RawTouchInput.ACTION_MOVE) {
+            touchAction = TouchEvent.ACTION_MOVE;
+        } else {
+            touchAction = TouchEvent.ACTION_UP;
+        }
+
+        rawTouchCoords[0] = surfaceX;
+        rawTouchCoords[1] = surfaceY;
+
+        float[] sceneCoords = engine.getCamera().convertSurfaceToSceneCoordinates(rawTouchCoords);
+
+        var event = TouchEvent.obtain(sceneCoords[0], sceneCoords[1], touchAction, id, eventTime, null);
+        handleCursorEvent(event);
+        event.recycle();
+    }
+
+    /**
+     * Shows a cursor where the stylus hovers, which is where a finger contact presses in the meantime.
+     */
+    private void updateStylusHoverCursor() {
+        var sprites = cursorSprites;
+
+        if (sprites == null || firstRawTouchCursorId >= sprites.length || sprites[firstRawTouchCursorId] == null) {
+            return;
+        }
+
+        // While a finger presses, its own cursor is shown at the stylus.
+        for (int i = firstRawTouchCursorId; i < cursors.length; ++i) {
+            if (cursors[i].isMouseDown()) {
+                stylusHoverCursorShown = false;
+                return;
+            }
+        }
+
+        var sprite = sprites[firstRawTouchCursorId];
+
+        if (RawTouchInput.getHoveringStylusPosition(rawTouchCoords)) {
+            float[] sceneCoords = engine.getCamera().convertSurfaceToSceneCoordinates(rawTouchCoords);
+
+            sprite.setPosition(sceneCoords[0], sceneCoords[1]);
+
+            if (!stylusHoverCursorShown) {
+                sprite.setShowing(true);
+                stylusHoverCursorShown = true;
+            }
+        } else if (stylusHoverCursorShown) {
+            sprite.setShowing(false);
+            stylusHoverCursorShown = false;
+        }
+    }
+
+    /**
+     * Handles a finger whose contact presses at the position of the hovering stylus. The finger is shown and recorded
+     * like any other cursor, but does not press by itself.
+     */
+    private void handlePassiveCursorEvent(final TouchEvent event, int id, int eventTime) {
+        int index = id - firstRawTouchCursorId - rawTouchSlotCount;
+
+        if (event.isActionDown()) {
+            passiveCursorDown[index] = true;
+        } else if (!passiveCursorDown[index]) {
+            return;
+        }
+
+        var sprite = cursorSprites != null ? cursorSprites[id] : null;
+
+        if (event.isActionUp()) {
+            passiveCursorDown[index] = false;
+
+            if (sprite != null) {
+                sprite.setShowing(false);
+            }
+
+            if (replay != null) {
+                replay.addUp(eventTime, id);
+            }
+
+            return;
+        }
+
+        var cursorEvent = CursorEvent.obtain(event);
+
+        if (sprite != null) {
+            sprite.setPosition(cursorEvent.position.x, cursorEvent.position.y);
+            sprite.setShowing(true);
+        }
+
+        if (replay != null) {
+            if (event.isActionDown()) {
+                replay.addPress(eventTime, cursorEvent.trackPosition, id);
+            } else {
+                replay.addMove(eventTime, cursorEvent.trackPosition, id);
+            }
+        }
+
+        cursorEvent.release();
+    }
+
+    private boolean handleCursorEvent(final TouchEvent event) {
         float offset = previousFrameTime > 0
                 ? (event.getEventTime() - previousFrameTime) * GameHelper.getSpeedMultiplier()
                 : 0;
@@ -2860,6 +3020,11 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
         var id = event.getPointerID();
         if (id < 0 || id >= getCursorsCount()) {
             return false;
+        }
+
+        if (rawTouchEnabled && id >= firstRawTouchCursorId + rawTouchSlotCount) {
+            handlePassiveCursorEvent(event, id, eventTime);
+            return true;
         }
 
         var cursor = cursors[id];
@@ -2975,6 +3140,18 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                 cursorSprites[i].setShowing(false);
             }
         }
+
+        stylusHoverCursorShown = false;
+
+        for (int i = 0; i < passiveCursorDown.length; ++i) {
+            if (passiveCursorDown[i]) {
+                passiveCursorDown[i] = false;
+
+                if (replay != null) {
+                    replay.addUp(Math.round(time), firstRawTouchCursorId + rawTouchSlotCount + i);
+                }
+            }
+        }
     }
 
     public void pause() {
@@ -3021,6 +3198,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
         gameplayClock.stop();
         paused = true;
+        RawTouchInput.setActive(false);
 
         scene.setIgnoreUpdate(true);
         hud.setIgnoreUpdate(true);
@@ -3060,6 +3238,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
             gameplayClock.stop();
             paused = true;
+            RawTouchInput.setActive(false);
             scene.setIgnoreUpdate(true);
             hud.setIgnoreUpdate(true);
             return;
@@ -3142,6 +3321,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                     songService.setFrequencyForcefully(initialFrequency);
                     gameplayClock.stop();
                     paused = true;
+                    RawTouchInput.setActive(false);
 
                     scene.setIgnoreUpdate(true);
                     hud.setIgnoreUpdate(true);
@@ -3169,6 +3349,7 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
         UIEngine.getCurrent().getOverlay().getChildScene().back();
         paused = false;
+        RawTouchInput.setActive(rawTouchEnabled);
 
         if (isGameOver) {
             quit();
@@ -4402,6 +4583,11 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
 
         @Override
         protected void onManagedUpdate(float secElapsed) {
+            if (rawTouchEnabled) {
+                RawTouchInput.drain(rawTouchSink);
+                updateStylusHoverCursor();
+            }
+
             update(secElapsed);
 
             //noinspection ForLoopReplaceableByForEach
@@ -4444,6 +4630,16 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                 var cursor = cursors[i];
                 boolean isUpdatePathDown = cursor != null && cursor.isMouseDown();
 
+                if (!isUpdatePathDown && rawTouchEnabled && i >= firstRawTouchCursorId) {
+                    // These sprites can be shown without their cursor being pressed, which is handled by the update
+                    // thread: the first one follows the hovering stylus, and the last ones show fingers.
+                    int passiveIndex = i - firstRawTouchCursorId - rawTouchSlotCount;
+
+                    if (passiveIndex >= 0 ? passiveCursorDown[passiveIndex] : i == firstRawTouchCursorId && stylusHoverCursorShown) {
+                        continue;
+                    }
+                }
+
                 sprite.setShowing(isUpdatePathDown);
 
                 if (!isUpdatePathDown) {
@@ -4455,6 +4651,11 @@ public class GameScene implements GameObjectListener, IOnSceneTouchListener {
                 }
 
                 ++updatePathActiveCount;
+
+                if (rawTouchEnabled && i >= firstRawTouchCursorId) {
+                    // These cursors have no raw pointer in the touch controller. Keep update thread position.
+                    continue;
+                }
 
                 if (!touchController.getRawPointerSurfacePosition(i, fastPathSurfaceCoords)) {
                     // Keep update thread position.

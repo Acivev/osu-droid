@@ -51,6 +51,10 @@
             </intent-filter>
         </service>
 
+        <receiver
+            android:name="com.osudroid.input.RawTouchPairingReceiver"
+            android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileProvider"

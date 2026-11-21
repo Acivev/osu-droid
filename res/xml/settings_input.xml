@@ -17,6 +17,13 @@
             android:summary="@string/opt_highPrecisionInput_summary"
             app:layout="@layout/settings_preference_checkbox" />
 
+        <CheckBoxPreference
+            android:key="stylusMultiTouch"
+            android:defaultValue="false"
+            android:title="@string/opt_stylusMultiTouch_title"
+            android:summary="@string/opt_stylusMultiTouch_summary"
+            app:layout="@layout/settings_preference_checkbox" />
+
         <com.osudroid.ui.EditableSeekBarPreference
             android:defaultValue="300"
             android:key="back_button_press_time"

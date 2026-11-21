@@ -3,6 +3,26 @@
 <!-- This file here is for new strings that will be temporary:-->
 <!-- Link to localizations pack: https://github.com/osudroid/language-pack-->
 
+    <string name="opt_stylusMultiTouch_title">Finger taps while using a stylus</string>
+    <string name="opt_stylusMultiTouch_summary">Accept finger taps while a stylus is touching or hovering over the screen, which the system blocks otherwise.</string>
+    <string name="stylusMultiTouch_status_running">Status: running</string>
+    <string name="stylusMultiTouch_status_checking">Status: checking…</string>
+    <string name="stylusMultiTouch_status_stopped">Status: not running</string>
+    <string name="stylusMultiTouch_ready">Finger taps while using a stylus are active.</string>
+    <string name="stylusMultiTouch_failed">Unable to read the touchscreen. Finger taps while using a stylus are not available.</string>
+    <string name="stylusMultiTouch_pairing_message">osu!droid has to be paired with this device once:\n\n1. Turn on Wireless debugging in the developer options.\n2. Tap Wireless debugging, then Pair device with pairing code.\n3. Enter the code in the osu!droid notification.</string>
+    <string name="stylusMultiTouch_debugging_message">Turn on Wireless debugging in the developer options, then return here and enable this option again.\n\nThis is needed once after every restart of the device. Wireless debugging can be turned off again afterwards, but USB debugging has to stay on.</string>
+    <string name="stylusMultiTouch_computer_message">Alternatively, connect the device to a computer with USB debugging and run this command there, then enable this option again:\n\n%1$s</string>
+    <string name="stylusMultiTouch_copy_command">Copy command</string>
+    <string name="stylusMultiTouch_open_settings">Open developer options</string>
+    <string name="stylusMultiTouch_notification_channel">Stylus setup</string>
+    <string name="stylusMultiTouch_pairing_searching">Open Wireless debugging in the developer options and tap Pair device with pairing code.</string>
+    <string name="stylusMultiTouch_pairing_enter_code">Enter the pairing code shown by the system.</string>
+    <string name="stylusMultiTouch_pairing_enter_code_action">Enter code</string>
+    <string name="stylusMultiTouch_pairing_code_hint">Pairing code</string>
+    <string name="stylusMultiTouch_pairing_working">Pairing…</string>
+    <string name="stylusMultiTouch_pairing_failed">Pairing failed. Check the code and enter it again.</string>
+
     <string name="opt_spectrum_quality_title">Spectrum visualizer</string>
     <string name="opt_spectrum_quality_summary">Quality of the audio spectrum ring around the logo.</string>
     <string name="opt_spectrum_quality_full">Full</string>
